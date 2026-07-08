@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, ExternalLink, Loader2, ShieldQuestion, MapPin, Server, AlertTriangle, Globe2 } from "lucide-react";
+import { Search, ExternalLink, Loader2, ShieldQuestion, MapPin, Server, AlertTriangle, Globe2, ShieldCheck } from "lucide-react";
 import { api, formatApiErrorDetail } from "@/lib/api";
 
 const FAVICON = {
@@ -9,6 +9,11 @@ const FAVICON = {
   "Cisco Talos": "talosintelligence.com",
   "IBM X-Force": "exchange.xforce.ibmcloud.com",
   "urlscan.io": "urlscan.io",
+  "MalwareBazaar": "abuse.ch",
+  "ThreatFox": "threatfox.abuse.ch",
+  "Hybrid Analysis": "hybrid-analysis.com",
+  "Shodan": "shodan.io",
+  "GreyNoise": "greynoise.io",
 };
 
 const TYPE_LABEL = { md5: "MD5 Hash", sha1: "SHA1 Hash", sha256: "SHA256 Hash", ip: "IP Address", domain: "Domain", url: "URL" };
@@ -124,7 +129,32 @@ export default function IocAnalyzer() {
               )}
 
               {en?.kind === "hash" && (
-                <div className="text-sm text-slate-500">{en.note}</div>
+                <div className="space-y-3" data-testid="ioc-hash-result">
+                  {en.found ? (
+                    <>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {en.known_malicious ? (
+                          <span data-testid="ioc-hash-verdict" className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-md bg-red-50 border border-red-200 text-red-700"><AlertTriangle className="w-3.5 h-3.5" /> Known Malicious</span>
+                        ) : (
+                          <span data-testid="ioc-hash-verdict" className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-md bg-green-50 border border-green-200 text-green-700"><ShieldCheck className="w-3.5 h-3.5" /> Known Good File</span>
+                        )}
+                        <span className="text-xs text-slate-500">in CIRCL known-file database</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+                        {en.filename && <div><span className="text-slate-400 text-xs uppercase tracking-wide">File name</span><div className="text-slate-800 font-mono-data break-all">{en.filename}</div></div>}
+                        {en.filesize && <div><span className="text-slate-400 text-xs uppercase tracking-wide">Size</span><div className="text-slate-800">{Number(en.filesize).toLocaleString()} bytes</div></div>}
+                        {en.product && <div><span className="text-slate-400 text-xs uppercase tracking-wide">Product</span><div className="text-slate-800">{en.product}</div></div>}
+                        {en.source_label && <div><span className="text-slate-400 text-xs uppercase tracking-wide">Source</span><div className="text-slate-800">{en.source_label}</div></div>}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex items-start gap-2 text-sm text-slate-600 bg-white border border-slate-200 rounded-lg px-3.5 py-3">
+                      <ShieldQuestion className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+                      <span>{en.note}</span>
+                    </div>
+                  )}
+                  <div className="text-xs text-slate-400">Enrichment: {en.sources.join(" · ")}</div>
+                </div>
               )}
 
               {/* Deep links */}

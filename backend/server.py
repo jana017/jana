@@ -324,16 +324,22 @@ def _ioc_links(value: str, kind: str) -> dict:
     links = {}
     if kind in ("md5", "sha1", "sha256"):
         links["VirusTotal"] = f"https://www.virustotal.com/gui/file/{v}"
+        links["MalwareBazaar"] = f"https://bazaar.abuse.ch/browse.php?search={kind}%3A{v}"
+        links["ThreatFox"] = f"https://threatfox.abuse.ch/browse.php?search=hash%3A{v}"
+        links["Hybrid Analysis"] = f"https://www.hybrid-analysis.com/search?query={v}"
         links["IBM X-Force"] = f"https://exchange.xforce.ibmcloud.com/malware/{v}"
     elif kind == "ip":
         links["VirusTotal"] = f"https://www.virustotal.com/gui/ip-address/{v}"
         links["AbuseIPDB"] = f"https://www.abuseipdb.com/check/{v}"
         links["Cisco Talos"] = f"https://talosintelligence.com/reputation_center/lookup?search={v}"
+        links["Shodan"] = f"https://www.shodan.io/host/{v}"
+        links["GreyNoise"] = f"https://viz.greynoise.io/ip/{v}"
         links["IBM X-Force"] = f"https://exchange.xforce.ibmcloud.com/ip/{v}"
     elif kind == "domain":
         links["VirusTotal"] = f"https://www.virustotal.com/gui/domain/{v}"
         links["urlscan.io"] = f"https://urlscan.io/search/#{q}"
         links["Cisco Talos"] = f"https://talosintelligence.com/reputation_center/lookup?search={v}"
+        links["Shodan"] = f"https://www.shodan.io/search?query=hostname%3A{v}"
         links["IBM X-Force"] = f"https://exchange.xforce.ibmcloud.com/url/{v}"
     elif kind == "url":
         links["VirusTotal"] = f"https://www.virustotal.com/gui/search/{q}"
@@ -394,7 +400,35 @@ async def ioc_lookup(value: str):
                 except Exception:
                     result["enrichment"] = {"kind": "web", "scan_count": 0, "recent_scans": [], "sources": ["urlscan.io"]}
             else:
-                result["enrichment"] = {"kind": "hash", "note": "No key-free reputation source for hashes — use the deep links below for full analysis.", "sources": []}
+                # File hash — key-free lookup against CIRCL hashlookup (known-file DB)
+                enr = {
+                    "kind": "hash",
+                    "hash_type": kind,
+                    "found": False,
+                    "known_malicious": False,
+                    "filename": None,
+                    "filesize": None,
+                    "product": None,
+                    "source_label": None,
+                    "note": "Not found in the CIRCL known-file database. Use the deep links below to check reputation on VirusTotal, MalwareBazaar and others.",
+                    "sources": ["CIRCL hashlookup"],
+                }
+                try:
+                    r = await hc.get(f"https://hashlookup.circl.lu/lookup/{kind}/{normalized}", headers={"Accept": "application/json"})
+                    if r.status_code == 200:
+                        j = r.json()
+                        if isinstance(j, dict) and not j.get("message"):
+                            enr["found"] = True
+                            mal = j.get("KnownMalicious") or j.get("hashlookup:trust")
+                            enr["known_malicious"] = bool(j.get("KnownMalicious"))
+                            enr["filename"] = j.get("FileName")
+                            enr["filesize"] = j.get("FileSize")
+                            enr["product"] = (j.get("ProductCode") or {}).get("ProductName") if isinstance(j.get("ProductCode"), dict) else None
+                            enr["source_label"] = j.get("KnownMalicious") or ("NSRL known-good file" if j.get("RDS:package_id") else "Known file")
+                            enr["note"] = None
+                except Exception:
+                    pass
+                result["enrichment"] = enr
     except Exception as e:
         logger.error(f"IOC lookup error: {e}")
 

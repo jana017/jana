@@ -84,3 +84,19 @@ body {
   50% { opacity: 0.35; transform: scale(0.8); }
 }
 .pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
+
+/* Live threat map */
+@keyframes tm-ping {
+  0% { transform: scale(0.6); opacity: 0.7; }
+  80%, 100% { transform: scale(2.6); opacity: 0; }
+}
+.tm-ping { animation: tm-ping 2.2s cubic-bezier(0, 0, 0.2, 1) infinite; }
+@keyframes tm-dash {
+  to { stroke-dashoffset: -240; }
+}
+.tm-arc { stroke-dasharray: 4 8; animation: tm-dash 2.4s linear infinite; }
+@keyframes tm-scan {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.tm-scan { animation: tm-scan 6s linear infinite; }

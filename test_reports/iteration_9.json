@@ -1,0 +1,64 @@
+{
+  "summary": "Frontend E2E verified for (1) Live Threat Map on landing hero and (2) IOC Analyzer on Threat Intelligence page. All requested testids present, all deep-link sets match requested services per IOC type, and hrefs point to the correct per-IOC pages with target=_blank. No regressions.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_flows": {
+    "live_threat_map": {
+      "data-testid=live-threat-map": "present",
+      "markers_rendered": 14,
+      "threat-map-active-label": "present (rotates every 2.6s)",
+      "threat-stat-kev": "1,635",
+      "threat-stat-incidents": "40",
+      "threat-ransomware-chip": "329 ransomware-linked CVEs",
+      "threat-monitoring-badge": "present"
+    },
+    "ioc_hash_known_malicious": {
+      "input": "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f (EICAR)",
+      "verdict": "Known Malicious",
+      "hash-result": "shows eicar.com / 68 bytes / Gentoo Linux 2005.0 Ubuntu 5.04 / malshare.com",
+      "deep_links": ["VirusTotal (file/<sha256>)", "MalwareBazaar (search sha256)", "ThreatFox (search hash)", "Hybrid Analysis (search)", "IBM X-Force (malware/<sha256>)"]
+    },
+    "ioc_hash_unknown": {
+      "input": "2ec4805011c81234b87df4baf01e4ab85dfdc0cd2beb2b08b0cdce24b7bda80f",
+      "note_shown": "Not found in the CIRCL known-file database. Use the deep links below to check reputation on VirusTotal, MalwareBazaar and others.",
+      "old_message_check": "PASS - no 'No key-free reputation source' text present",
+      "deep_links": "same 5 hash-oriented deep links present"
+    },
+    "ioc_ip": {
+      "input": "8.8.8.8",
+      "type-badge": "IP ADDRESS",
+      "enrichment": "geo + open ports rendered",
+      "deep_links": ["VirusTotal /gui/ip-address/8.8.8.8", "AbuseIPDB /check/8.8.8.8", "Cisco Talos reputation_center lookup", "Shodan /host/8.8.8.8", "GreyNoise viz /ip/8.8.8.8", "IBM X-Force /ip/8.8.8.8"]
+    },
+    "ioc_domain": {
+      "input": "example.com",
+      "type-badge": "DOMAIN",
+      "enrichment": "urlscan.io scan count shown",
+      "deep_links": ["VirusTotal /gui/domain/example.com", "urlscan.io /search/#example.com", "Cisco Talos lookup", "Shodan hostname query", "IBM X-Force /url/example.com"]
+    },
+    "ioc_url": {
+      "input": "https://example.com/foo",
+      "deep_links": ["VirusTotal search", "urlscan.io search", "IBM X-Force /url/..."]
+    },
+    "target_blank_check": "PASS - every deep-link anchor has target=_blank"
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "IocAnalyzer.jsx line 173: favicon <img src=google.com/s2/favicons> is a soft external dep; onError already hides it, acceptable.",
+    "IocAnalyzer.jsx: consider clearing input on new type or preserving previous result during load for less visual jank (current setResult(null) causes brief flash between analyses - not a defect).",
+    "LiveThreatMap.jsx: FALLBACK ensures markers render even if /attack-feed is slow; good resilience pattern.",
+    "LiveThreatMap.jsx: stats.kev/incidents/ransomware chips only render when non-null, so briefly missing on first paint - acceptable."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (skipped per request)", "frontend": "100%"},
+  "test_credentials": "not required for these public pages",
+  "seed_data_creation": "none",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Both requested features are working. IOC Analyzer returns proper enrichment and 3-6 deep links per IOC type. Hash unknown case no longer shows 'No key-free reputation source' message. Live Threat Map renders 14 pulsing markers with rotating active label and non-empty KEV(1635)/incidents(40)/ransomware(329) counters. When testing IOC Analyzer, use waits of at least 5-6s between analyses since AnimatePresence exits + external CIRCL/urlscan calls can take a few seconds; querying links too soon may pick up stale panel."
+}

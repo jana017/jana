@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { Phone, Mail, ShieldCheck, ArrowRight } from "lucide-react";
+import LiveThreatMap from "./LiveThreatMap";
 
 const fade = {
   hidden: { opacity: 0, y: 12 },
@@ -105,23 +106,7 @@ export default function Hero() {
           transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
           className="relative"
         >
-          <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-xl">
-            <img
-              src="https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1200&q=80"
-              alt="Global real-time threat network"
-              className="w-full h-[420px] object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#0A1220]/50 to-transparent" />
-          </div>
-          <div className="absolute -bottom-5 -left-5 bg-white rounded-xl border border-slate-200 shadow-lg p-4 hidden sm:block">
-            <div className="flex items-center gap-3">
-              <span className="w-2.5 h-2.5 rounded-full bg-green-500 pulse-dot" />
-              <div>
-                <div className="text-xs text-slate-500">Threat monitoring</div>
-                <div className="text-sm font-semibold text-slate-900">Active · 24/7 SOC</div>
-              </div>
-            </div>
-          </div>
+          <LiveThreatMap />
         </motion.div>
       </div>
     </section>
