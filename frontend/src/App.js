@@ -5,6 +5,7 @@ import ReactLenis from "lenis/react";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/context/AuthContext";
 import ScrollToTop from "@/components/ScrollToTop";
+import ScrollToTopOnNav from "@/components/ScrollToTopOnNav";
 
 const Landing = lazy(() => import("@/pages/Landing"));
 const Admin = lazy(() => import("@/pages/Admin"));
@@ -28,6 +29,7 @@ function App() {
           <Toaster position="bottom-right" richColors />
           <ScrollToTop />
           <BrowserRouter>
+            <ScrollToTopOnNav />
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<Landing />} />
