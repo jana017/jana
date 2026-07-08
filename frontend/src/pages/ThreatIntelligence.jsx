@@ -5,6 +5,7 @@ import Navbar from "@/components/Navbar";
 import Contact from "@/components/Contact";
 import IntelReader from "@/components/IntelReader";
 import IocAnalyzer from "@/components/IocAnalyzer";
+import ThreatIntelOverview from "@/components/ThreatIntelOverview";
 import IocDatabase from "@/components/IocDatabase";
 import { FileText, ExternalLink, ShieldAlert, BookOpen, ArrowRight, Search, Globe, Database } from "lucide-react";
 import useSeo from "@/lib/useSeo";
@@ -112,6 +113,13 @@ export default function ThreatIntelligence() {
             Live, published threat research from Palo Alto Unit42 and hand-picked analysis from
             the security community — searchable across {total || "hundreds of"} reports.
           </p>
+        </div>
+      </section>
+
+      {/* Threat Intel Overview (CrowdStrike-style hub) */}
+      <section className="bg-white pt-14 lg:pt-16">
+        <div className="mx-auto max-w-7xl px-6">
+          <ThreatIntelOverview />
         </div>
       </section>
 

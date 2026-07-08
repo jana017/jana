@@ -537,6 +537,89 @@ async def delete_ioc(ioc_id: str, user: dict = Depends(get_current_user)):
 
 
 # ---------------------------------------------------------------------------
+# Threat Intelligence overview (aggregated stats for the /threat-intelligence hub)
+# ---------------------------------------------------------------------------
+@api_router.get("/threat-intel/overview")
+async def threat_intel_overview():
+    """Aggregated intel: totals by type/severity, top adversaries, top malware
+    families, top sources, and last OTX sync — powers the CrowdStrike-style
+    Threat Intel Overview band on the frontend."""
+    total = await db.iocs.count_documents({})
+    by_type = {}
+    for t in ("ip", "domain", "url", "md5", "sha1", "sha256"):
+        by_type[t] = await db.iocs.count_documents({"type": t})
+    by_type["hash"] = by_type.pop("md5", 0) + by_type.pop("sha1", 0) + by_type.pop("sha256", 0)
+    by_severity = {s: await db.iocs.count_documents({"severity": s}) for s in IOC_SEVERITIES}
+    otx = await db.otx_meta.find_one({"_id": "last_sync"}, {"_id": 0})
+
+    # Top adversary/family tags — tags stored as "actor:X" or "family:X".
+    pipeline_tag = [
+        {"$unwind": "$tags"},
+        {"$group": {"_id": "$tags", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 60},
+    ]
+    tag_docs = await db.iocs.aggregate(pipeline_tag).to_list(60)
+    adversaries, families, top_tags = [], [], []
+    for d in tag_docs:
+        tag = (d.get("_id") or "").strip()
+        if not tag:
+            continue
+        entry = {"name": tag.split(":", 1)[1] if ":" in tag else tag, "count": d.get("count", 0)}
+        if tag.lower().startswith("actor:"):
+            adversaries.append(entry)
+        elif tag.lower().startswith("family:"):
+            families.append(entry)
+        else:
+            top_tags.append(entry)
+
+    # Top threat_name (malware campaign / pulse title) — separate from family tags.
+    pipeline_threat = [
+        {"$match": {"threat_name": {"$ne": None, "$exists": True}}},
+        {"$group": {"_id": "$threat_name", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 10},
+    ]
+    tn_docs = await db.iocs.aggregate(pipeline_threat).to_list(10)
+    top_campaigns = [{"name": d["_id"], "count": d["count"]} for d in tn_docs if d.get("_id")]
+
+    # Top sources (short label — strip pulse suffix)
+    pipeline_src = [
+        {"$match": {"source": {"$ne": None, "$exists": True}}},
+        {"$project": {"source": {"$arrayElemAt": [{"$split": ["$source", " · "]}, 0]}}},
+        {"$group": {"_id": "$source", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 8},
+    ]
+    src_docs = await db.iocs.aggregate(pipeline_src).to_list(8)
+    top_sources = [{"name": d["_id"], "count": d["count"]} for d in src_docs if d.get("_id")]
+
+    # Recent additions
+    recent = await db.iocs.find({}, {"_id": 0, "value": 1, "type": 1, "severity": 1, "threat_name": 1, "source": 1, "created_at": 1}).sort("created_at", -1).limit(8).to_list(8)
+
+    return {
+        "total_iocs": total,
+        "by_type": by_type,
+        "by_severity": by_severity,
+        "adversaries": adversaries[:10],
+        "malware_families": families[:10],
+        "top_campaigns": top_campaigns,
+        "top_sources": top_sources,
+        "top_tags": top_tags[:12],
+        "recent": recent,
+        "last_otx_sync": otx,
+        "providers": {
+            "virustotal": bool(VT_API_KEY),
+            "abuseipdb": bool(ABUSEIPDB_API_KEY),
+            "urlscan": bool(URLSCAN_API_KEY),
+            "otx": bool(OTX_API_KEY),
+            "hybrid_analysis": bool(HYBRID_ANALYSIS_API_KEY),
+            "ai_summary": bool(EMERGENT_LLM_KEY),
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
 # AlienVault OTX threat intelligence sync (auto on startup + daily)
 # ---------------------------------------------------------------------------
 OTX_API_KEY = os.environ.get("OTX_API_KEY")
@@ -767,7 +850,60 @@ VT_API_KEY = os.environ.get("VIRUSTOTAL_API_KEY")
 ABUSEIPDB_API_KEY = os.environ.get("ABUSEIPDB_API_KEY")
 URLSCAN_API_KEY = os.environ.get("URLSCAN_API_KEY")
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY")
+HYBRID_ANALYSIS_API_KEY = os.environ.get("HYBRID_ANALYSIS_API_KEY")
+_HA_BASE = "https://www.hybrid-analysis.com/api/v2"
+_HA_HEADERS = {"api-key": HYBRID_ANALYSIS_API_KEY or "", "User-Agent": "Falcon Sandbox", "Accept": "application/json"}
 _REP_TTL = timedelta(hours=6)
+
+
+async def _ha_hash_lookup(hc: httpx.AsyncClient, hash_value: str) -> Optional[dict]:
+    """Look up a hash on Hybrid Analysis. Uses /overview/{sha256} (v2 replacement
+    for deprecated /search/hash). Returns None when disabled, {'skipped':True} for
+    non-SHA256 hashes since HA overview requires SHA256."""
+    if not HYBRID_ANALYSIS_API_KEY:
+        return None
+    kind = _classify_ioc(hash_value)
+    if kind != "sha256":
+        return {"skipped": True, "reason": "sha256_required"}
+    try:
+        r = await hc.get(
+            f"{_HA_BASE}/overview/{hash_value}",
+            headers=_HA_HEADERS,
+            follow_redirects=True,
+        )
+        if r.status_code == 401:
+            return {"error": "unauthorized"}
+        if r.status_code == 429:
+            return {"error": "rate_limited"}
+        if r.status_code == 404:
+            return {"found": False}
+        if r.status_code != 200:
+            return {"error": "request_failed"}
+        d = r.json() or {}
+        if not d.get("sha256"):
+            return {"found": False}
+        # Pick top vx_family from scanners[].family if present.
+        family = None
+        for sc in (d.get("scanners") or []):
+            if sc.get("family"):
+                family = sc["family"]
+                break
+        classification = d.get("classification_tags") or []
+        return {
+            "found": True,
+            "verdict": d.get("verdict"),
+            "threat_score": d.get("threat_score"),
+            "vx_family": family,
+            "classification": classification[:5],
+            "type_short": d.get("type_short"),
+            "last_file_name": d.get("last_file_name"),
+            "size": d.get("size"),
+            "reports": len(d.get("children") or []) + 1,
+            "url": f"https://www.hybrid-analysis.com/sample/{d['sha256']}",
+            "submitted_at": d.get("last_multi_scan") or d.get("analysis_start_time"),
+        }
+    except Exception:
+        return {"error": "request_failed"}
 
 
 def _vt_url_id(u: str) -> str:
@@ -852,8 +988,8 @@ async def _abuseipdb_lookup(hc: httpx.AsyncClient, normalized: str) -> Optional[
 
 
 async def _reputation(hc: httpx.AsyncClient, kind: str, normalized: str) -> Optional[dict]:
-    """VT + AbuseIPDB reputation with 6h Mongo cache. Returns None when no keys set."""
-    if not VT_API_KEY and not ABUSEIPDB_API_KEY:
+    """VT + AbuseIPDB + Hybrid Analysis reputation with 6h Mongo cache. Returns None when no keys set."""
+    if not VT_API_KEY and not ABUSEIPDB_API_KEY and not HYBRID_ANALYSIS_API_KEY:
         return None
     cache_key = f"{kind}:{normalized}"
     try:
@@ -863,9 +999,11 @@ async def _reputation(hc: httpx.AsyncClient, kind: str, normalized: str) -> Opti
                 return doc.get("reputation")
     except Exception:
         pass
-    rep = {"vt": await _vt_lookup(hc, kind, normalized), "abuseipdb": None}
+    rep = {"vt": await _vt_lookup(hc, kind, normalized), "abuseipdb": None, "hybrid_analysis": None}
     if kind == "ip":
         rep["abuseipdb"] = await _abuseipdb_lookup(hc, normalized)
+    if kind in ("md5", "sha1", "sha256"):
+        rep["hybrid_analysis"] = await _ha_hash_lookup(hc, normalized)
     try:
         await db.ioc_cache.update_one({"_id": cache_key}, {"$set": {"reputation": rep, "ts": now_iso()}}, upsert=True)
     except Exception:

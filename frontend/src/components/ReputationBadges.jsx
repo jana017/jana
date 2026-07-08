@@ -1,5 +1,5 @@
 import { ShieldAlert, ShieldCheck, ShieldQuestion } from "lucide-react";
-import { vtVerdict, abuseVerdict } from "@/lib/iocUtils";
+import { vtVerdict, abuseVerdict, haVerdict } from "@/lib/iocUtils";
 
 const TONE = {
   bad: "bg-red-50 border-red-200 text-red-700",
@@ -14,12 +14,13 @@ const Icon = ({ tone }) => {
   return <ShieldQuestion className="w-3.5 h-3.5" />;
 };
 
-// Compact inline reputation badges for VT + AbuseIPDB. Renders nothing if no keys/data.
+// Compact inline reputation badges for VT + AbuseIPDB + Hybrid Analysis. Renders nothing if no keys/data.
 export default function ReputationBadges({ reputation, size = "sm" }) {
   if (!reputation) return null;
   const vt = vtVerdict(reputation.vt);
   const ab = abuseVerdict(reputation.abuseipdb);
-  if (!vt && !ab) return null;
+  const ha = haVerdict(reputation.hybrid_analysis);
+  if (!vt && !ab && !ha) return null;
   const pad = size === "sm" ? "px-2 py-0.5 text-[11px]" : "px-2.5 py-1 text-xs";
   return (
     <div className="flex flex-wrap items-center gap-1.5" data-testid="ioc-reputation">
@@ -31,6 +32,11 @@ export default function ReputationBadges({ reputation, size = "sm" }) {
       {ab && (
         <span data-testid="ioc-rep-abuseipdb" className={`inline-flex items-center gap-1 font-semibold rounded-md border ${pad} ${TONE[ab.tone]}`}>
           <Icon tone={ab.tone} /> AbuseIPDB {ab.text}
+        </span>
+      )}
+      {ha && (
+        <span data-testid="ioc-rep-ha" className={`inline-flex items-center gap-1 font-semibold rounded-md border ${pad} ${TONE[ha.tone]}`}>
+          <Icon tone={ha.tone} /> Hybrid Analysis {ha.text}
         </span>
       )}
     </div>

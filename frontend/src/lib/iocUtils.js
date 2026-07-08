@@ -74,6 +74,19 @@ export function abuseVerdict(ab) {
   return { text: `${score}%`, tone };
 }
 
+// Returns { text, tone } for a Hybrid Analysis reputation object, or null.
+export function haVerdict(ha) {
+  if (!ha) return null;
+  if (ha.skipped) return null; // sha256 required — hide badge silently
+  if (ha.error) return { text: `HA ${VT_ERR[ha.error] || ha.error}`, tone: "muted" };
+  if (ha.found === false) return { text: "HA: no data", tone: "muted" };
+  const score = ha.threat_score ?? 0;
+  const verdict = (ha.verdict || "").toLowerCase();
+  const tone = verdict === "malicious" || score >= 70 ? "bad" : verdict === "suspicious" || score >= 30 ? "warn" : "good";
+  const label = verdict ? verdict.charAt(0).toUpperCase() + verdict.slice(1) : `${score}/100`;
+  return { text: `${label}${ha.threat_score != null ? ` · ${score}` : ""}`, tone };
+}
+
 function csvCell(v) {
   const s = v == null ? "" : String(v);
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
