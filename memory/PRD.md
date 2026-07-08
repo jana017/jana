@@ -71,6 +71,12 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
   - Tests: iteration_15 passed (guest gating, admin CRUD, upload, bulk/single delete, analyzer banner). Minor: success toast (ioc-db-msg) sometimes auto-clears fast — cosmetic only, operations succeed.
 - Key rotation: VIRUSTOTAL_API_KEY and URLSCAN_API_KEY updated to new values in backend/.env (verified working: EICAR 62/66, urlscan previews OK). ioc_cache cleared on rotation.
 - Dependency added: openpyxl (Excel parsing) — in requirements.txt.
+
+## Latest (2026-07-08, session 8)
+- Lead management (P2 done): Lead model gained `notes` + `assignee`; PATCH /api/leads/{id} now accepts optional status/notes/assignee (LeadUpdate) and preserves untouched fields. Admin Leads tab: filter-by-status dropdown + inline editable Assignee input and Notes textarea per lead; CSV export includes them.
+- AI IOC threat summary (Gemini): POST /api/ioc-ai-summary runs the lookup, builds context, and calls Gemini (emergentintegrations, model gemini-3-flash-preview) via EMERGENT_LLM_KEY; result cached 7d in Mongo `ioc_ai_cache`. GET /api/ai-config exposes availability. Frontend: 'Analyze with AI' button on single results renders a threat assessment panel. EMERGENT_LLM_KEY added to backend/.env.
+- Save to IOC Database (analyzer): admin-only 'Save to IOC Database' button on single results POSTs to /api/iocs, pre-filling VT threat label/categories + a suggested severity (from VT malicious/AbuseIPDB score); shows 'In IOC database' badge when present.
+- Tests: iteration_16 fully passed (AI summary, admin-gated save, lead assignee/notes/status-filter), zero console errors.
 - Threat Intelligence: type facets + date-range + pagination over ~395 Unit42 reports; in-app report reader (notes/refs/IOC table + copy-all).
 - OSINT section: 5 tool quick-links + SMART IOC ANALYZER (/api/ioc-lookup): classifies hash/IP/domain/URL, live no-key enrichment (Shodan InternetDB + ip-api for IPs, urlscan search for domains/URLs), prefilled deep-links (VT/AbuseIPDB/Talos/urlscan/X-Force).
 - Admin: Leads tab with status workflow (new/contacted/qualified/archived) + CSV export.
