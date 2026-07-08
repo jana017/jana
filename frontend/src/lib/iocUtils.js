@@ -29,7 +29,16 @@ export function iocSummary(r) {
     if (en.vulns?.length) parts.push(`${en.vulns.length} CVEs`);
     return parts.join(" · ");
   }
-  if (en.kind === "web") return `${(en.scan_count || 0).toLocaleString()} urlscan scans`;
+  if (en.kind === "web") {
+    const parts = [];
+    if (en.geo) {
+      const loc = [en.geo.city, en.geo.country].filter(Boolean).join(", ");
+      if (loc) parts.push(loc);
+    }
+    if (en.open_ports?.length) parts.push(`${en.open_ports.length} ports`);
+    parts.push(`${(en.scan_count || 0).toLocaleString()} scans`);
+    return parts.join(" · ");
+  }
   if (en.kind === "hash") {
     if (en.found) return en.known_malicious ? "Known malicious" : "Known good file";
     return "Not in known-file DB";

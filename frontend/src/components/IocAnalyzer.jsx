@@ -128,6 +128,27 @@ export default function IocAnalyzer() {
 
               {en?.kind === "web" && (
                 <div className="space-y-4" data-testid="ioc-web-result">
+                  {en.preview?.screenshot && (
+                    <a
+                      href={en.preview.url || `https://urlscan.io/search/#${encodeURIComponent(result.value)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-testid="ioc-web-preview"
+                      className="block relative rounded-lg overflow-hidden border border-slate-200 bg-slate-100 group max-w-md"
+                    >
+                      <img
+                        src={en.preview.screenshot}
+                        alt={`Landing page preview of ${en.host}`}
+                        loading="lazy"
+                        className="w-full h-auto max-h-72 object-cover object-top"
+                        onError={(e) => { e.currentTarget.closest('a').style.display = 'none'; }}
+                      />
+                      <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-black/60 backdrop-blur text-white text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded">
+                        <Globe2 className="w-3 h-3" /> Live page preview · urlscan.io
+                      </div>
+                      <div className="absolute inset-0 bg-[#2E7DF5]/0 group-hover:bg-[#2E7DF5]/5 transition-colors" />
+                    </a>
+                  )}
                   {(en.resolved_ip || en.geo) && (
                     <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
                       {en.resolved_ip && <span className="flex items-center gap-1.5 text-slate-700"><Server className="w-4 h-4 text-[#2E7DF5]" /> Resolves to <code className="font-mono-data text-slate-800">{en.resolved_ip}</code></span>}

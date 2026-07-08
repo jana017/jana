@@ -521,14 +521,29 @@ async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
             async def urlscan():
                 try:
                     headers = {"API-Key": URLSCAN_API_KEY} if URLSCAN_API_KEY else {}
-                    r = await hc.get(f"https://urlscan.io/api/v1/search/?q={query}&size=5", headers=headers)
+                    r = await hc.get(f"https://urlscan.io/api/v1/search/?q={query}&size=10", headers=headers)
                     if r.status_code != 200:
-                        return {"scan_count": 0, "recent_scans": []}
+                        return {"scan_count": 0, "recent_scans": [], "preview": None}
                     j = r.json()
-                    recent = [{"url": x["task"]["url"], "date": x["task"].get("time"), "score": x.get("verdicts", {}).get("overall", {}).get("score")} for x in j.get("results", [])[:5]]
-                    return {"scan_count": j.get("total", 0), "recent_scans": recent}
+                    results = j.get("results", [])
+                    recent = [{"url": x["task"]["url"], "date": x["task"].get("time"), "score": x.get("verdicts", {}).get("overall", {}).get("score"), "screenshot": x.get("screenshot")} for x in results[:5]]
+                    # Pick a representative landing-page screenshot: prefer the homepage of the host.
+                    def _is_home(u: str) -> bool:
+                        u = (u or "").rstrip("/").lower()
+                        return u in (f"http://{host}", f"https://{host}", f"http://www.{host}", f"https://www.{host}")
+                    preview = None
+                    for x in results:
+                        if x.get("screenshot") and _is_home(x.get("task", {}).get("url", "")):
+                            preview = {"screenshot": x["screenshot"], "url": x["task"]["url"], "result": x.get("result")}
+                            break
+                    if not preview:
+                        for x in results:
+                            if x.get("screenshot"):
+                                preview = {"screenshot": x["screenshot"], "url": x.get("task", {}).get("url"), "result": x.get("result")}
+                                break
+                    return {"scan_count": j.get("total", 0), "recent_scans": recent, "preview": preview}
                 except Exception:
-                    return {"scan_count": 0, "recent_scans": []}
+                    return {"scan_count": 0, "recent_scans": [], "preview": None}
 
             us, resolved = await asyncio.gather(urlscan(), _resolve_host(hc, host))
             sources = ["Google DNS", "urlscan.io"]
@@ -542,6 +557,7 @@ async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
                 "vulns": [],
                 "scan_count": us["scan_count"],
                 "recent_scans": us["recent_scans"],
+                "preview": us.get("preview"),
                 "sources": sources,
             }
             if resolved:

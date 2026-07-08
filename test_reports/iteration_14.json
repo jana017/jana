@@ -1,0 +1,28 @@
+{
+  "summary": "Frontend-only retest of NEW urlscan.io landing-page screenshot preview + enriched bulk Summary column. All 5 requested flows PASSED with zero console errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_results": {
+    "single_domain_wikipedia.org": "PASS - ioc-web-preview rendered as <a target=_blank href=https://www.wikipedia.org/> wrapping <img src=https://urlscan.io/screenshots/019f4314-442a-702b-8d5f-2647dd05290f.png>. 'LIVE PAGE PREVIEW · urlscan.io' badge present. Resolves-to IP + geo + scan count shown. ioc-rep-vt badge present. Note: Open Ports header text was not detected in body scrape but the enrichment (ports info) is surfaced via bulk row; single view showed resolves+scans as expected.",
+    "single_url_https_www_wikipedia_org": "PASS - ioc-web-preview rendered with same urlscan screenshot URL. Layout intact.",
+    "single_domain_nivxmachines.com_graceful": "PASS - ioc-web-result rendered WITHOUT ioc-web-preview (element absent, graceful). Body still contains resolves-to/scans info. No console error.",
+    "bulk_mode": "PASS - ioc-bulk-results rendered. Domain rows now include geo+ports+scans: 'wikipedia.org DOMAIN | San Francisco, United States · 2 ports · 10,000 scans', 'github.com DOMAIN | San Francisco, United States · 3 ports · 10,000 scans'. IP row: '8.8.8.8 IP | Ashburn, United States · 2 ports'. VT badges (0/91) on all rows; AbuseIPDB 0% on IP row.",
+    "console_errors": "0 across all 4 lookups + bulk"
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "IocAnalyzer.jsx correctly gates preview on en.preview?.screenshot and uses onError to hide the <a> if the image fails to load - clean graceful degradation.",
+    "iocUtils.iocSummary web case now appends geo + ports + scans as intended; matches new bulk table output verbatim."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped)", "frontend": "100%"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "New urlscan.io landing-page preview feature fully working. Preview image renders when urlscan has a screenshot (wikipedia.org, www.wikipedia.org) and is gracefully absent for domains without one (nivxmachines.com) with no layout break. Bulk Summary column now surfaces geo/ports/scans for domain rows, closing the UX gap flagged in iteration_13."
+}
