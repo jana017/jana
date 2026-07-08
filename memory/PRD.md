@@ -49,6 +49,12 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - BULK IOC paste (P2-A): IOC Analyzer has a Single/Bulk toggle. Bulk mode (IocBulkTable.jsx) accepts many IOCs (newline/comma/space), POST /api/ioc-lookup-batch (dedupe + cap 50, concurrent, semaphore 8), renders a results table (Indicator/Type/Summary/Reputation/Investigate links) + Download CSV (resultsToCSV/downloadCSV in lib/iocUtils.js).
 - INLINE VT + AbuseIPDB reputation (P2-B, LIVE): keys in backend/.env (VIRUSTOTAL_API_KEY, ABUSEIPDB_API_KEY). server.py _vt_lookup (ip/domain/url/file via VT v3) + _abuseipdb_lookup (IP) + _reputation with 6h Mongo cache (ioc_cache) to conserve free quota. Graceful fallback when keys absent / rate-limited. GET /api/ioc-config exposes provider status. Frontend ReputationBadges.jsx shows VT ratio (e.g. 65/68, red/green) + AbuseIPDB % in single header and bulk table.
 - Tests: iteration_10 (bulk UI + CSV + graceful empty rep) and iteration_11 (real VT/AbuseIPDB scores in single + bulk) both fully passed. Backend curl-verified (EICAR 65/68 malicious; 8.8.8.8 VT 0/91 + AbuseIPDB 0%).
+
+## Latest (2026-07-08, session 5)
+- VT community context (hash view): single-hash result now shows a "VirusTotal Community" block — suggested threat label, threat categories + tags chips, and last-analysis date (from VT file object). _vt_lookup extended with last_analysis_date/threat_label/threat_categories/tags.
+- Live CVE feed upgrade: GET /api/live-feed now returns the FULL CISA KEV catalog (~1,635 CVEs) instead of top 50. LiveThreatLandscape has a real-time search box (by CVE id / name / vendor / product) + clear button + "X of Y" count over a scrollable list.
+- OSINT tool grid additions: Shodan, Censys, CyberChef (session 4) + MITRE ATT&CK + MITRE D3FEND (icons + deep links). 10 tools total.
+- Tests: iteration_12 passed (CVE search/scroll + VT community hash block). MITRE cards verified visually.
 - Threat Intelligence: type facets + date-range + pagination over ~395 Unit42 reports; in-app report reader (notes/refs/IOC table + copy-all).
 - OSINT section: 5 tool quick-links + SMART IOC ANALYZER (/api/ioc-lookup): classifies hash/IP/domain/URL, live no-key enrichment (Shodan InternetDB + ip-api for IPs, urlscan search for domains/URLs), prefilled deep-links (VT/AbuseIPDB/Talos/urlscan/X-Force).
 - Admin: Leads tab with status workflow (new/contacted/qualified/archived) + CSV export.

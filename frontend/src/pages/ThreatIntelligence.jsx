@@ -16,6 +16,8 @@ const OSINT_TOOLS = [
   { name: "Shodan", domain: "shodan.io", url: "https://www.shodan.io/", desc: "Search exposed hosts, ports & services on the internet" },
   { name: "Censys", domain: "censys.io", url: "https://platform.censys.io/home", desc: "Attack-surface & internet asset discovery" },
   { name: "CyberChef", domain: "gchq.github.io", url: "https://gchq.github.io/CyberChef/", desc: "Decode, decrypt & transform data — the cyber Swiss-army knife" },
+  { name: "MITRE ATT&CK", domain: "attack.mitre.org", url: "https://attack.mitre.org/", desc: "Adversary tactics, techniques & procedures (TTPs) knowledge base" },
+  { name: "MITRE D3FEND", domain: "d3fend.mitre.org", url: "https://d3fend.mitre.org/", desc: "Countermeasure & defensive technique knowledge graph" },
 ];
 
 const CYBERDEFENDERS = [
