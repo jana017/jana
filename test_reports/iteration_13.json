@@ -1,0 +1,33 @@
+{
+  "summary": "Frontend-only retest of IOC Analyzer (Threat Intelligence) after backend fix for domain/URL enrichment. All 5 requested flows PASSED with no console errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Bulk mode row summary (domain)", "issues": ["Domain rows in bulk table show only 'N urlscan scans' — geo/ports (from new domain enrichment) are not surfaced in the bulk Summary column. IP row correctly shows geo+ports. Minor UX gap versus new single-view enrichment richness."]}
+    ]
+  },
+  "test_results": {
+    "single_domain_cloudflare.com": "PASS — ioc-web-result rendered: Resolves to 104.16.132.229, Toronto Canada, 9 open ports (80/443/2082/2083/2086/2087/8080/8443/8880), 10,000 urlscan scans + 5 recent scan links, Enrichment sources (Google DNS · Shodan InternetDB · ip-api.com · urlscan.io), VT badge 0/91 (ioc-rep-vt) present. Deep links VirusTotal/urlscan.io/Cisco Talos/Shodan/IBM X-Force all present.",
+    "single_url_wikipedia": "PASS — ioc-web-result rendered: Resolves to 208.80.153.224, San Francisco USA, 2 open ports, 10k urlscan scans, VT badge ('VT: no data' rendered via ioc-rep-vt, chip present). Deep links present.",
+    "single_ip_1.1.1.1": "PASS — geo (South Brisbane, Cloudflare AS13335), 7 open ports, VT 0/91 (ioc-rep-vt), AbuseIPDB 0% (ioc-rep-abuseipdb).",
+    "single_hash_eicar": "PASS — ioc-hash-verdict 'Known Malicious', ioc-hash-vt-community block present with threat label + tags, ioc-rep-vt 63/68.",
+    "bulk_mode": "PASS — 3 rows rendered (cloudflare.com/github.com/1.1.1.1). VT reputation badges on all, AbuseIPDB shown for IP. Download CSV button works (file: nivx-ioc-analysis.csv). No console errors.",
+    "console_errors": "None across all flows"
+  },
+  "test_report_links": ["/app/backend/tests/test_ioc_lookup.py", "/app/backend/tests/test_nivx_backend.py"],
+  "action_items": [
+    "(Optional/minor) Consider surfacing resolved IP + geo + open ports in the bulk Summary column for domain/URL rows (currently only urlscan scan count is shown for domain rows). IP row already shows geo/ports."
+  ],
+  "critical_code_review_comments": [
+    "IocAnalyzer.jsx web block correctly gates on en.kind==='web' and safely renders resolved_ip/geo/open_ports/recent_scans; no runtime errors observed.",
+    "ReputationBadges: VT badge renders 'VT: no data' text for URL case where VT returned nothing — acceptable but ioc-rep-vt test selector still present, which is correct."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped)", "frontend": "100%"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Domain/URL enrichment via DNS-over-HTTPS + Shodan InternetDB + ip-api + urlscan + VT is fully working end-to-end and rendered in the ioc-web-result block. Bulk table now shows VT ratio for all types and AbuseIPDB% for IPs. Only minor UX suggestion: enrich bulk Summary for domain/URL rows with geo/ports (currently IP-only)."
+}

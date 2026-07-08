@@ -355,6 +355,7 @@ def _ioc_links(value: str, kind: str) -> dict:
 # ---------------------------------------------------------------------------
 VT_API_KEY = os.environ.get("VIRUSTOTAL_API_KEY")
 ABUSEIPDB_API_KEY = os.environ.get("ABUSEIPDB_API_KEY")
+URLSCAN_API_KEY = os.environ.get("URLSCAN_API_KEY")
 _REP_TTL = timedelta(hours=6)
 
 
@@ -461,6 +462,36 @@ async def _reputation(hc: httpx.AsyncClient, kind: str, normalized: str) -> Opti
     return rep
 
 
+async def _shodan_ip(hc: httpx.AsyncClient, ip: str) -> dict:
+    try:
+        r = await hc.get(f"https://internetdb.shodan.io/{ip}")
+        return r.json() if r.status_code == 200 else {}
+    except Exception:
+        return {}
+
+
+async def _geo_ip(hc: httpx.AsyncClient, ip: str) -> dict:
+    try:
+        r = await hc.get(f"http://ip-api.com/json/{ip}?fields=status,country,city,isp,org,as,query")
+        j = r.json()
+        return j if j.get("status") == "success" else {}
+    except Exception:
+        return {}
+
+
+async def _resolve_host(hc: httpx.AsyncClient, host: str) -> Optional[str]:
+    """Resolve a hostname's first A record via Google DNS-over-HTTPS (no key)."""
+    try:
+        r = await hc.get(f"https://dns.google/resolve?name={host}&type=A", headers={"Accept": "application/json"})
+        if r.status_code == 200:
+            for ans in (r.json() or {}).get("Answer", []):
+                if ans.get("type") == 1 and ans.get("data"):
+                    return ans["data"]
+    except Exception:
+        pass
+    return None
+
+
 async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
     """Full IOC lookup: classify + free enrichment + optional key-based reputation."""
     value = (value or "").strip()
@@ -472,22 +503,7 @@ async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
 
     try:
         if kind == "ip":
-            async def shodan():
-                try:
-                    r = await hc.get(f"https://internetdb.shodan.io/{normalized}")
-                    return r.json() if r.status_code == 200 else {}
-                except Exception:
-                    return {}
-
-            async def geo():
-                try:
-                    r = await hc.get(f"http://ip-api.com/json/{normalized}?fields=status,country,city,isp,org,as,query")
-                    j = r.json()
-                    return j if j.get("status") == "success" else {}
-                except Exception:
-                    return {}
-
-            sh, gj = await asyncio.gather(shodan(), geo())
+            sh, gj = await asyncio.gather(_shodan_ip(hc, normalized), _geo_ip(hc, normalized))
             result["enrichment"] = {
                 "kind": "ip",
                 "geo": {"country": gj.get("country"), "city": gj.get("city"), "isp": gj.get("isp"), "org": gj.get("org"), "asn": gj.get("as")} if gj else None,
@@ -499,15 +515,43 @@ async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
             }
         elif kind in ("domain", "url"):
             from urllib.parse import urlparse
-            host = urlparse(normalized).netloc if kind == "url" else normalized
+            host = (urlparse(normalized).netloc if kind == "url" else normalized).split(":")[0]
             query = f"page.domain:{host}" if host else f"page.url:{normalized}"
-            try:
-                r = await hc.get(f"https://urlscan.io/api/v1/search/?q={query}&size=5")
-                j = r.json()
-                recent = [{"url": x["task"]["url"], "date": x["task"].get("time"), "score": x.get("verdicts", {}).get("overall", {}).get("score")} for x in j.get("results", [])[:5]]
-                result["enrichment"] = {"kind": "web", "scan_count": j.get("total", 0), "recent_scans": recent, "sources": ["urlscan.io"]}
-            except Exception:
-                result["enrichment"] = {"kind": "web", "scan_count": 0, "recent_scans": [], "sources": ["urlscan.io"]}
+
+            async def urlscan():
+                try:
+                    headers = {"API-Key": URLSCAN_API_KEY} if URLSCAN_API_KEY else {}
+                    r = await hc.get(f"https://urlscan.io/api/v1/search/?q={query}&size=5", headers=headers)
+                    if r.status_code != 200:
+                        return {"scan_count": 0, "recent_scans": []}
+                    j = r.json()
+                    recent = [{"url": x["task"]["url"], "date": x["task"].get("time"), "score": x.get("verdicts", {}).get("overall", {}).get("score")} for x in j.get("results", [])[:5]]
+                    return {"scan_count": j.get("total", 0), "recent_scans": recent}
+                except Exception:
+                    return {"scan_count": 0, "recent_scans": []}
+
+            us, resolved = await asyncio.gather(urlscan(), _resolve_host(hc, host))
+            sources = ["Google DNS", "urlscan.io"]
+            enr = {
+                "kind": "web",
+                "host": host,
+                "resolved_ip": resolved,
+                "geo": None,
+                "open_ports": [],
+                "hostnames": [],
+                "vulns": [],
+                "scan_count": us["scan_count"],
+                "recent_scans": us["recent_scans"],
+                "sources": sources,
+            }
+            if resolved:
+                sh, gj = await asyncio.gather(_shodan_ip(hc, resolved), _geo_ip(hc, resolved))
+                enr["geo"] = {"country": gj.get("country"), "city": gj.get("city"), "isp": gj.get("isp"), "org": gj.get("org"), "asn": gj.get("as")} if gj else None
+                enr["open_ports"] = sh.get("ports", [])
+                enr["hostnames"] = sh.get("hostnames", [])
+                enr["vulns"] = sh.get("vulns", [])
+                enr["sources"] = ["Google DNS", "Shodan InternetDB", "ip-api.com", "urlscan.io"]
+            result["enrichment"] = enr
         else:
             # File hash — key-free lookup against CIRCL hashlookup (known-file DB)
             enr = {

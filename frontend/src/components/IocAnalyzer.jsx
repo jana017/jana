@@ -127,8 +127,36 @@ export default function IocAnalyzer() {
               )}
 
               {en?.kind === "web" && (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-sm text-slate-700"><Globe2 className="w-4 h-4 text-[#2E7DF5]" /> <span className="font-semibold">{en.scan_count.toLocaleString()}</span> prior scans on urlscan.io</div>
+                <div className="space-y-4" data-testid="ioc-web-result">
+                  {(en.resolved_ip || en.geo) && (
+                    <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                      {en.resolved_ip && <span className="flex items-center gap-1.5 text-slate-700"><Server className="w-4 h-4 text-[#2E7DF5]" /> Resolves to <code className="font-mono-data text-slate-800">{en.resolved_ip}</code></span>}
+                      {en.geo && <span className="flex items-center gap-1.5 text-slate-700"><MapPin className="w-4 h-4 text-[#F5821F]" />{[en.geo.city, en.geo.country].filter(Boolean).join(", ") || "—"}</span>}
+                      {en.geo?.isp && <span className="text-slate-600">{en.geo.isp}</span>}
+                      {en.geo?.asn && <span className="text-slate-400 font-mono-data text-xs">{en.geo.asn}</span>}
+                    </div>
+                  )}
+                  {en.open_ports?.length > 0 && (
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2 flex items-center gap-1.5"><Server className="w-4 h-4 text-[#2E7DF5]" /> Open Ports ({en.open_ports.length})</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {en.open_ports.map((p) => (
+                          <span key={p} className="font-mono-data text-xs bg-white border border-slate-200 text-slate-700 px-2 py-0.5 rounded">{p}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {en.vulns?.length > 0 && (
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-red-600 mb-2 flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> Known Vulnerabilities ({en.vulns.length})</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {en.vulns.slice(0, 12).map((v) => (
+                          <a key={v} href={`https://nvd.nist.gov/vuln/detail/${v}`} target="_blank" rel="noopener noreferrer" className="font-mono-data text-xs bg-red-50 border border-red-200 text-red-700 px-2 py-0.5 rounded hover:underline">{v}</a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 text-sm text-slate-700"><Globe2 className="w-4 h-4 text-[#2E7DF5]" /> <span className="font-semibold">{(en.scan_count || 0).toLocaleString()}</span> prior scans on urlscan.io</div>
                   {en.recent_scans?.length > 0 && (
                     <div className="space-y-1.5">
                       {en.recent_scans.map((s, i) => (
