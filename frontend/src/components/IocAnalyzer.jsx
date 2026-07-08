@@ -1,18 +1,24 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, ExternalLink, Loader2, ShieldQuestion, MapPin, Server, AlertTriangle, Globe2, ShieldCheck, List } from "lucide-react";
+import { Search, ExternalLink, Loader2, ShieldQuestion, MapPin, Server, AlertTriangle, Globe2, ShieldCheck, List, Sparkles, Database, Check } from "lucide-react";
 import { api, formatApiErrorDetail } from "@/lib/api";
 import { FAVICON, TYPE_LABEL } from "@/lib/iocUtils";
+import { useAuth } from "@/context/AuthContext";
 import ReputationBadges from "./ReputationBadges";
 import KnownIocBanner from "./KnownIocBanner";
 import IocBulkTable from "./IocBulkTable";
 
 export default function IocAnalyzer() {
+  const { user } = useAuth();
+  const isAdmin = !!user;
   const [mode, setMode] = useState("single");
   const [value, setValue] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
+  const [ai, setAi] = useState({ loading: false, text: "", error: "" });
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const analyze = async (e) => {
     e.preventDefault();
@@ -20,13 +26,59 @@ export default function IocAnalyzer() {
     setLoading(true);
     setError("");
     setResult(null);
+    setAi({ loading: false, text: "", error: "" });
+    setSaved(false);
     try {
       const { data } = await api.get("/ioc-lookup", { params: { value: value.trim() } });
       setResult(data);
+      if (data.local_db) setSaved(true);
     } catch (err) {
       setError(formatApiErrorDetail(err.response?.data?.detail) || "Lookup failed");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const runAi = async () => {
+    if (!result) return;
+    setAi({ loading: true, text: "", error: "" });
+    try {
+      const { data } = await api.post("/ioc-ai-summary", { value: result.value });
+      setAi({ loading: false, text: data.summary, error: "" });
+    } catch (err) {
+      setAi({ loading: false, text: "", error: formatApiErrorDetail(err.response?.data?.detail) || "AI analysis failed" });
+    }
+  };
+
+  const suggestedSeverity = () => {
+    const vt = result?.reputation?.vt;
+    const ab = result?.reputation?.abuseipdb;
+    const mal = vt && !vt.error ? (vt.malicious || 0) + (vt.suspicious || 0) : 0;
+    const score = ab && !ab.error ? (ab.score || 0) : 0;
+    if (mal >= 5 || score >= 75) return "critical";
+    if (mal >= 1 || score >= 40) return "high";
+    if (result?.enrichment?.kind === "hash" && result?.enrichment?.known_malicious) return "critical";
+    return "medium";
+  };
+
+  const saveToDb = async () => {
+    if (!result) return;
+    setSaving(true);
+    try {
+      const vt = result.reputation?.vt;
+      await api.post("/iocs", {
+        value: result.value,
+        threat_name: (vt && !vt.error && vt.threat_label) || null,
+        tags: (vt && !vt.error && (vt.threat_categories || []).slice(0, 4)) || [],
+        severity: suggestedSeverity(),
+        source: "IOC Analyzer",
+        notes: vt && !vt.error && vt.total ? `VirusTotal ${(vt.malicious || 0)}/${vt.total} at time of save` : null,
+      });
+      setSaved(true);
+    } catch (err) {
+      setError(formatApiErrorDetail(err.response?.data?.detail) || "Could not save IOC");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -92,6 +144,31 @@ export default function IocAnalyzer() {
             {/* Enrichment */}
             <div className="px-5 py-4 space-y-4">
               {result.local_db && <KnownIocBanner local={result.local_db} />}
+
+              {/* Action toolbar */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button onClick={runAi} disabled={ai.loading} data-testid="ioc-ai-btn" className="inline-flex items-center gap-1.5 text-sm font-semibold px-3.5 py-2 rounded-md bg-gradient-to-r from-[#2E7DF5] to-[#6d5cf5] text-white hover:opacity-90 transition-opacity disabled:opacity-60">
+                  {ai.loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} Analyze with AI
+                </button>
+                {isAdmin && (
+                  saved ? (
+                    <span data-testid="ioc-saved-badge" className="inline-flex items-center gap-1.5 text-sm font-semibold px-3.5 py-2 rounded-md bg-green-50 border border-green-200 text-green-700"><Check className="w-4 h-4" /> In IOC database</span>
+                  ) : (
+                    <button onClick={saveToDb} disabled={saving} data-testid="ioc-save-btn" className="inline-flex items-center gap-1.5 text-sm font-semibold px-3.5 py-2 rounded-md border border-slate-300 text-slate-700 hover:border-[#2E7DF5] hover:text-[#2E7DF5] transition-colors disabled:opacity-60">
+                      {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />} Save to IOC Database
+                    </button>
+                  )
+                )}
+              </div>
+
+              {ai.error && <div data-testid="ioc-ai-error" className="text-sm text-red-600 flex items-center gap-1.5"><ShieldQuestion className="w-4 h-4" /> {ai.error}</div>}
+              {ai.text && (
+                <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} data-testid="ioc-ai-summary" className="rounded-lg border border-[#2E7DF5]/20 bg-blue-50/50 p-4">
+                  <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-[#2E7DF5] mb-2"><Sparkles className="w-3.5 h-3.5" /> AI Threat Assessment <span className="text-slate-400 font-normal normal-case">· Gemini</span></div>
+                  <p className="text-sm text-slate-700 leading-relaxed">{ai.text}</p>
+                </motion.div>
+              )}
+
               {en?.kind === "ip" && (
                 <div className="space-y-4">
                   {en.geo && (

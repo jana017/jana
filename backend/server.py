@@ -16,6 +16,7 @@ import asyncio
 import re
 import csv
 import io
+import json
 from datetime import datetime, timezone, timedelta
 import bcrypt
 import jwt
@@ -163,14 +164,18 @@ class Lead(BaseModel):
     interest: Optional[str] = None
     message: Optional[str] = None
     status: str = "new"
+    notes: Optional[str] = None
+    assignee: Optional[str] = None
     created_at: str = Field(default_factory=now_iso)
 
 
 LEAD_STATUSES = ["new", "contacted", "qualified", "archived"]
 
 
-class LeadStatusUpdate(BaseModel):
-    status: str
+class LeadUpdate(BaseModel):
+    status: Optional[str] = None
+    notes: Optional[str] = None
+    assignee: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -333,15 +338,23 @@ async def list_leads(user: dict = Depends(get_current_user)):
 
 
 @api_router.patch("/leads/{lead_id}", response_model=Lead)
-async def update_lead_status(lead_id: str, payload: LeadStatusUpdate, user: dict = Depends(get_current_user)):
-    if payload.status not in LEAD_STATUSES:
-        raise HTTPException(status_code=400, detail=f"Invalid status. Allowed: {LEAD_STATUSES}")
+async def update_lead(lead_id: str, payload: LeadUpdate, user: dict = Depends(get_current_user)):
     doc = await db.leads.find_one({"id": lead_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Lead not found")
-    await db.leads.update_one({"id": lead_id}, {"$set": {"status": payload.status}})
-    doc["status"] = payload.status
-    return Lead(**doc)
+    updates: dict = {}
+    if payload.status is not None:
+        if payload.status not in LEAD_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid status. Allowed: {LEAD_STATUSES}")
+        updates["status"] = payload.status
+    if payload.notes is not None:
+        updates["notes"] = payload.notes
+    if payload.assignee is not None:
+        updates["assignee"] = payload.assignee
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    await db.leads.update_one({"id": lead_id}, {"$set": updates})
+    return Lead(**{**doc, **updates})
 
 
 # ---------------------------------------------------------------------------
@@ -588,6 +601,7 @@ def _ioc_links(value: str, kind: str) -> dict:
 VT_API_KEY = os.environ.get("VIRUSTOTAL_API_KEY")
 ABUSEIPDB_API_KEY = os.environ.get("ABUSEIPDB_API_KEY")
 URLSCAN_API_KEY = os.environ.get("URLSCAN_API_KEY")
+EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY")
 _REP_TTL = timedelta(hours=6)
 
 
@@ -908,6 +922,73 @@ async def ioc_lookup_batch(payload: BatchIOCInput):
         results = await asyncio.gather(*[one(v) for v in items])
 
     return {"count": len(results), "results": results}
+
+
+class AiSummaryInput(BaseModel):
+    value: str
+
+
+_AI_TTL = timedelta(days=7)
+_AI_SYSTEM = (
+    "You are a senior threat-intelligence analyst at a cybersecurity firm. "
+    "Given an indicator of compromise (IOC) and its OSINT enrichment data, write a concise, factual "
+    "threat assessment for a SOC analyst. Cover: what the indicator is, an overall risk verdict, the most "
+    "notable context (reputation scores, geo, open ports, malware family/tags, whether it is in the internal "
+    "database), and one clear recommended action. 4-6 sentences, plain prose, no markdown headings or bullet "
+    "lists. Only use facts present in the provided data — never fabricate detections, names or attribution."
+)
+
+
+@api_router.get("/ai-config")
+async def ai_config():
+    return {"ai_enabled": bool(EMERGENT_LLM_KEY)}
+
+
+@api_router.post("/ioc-ai-summary")
+async def ioc_ai_summary(payload: AiSummaryInput):
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(status_code=503, detail="AI analysis is not configured")
+    value = (payload.value or "").strip()
+    if not value or _classify_ioc(value) == "unknown":
+        raise HTTPException(status_code=422, detail="Provide a valid IOC (hash, IP, domain or URL)")
+
+    ck = _ioc_key(value)
+    try:
+        cached = await db.ioc_ai_cache.find_one({"_id": ck})
+        if cached and cached.get("ts") and datetime.now(timezone.utc) - datetime.fromisoformat(cached["ts"]) < _AI_TTL:
+            return {"summary": cached["summary"], "cached": True}
+    except Exception:
+        pass
+
+    async with httpx.AsyncClient(timeout=12, follow_redirects=True) as hc:
+        result = await _do_lookup(hc, value)
+
+    en = result.get("enrichment") or {}
+    ctx: dict = {"type": result.get("type"), "reputation": result.get("reputation"), "in_internal_database": result.get("local_db")}
+    if en.get("kind") == "ip":
+        ctx.update({"geo": en.get("geo"), "open_ports": en.get("open_ports"), "known_vulns": en.get("vulns"), "tags": en.get("tags")})
+    elif en.get("kind") == "web":
+        ctx.update({"resolved_ip": en.get("resolved_ip"), "geo": en.get("geo"), "open_ports": en.get("open_ports"), "urlscan_scan_count": en.get("scan_count"), "known_vulns": en.get("vulns")})
+    elif en.get("kind") == "hash":
+        ctx.update({"in_known_file_db": en.get("found"), "known_malicious": en.get("known_malicious"), "filename": en.get("filename")})
+
+    prompt = f"IOC: {value}\nEnrichment data (JSON):\n{json.dumps(ctx, default=str)[:6000]}"
+
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"ioc-{ck}", system_message=_AI_SYSTEM).with_model("gemini", "gemini-3-flash-preview")
+        resp = await chat.send_message(UserMessage(text=prompt))
+        summary = resp if isinstance(resp, str) else str(resp)
+        summary = summary.strip()
+    except Exception as e:
+        logger.error(f"AI summary error: {e}")
+        raise HTTPException(status_code=502, detail="AI analysis failed. Please try again.")
+
+    try:
+        await db.ioc_ai_cache.update_one({"_id": ck}, {"$set": {"summary": summary, "ts": now_iso()}}, upsert=True)
+    except Exception:
+        pass
+    return {"summary": summary, "cached": False}
 
 
 @api_router.get("/live-feed")

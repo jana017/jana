@@ -95,6 +95,7 @@ function Dashboard() {
   const [deleteId, setDeleteId] = useState(null);
   const [view, setView] = useState("reports");
   const [leads, setLeads] = useState([]);
+  const [statusFilter, setStatusFilter] = useState("all");
 
   const load = useCallback(() => {
     api.get("/threats").then(({ data }) => setReports(data)).catch(() => {});
@@ -148,9 +149,20 @@ function Dashboard() {
     }
   };
 
+  const updateLeadField = async (id, field, value) => {
+    setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, [field]: value } : l)));
+    try {
+      await api.patch(`/leads/${id}`, { [field]: value });
+    } catch {
+      toast.error(`Failed to save ${field}`);
+    }
+  };
+
+  const filteredLeads = statusFilter === "all" ? leads : leads.filter((l) => l.status === statusFilter);
+
   const exportLeadsCsv = () => {
     if (!leads.length) return;
-    const cols = ["name", "email", "phone", "company", "company_size", "interest", "status", "created_at", "message"];
+    const cols = ["name", "email", "phone", "company", "company_size", "interest", "status", "assignee", "notes", "created_at", "message"];
     const esc = (v) => {
       let s = String(v ?? "");
       if (/^[=+\-@]/.test(s)) s = "'" + s; // guard against CSV injection
@@ -252,22 +264,36 @@ function Dashboard() {
       </main>
       ) : (
       <main className="mx-auto max-w-7xl px-6 py-10" data-testid="leads-view">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <h2 className="font-heading text-lg font-semibold text-slate-900">
-            Security assessment requests <span className="text-sm text-slate-400 font-normal">({leads.length})</span>
+            Security assessment requests <span className="text-sm text-slate-400 font-normal">({filteredLeads.length}{statusFilter !== "all" ? ` of ${leads.length}` : ""})</span>
           </h2>
-          <button
-            data-testid="export-csv"
-            onClick={exportLeadsCsv}
-            disabled={!leads.length}
-            className="inline-flex items-center gap-2 border border-slate-300 hover:border-[#2E7DF5] hover:text-[#2E7DF5] text-slate-700 text-sm font-semibold px-4 py-2 rounded-md transition-colors disabled:opacity-50"
-          >
-            <Download className="w-4 h-4" /> Export CSV
-          </button>
+          <div className="flex items-center gap-2">
+            <select
+              data-testid="lead-status-filter"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="text-sm border border-slate-300 rounded-md px-3 py-2 bg-white outline-none focus:border-[#2E7DF5]"
+            >
+              <option value="all">All statuses</option>
+              <option value="new">New</option>
+              <option value="contacted">Contacted</option>
+              <option value="qualified">Qualified</option>
+              <option value="archived">Archived</option>
+            </select>
+            <button
+              data-testid="export-csv"
+              onClick={exportLeadsCsv}
+              disabled={!leads.length}
+              className="inline-flex items-center gap-2 border border-slate-300 hover:border-[#2E7DF5] hover:text-[#2E7DF5] text-slate-700 text-sm font-semibold px-4 py-2 rounded-md transition-colors disabled:opacity-50"
+            >
+              <Download className="w-4 h-4" /> Export CSV
+            </button>
+          </div>
         </div>
-        {leads.length === 0 ? (
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-10 text-center text-sm text-slate-500">
-            No leads yet. Submissions from the “Request a Security Assessment” form appear here.
+        {filteredLeads.length === 0 ? (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-10 text-center text-sm text-slate-500" data-testid="leads-empty">
+            {leads.length === 0 ? "No leads yet. Submissions from the “Request a Security Assessment” form appear here." : "No leads match this status filter."}
           </div>
         ) : (
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -278,24 +304,25 @@ function Dashboard() {
                     <th className="px-4 py-3">Name</th>
                     <th className="px-4 py-3">Contact</th>
                     <th className="px-4 py-3">Company</th>
-                    <th className="px-4 py-3">Interest</th>
                     <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Assignee</th>
+                    <th className="px-4 py-3">Notes</th>
                     <th className="px-4 py-3">Received</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {leads.map((l, i) => (
+                  {filteredLeads.map((l, i) => (
                     <tr key={l.id} data-testid={`lead-row-${i}`} className="hover:bg-slate-50 align-top">
                       <td className="px-4 py-3">
                         <div className="font-semibold text-slate-900">{l.name}</div>
                         {l.company_size && <div className="text-xs text-slate-400">{l.company_size} employees</div>}
+                        {l.interest && <div className="text-xs text-slate-400">{l.interest}</div>}
                       </td>
                       <td className="px-4 py-3">
                         <a href={`mailto:${l.email}`} className="text-[#2E7DF5] hover:underline block">{l.email}</a>
                         {l.phone && <div className="text-xs text-slate-500">{l.phone}</div>}
                       </td>
                       <td className="px-4 py-3 text-slate-700">{l.company || "—"}</td>
-                      <td className="px-4 py-3 text-slate-700">{l.interest || "—"}</td>
                       <td className="px-4 py-3">
                         <select
                           data-testid={`lead-status-${i}`}
@@ -313,6 +340,26 @@ function Dashboard() {
                           <option value="qualified">Qualified</option>
                           <option value="archived">Archived</option>
                         </select>
+                      </td>
+                      <td className="px-4 py-3">
+                        <input
+                          data-testid={`lead-assignee-${i}`}
+                          defaultValue={l.assignee || ""}
+                          placeholder="Unassigned"
+                          onBlur={(e) => { if (e.target.value !== (l.assignee || "")) updateLeadField(l.id, "assignee", e.target.value); }}
+                          className="w-28 text-xs border border-slate-200 rounded-md px-2 py-1.5 outline-none focus:border-[#2E7DF5]"
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <textarea
+                          data-testid={`lead-notes-${i}`}
+                          defaultValue={l.notes || ""}
+                          placeholder="Add a note…"
+                          rows={2}
+                          onBlur={(e) => { if (e.target.value !== (l.notes || "")) updateLeadField(l.id, "notes", e.target.value); }}
+                          className="w-48 text-xs border border-slate-200 rounded-md px-2 py-1.5 outline-none focus:border-[#2E7DF5] resize-y"
+                        />
+                        {l.message && <div className="text-[11px] text-slate-400 mt-1 max-w-[12rem] truncate" title={l.message}>“{l.message}”</div>}
                       </td>
                       <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{new Date(l.created_at).toLocaleDateString()}</td>
                     </tr>
