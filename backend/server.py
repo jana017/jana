@@ -12,6 +12,7 @@ import logging
 from pydantic import BaseModel, Field, ConfigDict, BeforeValidator, EmailStr
 from typing import List, Optional, Annotated, Any
 import uuid
+import asyncio
 from datetime import datetime, timezone, timedelta
 import bcrypt
 import jwt
@@ -326,6 +327,114 @@ async def attack_feed():
         if _attack_cache["data"]:
             return _attack_cache["data"]
         raise HTTPException(status_code=502, detail="Unable to reach live attack feed")
+
+
+# ---------------------------------------------------------------------------
+# Unit42 Timely Threat Intel feed (real published intel from Palo Alto GitHub)
+# ---------------------------------------------------------------------------
+_intel_cache: dict[str, Any] = {"ts": None, "data": None}
+UNIT42_REPO = "PaloAltoNetworks/Unit42-timely-threat-intel"
+
+_INTEL_IMAGES = {
+    "phishing": "https://images.pexels.com/photos/5380664/pexels-photo-5380664.jpeg?auto=compress&cs=tinysrgb&w=1000",
+    "ransomware": "https://images.pexels.com/photos/60504/security-protection-anti-virus-software-60504.jpeg?auto=compress&cs=tinysrgb&w=1000",
+    "rat": "https://images.pexels.com/photos/5473298/pexels-photo-5473298.jpeg?auto=compress&cs=tinysrgb&w=1000",
+    "loader": "https://images.pexels.com/photos/11035380/pexels-photo-11035380.jpeg?auto=compress&cs=tinysrgb&w=1000",
+    "scam": "https://images.pexels.com/photos/5380642/pexels-photo-5380642.jpeg?auto=compress&cs=tinysrgb&w=1000",
+    "stealer": "https://images.pexels.com/photos/2881229/pexels-photo-2881229.jpeg?auto=compress&cs=tinysrgb&w=1000",
+    "default": "https://images.pexels.com/photos/5483240/pexels-photo-5483240.jpeg?auto=compress&cs=tinysrgb&w=1000",
+}
+
+
+def _pick_intel_image(title: str) -> str:
+    t = title.lower()
+    for key, url in _INTEL_IMAGES.items():
+        if key != "default" and key in t:
+            return url
+    return _INTEL_IMAGES["default"]
+
+
+def _parse_unit42(name: str, text: str) -> dict:
+    date = name[:10]
+    title = name[11:-4].replace("-", " ")
+    lines = text.splitlines()
+    section = None
+    notes, refs, indicators = [], [], []
+    for ln in lines:
+        s = ln.strip()
+        up = s.upper()
+        if up.startswith("NOTES:"):
+            section = "notes"
+            continue
+        if up.startswith("REFERENCES:"):
+            section = "refs"
+            continue
+        if up.startswith("INDICATORS:") or up.startswith("INDICATORS "):
+            section = "ind"
+            continue
+        if up.startswith("AUTHOR:"):
+            section = "author"
+            continue
+        if not s:
+            continue
+        if section == "notes" and s.startswith("-"):
+            notes.append(s.lstrip("- ").strip())
+        elif section == "refs" and ("http" in s):
+            refs.append(s.lstrip("- ").strip())
+        elif section == "ind":
+            indicators.append(s)
+    summary = " ".join(notes[:2])[:320] if notes else title
+    ioc_count = sum(1 for i in indicators if "[.]" in i or "[:]" in i)
+    return {
+        "title": title,
+        "date": date,
+        "summary": summary,
+        "reference": refs[0] if refs else f"https://github.com/{UNIT42_REPO}/blob/main/{name}",
+        "url": f"https://github.com/{UNIT42_REPO}/blob/main/{name}",
+        "ioc_count": ioc_count,
+        "image": _pick_intel_image(title),
+        "source": "Palo Alto Unit42",
+    }
+
+
+@api_router.get("/intel-feed")
+async def intel_feed():
+    """Real published threat intel from Palo Alto Unit42 timely-threat-intel repo (cached 60 min)."""
+    now = datetime.now(timezone.utc)
+    if _intel_cache["data"] and _intel_cache["ts"] and (now - _intel_cache["ts"]) < timedelta(minutes=60):
+        return _intel_cache["data"]
+    try:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as hc:
+            listing = await hc.get(f"https://api.github.com/repos/{UNIT42_REPO}/contents/")
+            listing.raise_for_status()
+            files = [f for f in listing.json() if f["name"].endswith(".txt")]
+            files.sort(key=lambda x: x["name"], reverse=True)
+            top = files[:9]
+
+            async def fetch(f):
+                try:
+                    resp = await hc.get(f["download_url"])
+                    resp.raise_for_status()
+                    return _parse_unit42(f["name"], resp.text)
+                except Exception:
+                    return _parse_unit42(f["name"], "")
+
+            items = await asyncio.gather(*[fetch(f) for f in top])
+        result = {
+            "source": "Palo Alto Networks · Unit42 Timely Threat Intel",
+            "repo_url": f"https://github.com/{UNIT42_REPO}",
+            "updated": now.isoformat(),
+            "count": len(items),
+            "items": list(items),
+        }
+        _intel_cache["data"] = result
+        _intel_cache["ts"] = now
+        return result
+    except Exception as e:
+        logger.error(f"Intel feed error: {e}")
+        if _intel_cache["data"]:
+            return _intel_cache["data"]
+        raise HTTPException(status_code=502, detail="Unable to reach Unit42 intel feed")
 
 
 @api_router.get("/")

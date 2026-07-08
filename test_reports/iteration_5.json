@@ -1,0 +1,16 @@
+{
+  "summary": "Full backend + frontend regression for new Threat Intelligence page. Backend: 14/14 pytest cases pass (added test_intel_feed). Frontend: /threat-intelligence renders threat-intelligence-page with hero, 9 intel-card-N linking to github (target=_blank), 3 blog-card-N linking to cyberdefenders.org (target=_blank). Navbar nav-threat-intelligence works from landing. Cross-page nav via sessionStorage 'scrollTo' works (nav-services and nav-support from /threat-intelligence navigate back to '/' and scroll into view). Landing regression: hero, about-section, services-section, threats-section (featured-brief + 6 threat-card-N), gallery-section, careers-section, support-section + lead-form, live-landscape, attack-feed all present. Admin /admin login works, 7 threat reports listed, delete AlertDialog opens with Cancel/Delete buttons.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/test_nivx_backend.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": ["/app/backend/tests/test_nivx_backend.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@nivxmachines.com / NivX@Admin2025",
+  "seed_data_creation": "None persisted (CRUD test creates+deletes TEST_ prefixed threat and TEST_ lead only; lead cleanup not performed but test data prefixed with TEST_).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All 14 backend tests including new test_intel_feed (asserts 9-item Unit42 feed with title/date/summary/url/ioc_count/image/source fields). Frontend Threat Intel page and cross-page scroll-nav verified. Intel-feed cached 60min; count=9 confirmed live.",
+  "rca of the issue": "N/A - all tests passed"
+}

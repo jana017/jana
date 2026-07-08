@@ -5,6 +5,7 @@ import { Toaster } from "sonner";
 import { AuthProvider } from "@/context/AuthContext";
 import Landing from "@/pages/Landing";
 import Admin from "@/pages/Admin";
+import ThreatIntelligence from "@/pages/ThreatIntelligence";
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<Landing />} />
+              <Route path="/threat-intelligence" element={<ThreatIntelligence />} />
               <Route path="/admin" element={<Admin />} />
             </Routes>
           </BrowserRouter>

@@ -177,6 +177,30 @@ def test_threats_has_seven_with_image(s):
         assert i.get("image_url", "").startswith("http")
 
 
+# ------- intel-feed (Unit42) -------
+def test_intel_feed(s):
+    r = s.get(f"{API}/intel-feed", timeout=45)
+    if r.status_code == 502:
+        pytest.skip("Unit42 upstream unavailable (502)")
+    assert r.status_code == 200, r.text
+    d = r.json()
+    for k in ["source", "repo_url", "count", "items"]:
+        assert k in d
+    assert "Unit42" in d["source"]
+    assert isinstance(d["items"], list)
+    assert d["count"] == len(d["items"])
+    assert len(d["items"]) >= 1
+    it = d["items"][0]
+    for k in ["title", "date", "summary", "url", "ioc_count", "image", "source"]:
+        assert k in it
+    assert it["source"] == "Palo Alto Unit42"
+    assert it["url"].startswith("https://github.com/")
+    assert isinstance(it["ioc_count"], int)
+    # date YYYY-MM-DD
+    import re
+    assert re.match(r"^\d{4}-\d{2}-\d{2}$", it["date"]) or it["date"] == ""
+
+
 # ------- leads -------
 def test_leads_get_requires_auth(s):
     r = s.get(f"{API}/leads", timeout=10)
