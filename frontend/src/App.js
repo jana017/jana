@@ -10,6 +10,7 @@ const Landing = lazy(() => import("@/pages/Landing"));
 const Admin = lazy(() => import("@/pages/Admin"));
 const ThreatIntelligence = lazy(() => import("@/pages/ThreatIntelligence"));
 const KnowledgeBase = lazy(() => import("@/pages/KnowledgeBase"));
+const BlogPost = lazy(() => import("@/pages/BlogPost"));
 
 function RouteFallback() {
   return (
@@ -33,6 +34,7 @@ function App() {
                 <Route path="/threat-intelligence" element={<ThreatIntelligence />} />
                 <Route path="/cybersecurity-101" element={<KnowledgeBase />} />
                 <Route path="/cybersecurity-101/:slug" element={<KnowledgeBase />} />
+                <Route path="/blog/:slug" element={<BlogPost />} />
                 <Route path="/admin" element={<Admin />} />
               </Routes>
             </Suspense>
