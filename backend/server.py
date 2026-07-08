@@ -537,6 +537,171 @@ async def delete_ioc(ioc_id: str, user: dict = Depends(get_current_user)):
 
 
 # ---------------------------------------------------------------------------
+# AlienVault OTX threat intelligence sync (auto on startup + daily)
+# ---------------------------------------------------------------------------
+OTX_API_KEY = os.environ.get("OTX_API_KEY")
+OTX_BASE = "https://otx.alienvault.com/api/v1"
+OTX_MAX_PULSES = 50
+OTX_MAX_INDICATORS = 500
+OTX_SYNC_INTERVAL_SEC = 24 * 60 * 60  # daily
+
+# OTX indicator type -> normalized value / (skip if returns None)
+def _otx_indicator_value(otx_type: str, indicator: str) -> Optional[str]:
+    t = (otx_type or "").strip()
+    v = (indicator or "").strip()
+    if not v:
+        return None
+    if t in ("IPv4", "IPv6"):
+        return v if _classify_ioc(v) == "ip" else None
+    if t in ("domain", "hostname"):
+        return v if _classify_ioc(v) == "domain" else None
+    if t in ("URL", "URI"):
+        return v if _classify_ioc(v) == "url" else None
+    if t == "FileHash-MD5":
+        return v if _classify_ioc(v) == "md5" else None
+    if t == "FileHash-SHA1":
+        return v if _classify_ioc(v) == "sha1" else None
+    if t == "FileHash-SHA256":
+        return v if _classify_ioc(v) == "sha256" else None
+    return None
+
+
+def _otx_severity(pulse: dict) -> str:
+    """OTX pulses are curated threat intel — default to 'medium'. Escalate if
+    the pulse carries strong indicators (malware families, adversary attribution
+    or explicit high-confidence tags)."""
+    tags_lower = {str(t).lower() for t in (pulse.get("tags") or [])}
+    has_malware = bool(pulse.get("malware_families"))
+    has_actor = bool((pulse.get("adversary") or "").strip())
+    if any(k in tags_lower for k in ("ransomware", "apt", "zero-day", "0day", "wiper")):
+        return "critical"
+    if has_malware and has_actor:
+        return "high"
+    if has_malware or has_actor:
+        return "high"
+    return "medium"
+
+
+async def _sync_otx_pulses(max_pulses: int = OTX_MAX_PULSES, max_indicators: int = OTX_MAX_INDICATORS) -> dict:
+    """Fetch subscribed OTX pulses and upsert their indicators into db.iocs.
+
+    Returns a summary dict: {pulses, indicators, added, updated, skipped, error?}.
+    """
+    if not OTX_API_KEY:
+        return {"error": "OTX_API_KEY not configured", "pulses": 0, "indicators": 0, "added": 0, "updated": 0, "skipped": 0}
+
+    headers = {"X-OTX-API-KEY": OTX_API_KEY, "User-Agent": "NivX-Machines/1.0"}
+    pulses: List[dict] = []
+    added = updated = skipped = ind_count = 0
+    try:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as hc:
+            # Page through subscribed pulses until we hit max_pulses.
+            page = 1
+            while len(pulses) < max_pulses and page <= 5:
+                r = await hc.get(f"{OTX_BASE}/pulses/subscribed", params={"limit": 50, "page": page}, headers=headers)
+                if r.status_code != 200:
+                    return {"error": f"OTX fetch failed ({r.status_code})", "pulses": 0, "indicators": 0, "added": 0, "updated": 0, "skipped": 0}
+                data = r.json() or {}
+                results = data.get("results") or []
+                if not results:
+                    break
+                pulses.extend(results)
+                if not data.get("next"):
+                    break
+                page += 1
+            pulses = pulses[:max_pulses]
+
+            for pulse in pulses:
+                if ind_count >= max_indicators:
+                    break
+                threat_name = (pulse.get("name") or "").strip() or None
+                severity = _otx_severity(pulse)
+                tags = [str(t).strip() for t in (pulse.get("tags") or []) if str(t).strip()][:20]
+                # Include adversary + malware family as tags when present.
+                if pulse.get("adversary"):
+                    tags.append(f"actor:{pulse['adversary']}")
+                for fam in (pulse.get("malware_families") or [])[:5]:
+                    fname = fam.get("display_name") if isinstance(fam, dict) else str(fam)
+                    if fname:
+                        tags.append(f"family:{fname}")
+                # De-dup tags (case-insensitive)
+                _seen = set()
+                _dedup = []
+                for t in tags:
+                    tl = t.lower()
+                    if tl not in _seen:
+                        _seen.add(tl)
+                        _dedup.append(t)
+                tags = _dedup
+                pulse_ref = pulse.get("id")
+                source = f"AlienVault OTX · {pulse_ref}" if pulse_ref else "AlienVault OTX"
+                for ind in pulse.get("indicators") or []:
+                    if ind_count >= max_indicators:
+                        break
+                    ind_count += 1
+                    value = _otx_indicator_value(ind.get("type"), ind.get("indicator"))
+                    if not value:
+                        skipped += 1
+                        continue
+                    notes = None
+                    if pulse.get("description"):
+                        notes = (pulse["description"] or "").strip()[:400] or None
+                    try:
+                        _, created = await _upsert_ioc(value, threat_name, tags, source, severity, notes)
+                        added += 1 if created else 0
+                        updated += 0 if created else 1
+                    except Exception as e:
+                        logger.warning(f"OTX upsert failed for {value}: {e}")
+                        skipped += 1
+    except Exception as e:
+        logger.error(f"OTX sync error: {e}")
+        return {"error": f"OTX sync error: {e}", "pulses": len(pulses), "indicators": ind_count, "added": added, "updated": updated, "skipped": skipped}
+
+    summary = {
+        "pulses": len(pulses),
+        "indicators": ind_count,
+        "added": added,
+        "updated": updated,
+        "skipped": skipped,
+        "synced_at": now_iso(),
+    }
+    try:
+        await db.otx_meta.update_one({"_id": "last_sync"}, {"$set": summary}, upsert=True)
+    except Exception:
+        pass
+    logger.info(f"OTX sync complete: {summary}")
+    return summary
+
+
+@api_router.get("/otx/status")
+async def otx_status():
+    meta = await db.otx_meta.find_one({"_id": "last_sync"}, {"_id": 0})
+    return {"configured": bool(OTX_API_KEY), "last_sync": meta}
+
+
+@api_router.post("/otx/sync")
+async def otx_sync(user: dict = Depends(get_current_user)):
+    if not OTX_API_KEY:
+        raise HTTPException(status_code=503, detail="AlienVault OTX is not configured")
+    summary = await _sync_otx_pulses()
+    if summary.get("error"):
+        raise HTTPException(status_code=502, detail=summary["error"])
+    return summary
+
+
+async def _otx_sync_loop():
+    """Runs on startup + every OTX_SYNC_INTERVAL_SEC seconds."""
+    # First delay a bit so the app finishes booting.
+    await asyncio.sleep(15)
+    while True:
+        try:
+            await _sync_otx_pulses()
+        except Exception as e:
+            logger.error(f"OTX loop error: {e}")
+        await asyncio.sleep(OTX_SYNC_INTERVAL_SEC)
+
+
+# ---------------------------------------------------------------------------
 # Live external threat feed (CISA Known Exploited Vulnerabilities)
 # ---------------------------------------------------------------------------
 _feed_cache: dict[str, Any] = {"ts": None, "data": None}
@@ -1454,6 +1619,9 @@ async def startup():
     await db.users.create_index("email", unique=True)
     await seed_admin()
     await seed_threats()
+    if OTX_API_KEY:
+        asyncio.create_task(_otx_sync_loop())
+        logger.info("AlienVault OTX sync loop scheduled (startup + daily)")
 
 
 @app.on_event("shutdown")

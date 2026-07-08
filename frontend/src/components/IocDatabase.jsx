@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Database, Search, Trash2, Upload, Plus, ListPlus, FileSpreadsheet, Loader2 } from "lucide-react";
+import { Database, Search, Trash2, Upload, Plus, ListPlus, FileSpreadsheet, Loader2, RefreshCw, Cloud } from "lucide-react";
 import { api, formatApiErrorDetail } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { TYPE_LABEL, severityStyle } from "@/lib/iocUtils";
@@ -26,8 +26,25 @@ export default function IocDatabase() {
   const [bulkText, setBulkText] = useState("");
   const [bulkMeta, setBulkMeta] = useState({ threat_name: "", severity: "medium", tags: "", source: "" });
   const [file, setFile] = useState(null);
+  const [otx, setOtx] = useState(null);   // { configured, last_sync }
+  const [otxBusy, setOtxBusy] = useState(false);
 
   const flash = (kind, text) => { setMsg({ kind, text }); setTimeout(() => setMsg(null), 5000); };
+
+  const fetchOtx = useCallback(async () => {
+    try { const { data } = await api.get("/otx/status"); setOtx(data); } catch { /* noop */ }
+  }, []);
+
+  const syncOtx = async () => {
+    setOtxBusy(true);
+    try {
+      const { data } = await api.post("/otx/sync");
+      flash("ok", `OTX synced: ${data.added} new · ${data.updated} updated · ${data.skipped} skipped (${data.pulses} pulses, ${data.indicators} indicators)`);
+      await Promise.all([fetchOtx(), fetchList(), fetchStats()]);
+    } catch (err) {
+      flash("err", formatApiErrorDetail(err.response?.data?.detail) || "OTX sync failed");
+    } finally { setOtxBusy(false); }
+  };
 
   const fetchStats = useCallback(async () => {
     try { const { data } = await api.get("/iocs/stats"); setStats(data); } catch { /* noop */ }
@@ -44,6 +61,7 @@ export default function IocDatabase() {
   }, [q, type, severity]);
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
+  useEffect(() => { fetchOtx(); }, [fetchOtx]);
   useEffect(() => { const t = setTimeout(fetchList, 300); return () => clearTimeout(t); }, [fetchList]);
 
   const refresh = () => { fetchList(); fetchStats(); };
@@ -117,6 +135,24 @@ export default function IocDatabase() {
       {/* Admin upload panel */}
       {isAdmin && (
         <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+          {/* AlienVault OTX sync bar */}
+          {otx?.configured && (
+            <div data-testid="otx-sync-bar" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50/60 px-3.5 py-2.5">
+              <div className="flex items-center gap-2 text-sm">
+                <Cloud className="w-4 h-4 text-[#2E7DF5]" />
+                <span className="font-semibold text-slate-800">AlienVault OTX</span>
+                <span className="text-slate-500">
+                  {otx.last_sync
+                    ? `Last sync ${new Date(otx.last_sync.synced_at).toLocaleString()} · ${otx.last_sync.added} new · ${otx.last_sync.updated} updated (${otx.last_sync.pulses} pulses)`
+                    : "Awaiting first sync…"}
+                </span>
+              </div>
+              <button onClick={syncOtx} disabled={otxBusy} data-testid="otx-sync-btn" className="inline-flex items-center gap-2 border border-[#2E7DF5] text-[#2E7DF5] hover:bg-[#2E7DF5] hover:text-white text-sm font-semibold px-3.5 py-1.5 rounded-md transition-colors disabled:opacity-60">
+                {otxBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sync now
+              </button>
+            </div>
+          )}
+
           <div className="inline-flex items-center gap-1 p-1 mb-4 bg-white border border-slate-200 rounded-lg">
             {[["single", "Add one", Plus], ["bulk", "Bulk paste", ListPlus], ["file", "Upload CSV / Excel", FileSpreadsheet]].map(([m, label, Icon]) => (
               <button key={m} onClick={() => setAddMode(m)} data-testid={`ioc-db-add-mode-${m}`} className={`inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-md transition-colors ${addMode === m ? "bg-[#2E7DF5] text-white" : "text-slate-500 hover:text-slate-700"}`}>
