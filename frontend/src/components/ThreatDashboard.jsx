@@ -8,6 +8,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 
 const SEV = {
@@ -104,6 +105,9 @@ export default function ThreatDashboard() {
                 <DialogTitle className="font-display font-black text-2xl tracking-tight text-white text-left">
                   {active.title}
                 </DialogTitle>
+                <DialogDescription className="font-mono-data text-[11px] uppercase tracking-widest text-[#66666E] text-left">
+                  {active.source} · Threat Report
+                </DialogDescription>
               </DialogHeader>
 
               {active.image_url && (
