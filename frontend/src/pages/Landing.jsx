@@ -3,6 +3,7 @@ import Hero from "@/components/Hero";
 import About from "@/components/Manifesto";
 import StatsBand from "@/components/EditorialMarquee";
 import LiveThreatLandscape from "@/components/LiveThreatLandscape";
+import AttackFeed from "@/components/AttackFeed";
 import ThreatDashboard from "@/components/ThreatDashboard";
 import Services from "@/components/Services";
 import Gallery from "@/components/Gallery";
@@ -17,6 +18,7 @@ export default function Landing() {
       <About />
       <StatsBand />
       <LiveThreatLandscape />
+      <AttackFeed />
       <ThreatDashboard />
       <Services />
       <Gallery />

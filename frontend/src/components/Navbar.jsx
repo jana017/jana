@@ -39,7 +39,7 @@ export default function Navbar() {
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
           className="flex items-center"
         >
-          <img src="/nivx-logo.webp" alt="NivX Machines" className="h-9 w-auto object-contain rounded-md" />
+          <img src="/nivx-logo-light.png" alt="NivX Machines" className="h-8 w-auto object-contain" />
         </button>
 
         <div className="hidden lg:flex items-center gap-8">

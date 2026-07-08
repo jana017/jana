@@ -5,6 +5,16 @@ import { motion } from "framer-motion";
 import { LogOut, Plus, Pencil, Trash2, ArrowLeft, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const EMPTY = {
   title: "", summary: "", severity: "high", category: "Malware", threat_actor: "",
@@ -41,7 +51,7 @@ function LoginView() {
         className="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-lg p-8"
       >
         <div className="flex items-center gap-3 mb-6">
-          <img src="/nivx-logo.webp" alt="NivX Machines" className="h-8 w-auto rounded-md" />
+          <img src="/nivx-logo-light.png" alt="NivX Machines" className="h-8 w-auto object-contain" />
         </div>
         <h1 className="font-heading text-xl font-semibold text-slate-900 mb-1">Secure access</h1>
         <p className="text-sm text-slate-500 mb-6">Authorized personnel only</p>
@@ -82,6 +92,7 @@ function Dashboard() {
   const [reports, setReports] = useState([]);
   const [form, setForm] = useState(EMPTY);
   const [editId, setEditId] = useState(null);
+  const [deleteId, setDeleteId] = useState(null);
 
   const load = useCallback(() => {
     api.get("/threats").then(({ data }) => setReports(data)).catch(() => {});
@@ -114,9 +125,10 @@ function Dashboard() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const remove = async (id) => {
-    if (!window.confirm("Delete this threat report?")) return;
-    await api.delete(`/threats/${id}`);
+  const remove = async () => {
+    if (!deleteId) return;
+    await api.delete(`/threats/${deleteId}`);
+    setDeleteId(null);
     toast.success("Deleted");
     load();
   };
@@ -126,7 +138,7 @@ function Dashboard() {
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
         <div className="mx-auto max-w-7xl px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/nivx-logo.webp" alt="NivX Machines" className="h-8 w-auto rounded-md" />
+            <img src="/nivx-logo-light.png" alt="NivX Machines" className="h-8 w-auto object-contain" />
             <span className="text-sm text-slate-400 hidden sm:inline">{user?.email}</span>
           </div>
           <div className="flex items-center gap-5">
@@ -178,13 +190,30 @@ function Dashboard() {
                 </div>
                 <div className="flex gap-2 shrink-0">
                   <button data-testid={`edit-${i}`} onClick={() => edit(r)} className="w-9 h-9 flex items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:text-[#2E7DF5] hover:border-blue-200 transition-colors"><Pencil className="w-4 h-4" /></button>
-                  <button data-testid={`delete-${i}`} onClick={() => remove(r.id)} className="w-9 h-9 flex items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:text-red-600 hover:border-red-200 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                  <button data-testid={`delete-${i}`} onClick={() => setDeleteId(r.id)} className="w-9 h-9 flex items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:text-red-600 hover:border-red-200 transition-colors"><Trash2 className="w-4 h-4" /></button>
                 </div>
               </div>
             ))}
           </div>
         </div>
       </main>
+
+      <AlertDialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
+        <AlertDialogContent data-testid="delete-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete threat report?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The report will be permanently removed from the live site.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="delete-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction data-testid="delete-confirm" onClick={remove} className="bg-red-600 hover:bg-red-700">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

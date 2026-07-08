@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Database, ShieldAlert, Radar, Activity } from "lucide-react";
+import { Database, ShieldAlert, Radar, Activity, ExternalLink } from "lucide-react";
 import { api } from "@/lib/api";
 
 function Counter({ value, suffix = "" }) {
@@ -90,16 +90,26 @@ export default function LiveThreatLandscape() {
             {err && <div className="p-6 text-sm text-red-500">Feed temporarily unavailable.</div>}
             {!feed && !err && <div className="p-6 text-sm text-slate-400">Loading live feed…</div>}
             {feed?.items?.map((it, i) => (
-              <div key={it.cve + i} data-testid={`feed-row-${i}`} className="grid grid-cols-[auto_1fr_auto] gap-4 items-center px-5 py-3 hover:bg-slate-50 transition-colors">
-                <span className="font-mono-data text-xs font-medium text-[#2E7DF5] w-28 shrink-0">{it.cve}</span>
+              <a
+                key={it.cve + i}
+                href={it.nvd_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid={`feed-row-${i}`}
+                className="grid grid-cols-[auto_1fr_auto] gap-4 items-center px-5 py-3 hover:bg-blue-50/60 transition-colors group"
+              >
+                <span className="font-mono-data text-xs font-medium text-[#2E7DF5] w-28 shrink-0 group-hover:underline">{it.cve}</span>
                 <div className="min-w-0">
-                  <div className="text-sm text-slate-800 truncate">{it.name}</div>
+                  <div className="text-sm text-slate-800 truncate flex items-center gap-1.5">
+                    {it.name}
+                    <ExternalLink className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                  </div>
                   <div className="text-xs text-slate-400">{it.vendor} · {it.product}</div>
                 </div>
                 <span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-md ${it.ransomware === "Known" ? "bg-red-50 text-red-600" : "bg-slate-100 text-slate-500"}`}>
                   {it.ransomware === "Known" ? "Ransomware" : it.dateAdded}
                 </span>
-              </div>
+              </a>
             ))}
           </div>
         </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import AttackChain from "@/components/AttackChain";
+import KillChainDiagram from "@/components/KillChainDiagram";
 import ProcessTree from "@/components/ProcessTree";
 import { GitBranch, Crosshair, Fingerprint, ArrowUpRight } from "lucide-react";
 import {
@@ -63,7 +64,7 @@ function FeaturedBrief({ r }) {
         </div>
         <div className="p-8 space-y-4 bg-slate-50/50">
           <Panel label="MITRE ATT&CK · Kill Chain" icon={Crosshair}>
-            <AttackChain steps={r.attack_chain} showIds />
+            <KillChainDiagram steps={r.attack_chain} />
           </Panel>
           {r.process_tree && (
             <Panel label="Process Tree · Execution Forensics" icon={GitBranch}>
@@ -164,7 +165,7 @@ export default function ThreatDashboard() {
               {active.threat_actor && (
                 <div className="text-sm"><span className="text-slate-400">Threat actor: </span><span className="font-semibold text-[#F5821F]">{active.threat_actor}</span></div>
               )}
-              <Panel label="MITRE ATT&CK · Kill Chain" icon={Crosshair}><AttackChain steps={active.attack_chain} showIds /></Panel>
+              <Panel label="MITRE ATT&CK · Kill Chain" icon={Crosshair}><KillChainDiagram steps={active.attack_chain} /></Panel>
               {active.process_tree && <Panel label="Process Tree · Execution Forensics" icon={GitBranch}><ProcessTree tree={active.process_tree} /></Panel>}
               {active.iocs?.length > 0 && (
                 <Panel label="Indicators of Compromise" icon={Fingerprint}>

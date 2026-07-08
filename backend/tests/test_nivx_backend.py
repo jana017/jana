@@ -137,6 +137,68 @@ def test_live_feed(s):
     for k in ["total_count", "ransomware_linked", "items"]:
         assert k in d
     assert isinstance(d["items"], list) and len(d["items"]) > 0
+    # up to 50 items
+    assert len(d["items"]) <= 50
     item = d["items"][0]
-    for k in ["cve", "vendor", "product", "name"]:
+    for k in ["cve", "vendor", "product", "name", "nvd_url"]:
         assert k in item
+    assert item["nvd_url"].startswith("https://nvd.nist.gov/vuln/detail/CVE-")
+
+
+# ------- attack feed (ransomware.live) -------
+def test_attack_feed(s):
+    r = s.get(f"{API}/attack-feed", timeout=30)
+    # ransomware.live may occasionally 502; treat as non-blocking
+    if r.status_code == 502:
+        pytest.skip("attack-feed upstream unavailable (502)")
+    assert r.status_code == 200, r.text
+    d = r.json()
+    for k in ["source", "count", "items"]:
+        assert k in d
+    assert isinstance(d["items"], list)
+    if d["items"]:
+        it = d["items"][0]
+        for k in ["victim", "group", "country", "sector", "screenshot", "url"]:
+            assert k in it
+
+
+# ------- threats now returns >= 7 with new fields -------
+def test_threats_has_seven_with_image(s):
+    r = s.get(f"{API}/threats", timeout=10)
+    assert r.status_code == 200
+    items = r.json()
+    assert len(items) >= 7, f"expected >=7 seeded threats, got {len(items)}"
+    # every item has attack_chain, process_tree; image_url should be present on seeded
+    seeded = [i for i in items if i.get("source") == "NivX Threat Intel"]
+    assert len(seeded) >= 7
+    for i in seeded[:7]:
+        assert i.get("attack_chain")
+        assert i.get("process_tree")
+        assert i.get("image_url", "").startswith("http")
+
+
+# ------- leads -------
+def test_leads_get_requires_auth(s):
+    r = s.get(f"{API}/leads", timeout=10)
+    assert r.status_code == 401
+
+
+def test_lead_create_public_and_list(s, auth_headers):
+    payload = {
+        "name": "TEST_Lead User",
+        "email": "TEST_lead@example.com",
+        "company": "TEST Co",
+        "interest": "MDR",
+    }
+    r = s.post(f"{API}/leads", json=payload, timeout=10)
+    assert r.status_code == 200, r.text
+    lead = r.json()
+    assert lead.get("id")
+    assert lead["status"] == "new"
+    assert lead["email"] == payload["email"]
+
+    # list via admin token includes it
+    r2 = s.get(f"{API}/leads", headers=auth_headers, timeout=10)
+    assert r2.status_code == 200
+    leads = r2.json()
+    assert any(l["id"] == lead["id"] for l in leads)

