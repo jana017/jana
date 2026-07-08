@@ -13,6 +13,9 @@ const OSINT_TOOLS = [
   { name: "AbuseIPDB", domain: "abuseipdb.com", url: "https://www.abuseipdb.com/", desc: "Check IP reputation & abuse reports" },
   { name: "Cisco Talos", domain: "talosintelligence.com", url: "https://talosintelligence.com/reputation_center", desc: "IP/domain reputation & threat intel" },
   { name: "IBM X-Force Exchange", domain: "exchange.xforce.ibmcloud.com", url: "https://exchange.xforce.ibmcloud.com/", desc: "Threat intelligence sharing platform" },
+  { name: "Shodan", domain: "shodan.io", url: "https://www.shodan.io/", desc: "Search exposed hosts, ports & services on the internet" },
+  { name: "Censys", domain: "censys.io", url: "https://platform.censys.io/home", desc: "Attack-surface & internet asset discovery" },
+  { name: "CyberChef", domain: "gchq.github.io", url: "https://gchq.github.io/CyberChef/", desc: "Decode, decrypt & transform data — the cyber Swiss-army knife" },
 ];
 
 const CYBERDEFENDERS = [

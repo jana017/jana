@@ -36,7 +36,14 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - P2: Lead management enhancements — notes/assignee, filter by status.
 - P2: Unit42 reader — search within very large IOC tables.
 
-## Latest (2026-07-08, session 2)
+## Latest (2026-07-08, session 3)
+- IOC Analyzer ("Investigate indicators in one click") upgraded — no API keys required:
+  - File hashes now enriched via CIRCL hashlookup (no-key): shows Known Malicious / Known Good verdict + filename/size/product/source; unknown hashes show a clear "not in known-file DB, use deep links" note (old "no key-free source" message removed).
+  - Expanded per-type deep-link icons (each → the IOC's result page): hashes = VirusTotal/MalwareBazaar/ThreatFox/Hybrid Analysis/IBM X-Force; IP = VT/AbuseIPDB/Talos/Shodan/GreyNoise/X-Force; domain = VT/urlscan/Talos/Shodan/X-Force; URL = VT/urlscan/X-Force.
+  - OSINT tool grid: added Shodan, Censys, CyberChef quick-link cards (icons + hyperlinks).
+- Hero visual replaced with a LIVE animated world threat map (LiveThreatMap.jsx): plots real recent ransomware-victim countries (ransomware.live) as pulsing geo markers on an equirectangular world map (/world-equirect.jpg) via COUNTRY_CENTROIDS; rotating live-incident label + animated attack arcs; live counters (KEV tracked, recent incidents, ransomware-linked CVEs) from CISA + attack feeds; monitoring badge shows live signal count.
+- Note: No paid keys — full VirusTotal-style detection ratios remain via one-click deep links (VT/MalwareBazaar/ThreatFox all now require a key for their APIs).
+- Tests: frontend E2E passed (iteration_9) for live map + IOC analyzer (hash/IP/domain/URL, deep links, target=_blank). Backend ioc-lookup curl-verified.
 - Threat Intelligence: type facets + date-range + pagination over ~395 Unit42 reports; in-app report reader (notes/refs/IOC table + copy-all).
 - OSINT section: 5 tool quick-links + SMART IOC ANALYZER (/api/ioc-lookup): classifies hash/IP/domain/URL, live no-key enrichment (Shodan InternetDB + ip-api for IPs, urlscan search for domains/URLs), prefilled deep-links (VT/AbuseIPDB/Talos/urlscan/X-Force).
 - Admin: Leads tab with status workflow (new/contacted/qualified/archived) + CSV export.
