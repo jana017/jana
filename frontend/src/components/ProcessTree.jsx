@@ -8,9 +8,7 @@ function flatten(tree) {
     if (!node) continue;
     rows.push({ node, depth });
     const kids = node.children || [];
-    for (let i = kids.length - 1; i >= 0; i--) {
-      stack.unshift({ node: kids[i], depth: depth + 1 });
-    }
+    for (let i = kids.length - 1; i >= 0; i--) stack.unshift({ node: kids[i], depth: depth + 1 });
   }
   return rows;
 }
@@ -19,29 +17,21 @@ export default function ProcessTree({ tree }) {
   if (!tree) return null;
   const rows = flatten(tree);
   return (
-    <div data-testid="process-tree" className="bg-black/40 border border-white/10 p-4">
+    <div data-testid="process-tree" className="rounded-lg bg-slate-50 border border-slate-200 p-4">
       {rows.map(({ node, depth }, idx) => (
         <div key={idx} style={{ marginLeft: depth * 18 }}>
-          <div
-            className={`flex items-start gap-3 py-2 pl-3 border-l-2 ${
-              node.malicious ? "border-[#FF3B5C]" : "border-white/15"
-            }`}
-          >
+          <div className={`flex items-start gap-2.5 py-1.5 pl-3 border-l-2 ${node.malicious ? "border-red-400" : "border-slate-300"}`}>
             {node.malicious ? (
-              <AlertTriangle className="w-4 h-4 text-[#FF3B5C] mt-0.5 shrink-0" />
+              <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
             ) : (
-              <Terminal className="w-4 h-4 text-[#F5821F] mt-0.5 shrink-0" />
+              <Terminal className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
             )}
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className={`font-mono-data text-sm ${node.malicious ? "text-[#FF3B5C]" : "text-white"}`}>
-                  {node.name}
-                </span>
-                {node.pid && <span className="font-mono-data text-[10px] text-[#5A6B82]">PID {node.pid}</span>}
+                <span className={`font-mono-data text-sm font-medium ${node.malicious ? "text-red-600" : "text-slate-800"}`}>{node.name}</span>
+                {node.pid && <span className="font-mono-data text-[10px] text-slate-400">PID {node.pid}</span>}
               </div>
-              {node.cmd && (
-                <code className="font-mono-data text-[11px] text-[#9AA6B8] block mt-1 break-all">$ {node.cmd}</code>
-              )}
+              {node.cmd && <code className="font-mono-data text-[11px] text-slate-500 block mt-0.5 break-all">$ {node.cmd}</code>}
             </div>
           </div>
         </div>

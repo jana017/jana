@@ -1,67 +1,51 @@
 import { motion } from "framer-motion";
+import { ShieldCheck, Cpu, Zap } from "lucide-react";
 
-const CHAPTERS = [
-  {
-    n: "01",
-    title: "Assume Breach",
-    body: "We architect from the premise that adversaries are already inside. Zero-trust segmentation, continuous verification, and least-privilege access contain the blast radius before it spreads.",
-  },
-  {
-    n: "02",
-    title: "Weaponize Intelligence",
-    body: "Our AI models ingest telemetry at machine speed — correlating signals across endpoints, identity, and network to surface the anomaly that human analysts would miss.",
-  },
-  {
-    n: "03",
-    title: "Respond at Machine Speed",
-    body: "Detection without response is theatre. Automated playbooks isolate, remediate, and recover — collapsing dwell time from weeks to minutes.",
-  },
+const PILLARS = [
+  { n: "01", icon: ShieldCheck, title: "Assume breach", body: "We architect from the premise that adversaries are already inside — zero-trust segmentation and least-privilege access contain the blast radius." },
+  { n: "02", icon: Cpu, title: "Weaponize intelligence", body: "Our AI models ingest telemetry at machine speed, correlating signals across endpoints, identity and network to surface what humans miss." },
+  { n: "03", icon: Zap, title: "Respond at machine speed", body: "Automated playbooks isolate, remediate and recover — collapsing dwell time from weeks to minutes." },
 ];
 
-const reveal = {
-  hidden: { y: 40, opacity: 0 },
-  show: { y: 0, opacity: 1, transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] } },
+const fade = {
+  hidden: { opacity: 0, y: 14 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] } },
 };
 
-export default function Manifesto() {
+export default function About() {
   return (
-    <section id="about" data-testid="about-section" className="relative py-28 lg:py-40 border-t border-white/5">
-      <div className="mx-auto max-w-[1400px] px-6">
-        <motion.div
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true, margin: "-100px" }}
-          variants={reveal}
-          className="max-w-3xl mb-20"
-        >
-          <div className="font-mono-data text-[11px] uppercase tracking-[0.3em] text-[#F5821F] mb-6">
-            / About Us — The Manifesto
-          </div>
-          <h2 className="font-display font-black tracking-tighter text-white text-4xl sm:text-5xl lg:text-6xl leading-[0.95]">
-            Defense is not a product. <span className="text-[#5A6B82]">It&apos;s a discipline.</span>
+    <section id="about" data-testid="about-section" className="py-20 lg:py-28 bg-white">
+      <div className="mx-auto max-w-7xl px-6">
+        <motion.div initial="hidden" whileInView="show" viewport={{ once: true }} variants={fade} className="max-w-2xl mb-14">
+          <div className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600 mb-3">About Us</div>
+          <h2 className="font-heading text-2xl md:text-3xl font-semibold tracking-tight text-slate-900">
+            Defense is a discipline, not a product
           </h2>
+          <p className="mt-4 text-base text-slate-600 leading-relaxed">
+            NivX Machines is a cybersecurity, AI and technology firm helping enterprises
+            build resilient, intelligent defenses. Three principles guide everything we build.
+          </p>
         </motion.div>
 
-        <div className="space-y-px">
-          {CHAPTERS.map((c) => (
+        <div className="grid md:grid-cols-3 gap-6">
+          {PILLARS.map((p) => (
             <motion.div
-              key={c.n}
+              key={p.n}
               initial="hidden"
               whileInView="show"
-              viewport={{ once: true, margin: "-80px" }}
-              variants={reveal}
-              data-testid={`manifesto-${c.n}`}
-              className="grid md:grid-cols-[auto_1fr] gap-6 md:gap-14 py-10 border-t border-white/10 group"
+              viewport={{ once: true }}
+              variants={fade}
+              data-testid={`about-pillar-${p.n}`}
+              className="rounded-xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-shadow p-8"
             >
-              <div className="font-display font-black text-6xl md:text-8xl text-white/10 group-hover:text-[#F5821F]/40 transition-colors duration-500 leading-none">
-                {c.n}
+              <div className="flex items-center justify-between mb-6">
+                <span className="w-11 h-11 rounded-lg bg-blue-50 flex items-center justify-center">
+                  <p.icon className="w-5 h-5 text-[#2E7DF5]" strokeWidth={1.6} />
+                </span>
+                <span className="font-heading text-3xl font-bold text-slate-100">{p.n}</span>
               </div>
-              <div className="max-w-2xl">
-                <h3 className="font-display font-semibold text-2xl md:text-3xl text-white mb-4 tracking-tight">
-                  {c.title}
-                </h3>
-                <p className="text-[#9AA6B8] leading-relaxed text-base md:text-lg">{c.body}</p>
-              </div>
+              <h3 className="font-heading text-lg font-semibold text-slate-900 mb-2">{p.title}</h3>
+              <p className="text-sm text-slate-600 leading-relaxed">{p.body}</p>
             </motion.div>
           ))}
         </div>

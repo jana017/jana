@@ -1,6 +1,5 @@
 import { ChevronRight } from "lucide-react";
 
-// MITRE ATT&CK Enterprise tactic IDs
 const MITRE = {
   "reconnaissance": "TA0043",
   "resource development": "TA0042",
@@ -23,27 +22,26 @@ export function mitreId(step) {
   return MITRE[step.trim().toLowerCase()] || "TAxxxx";
 }
 
-export default function AttackChain({ steps = [], compact = false, showIds = false }) {
+export default function AttackChain({ steps = [], showIds = false }) {
   if (!steps.length) return null;
   return (
     <div className="flex flex-wrap items-center gap-1.5" data-testid="attack-chain">
-      {steps.map((s, i) => (
-        <div key={i} className="flex items-center gap-1.5">
-          <span
-            className={`font-mono-data uppercase tracking-wider border px-2 py-1 flex flex-col leading-tight ${
-              compact ? "text-[9px]" : "text-[10px]"
-            } ${
-              i === steps.length - 1
-                ? "text-[#FF3B5C] border-[#FF3B5C]/50 bg-[#FF3B5C]/5"
-                : "text-[#F5821F] border-[#F5821F]/30"
-            }`}
-          >
-            {showIds && <span className="text-[#5A6B82] text-[8px] tracking-widest">{mitreId(s)}</span>}
-            {s}
-          </span>
-          {i < steps.length - 1 && <ChevronRight className="w-3 h-3 text-[#5A6B82] shrink-0" />}
-        </div>
-      ))}
+      {steps.map((s, i) => {
+        const last = i === steps.length - 1;
+        return (
+          <div key={i} className="flex items-center gap-1.5">
+            <span
+              className={`rounded-md border px-2.5 py-1.5 flex flex-col leading-tight ${
+                last ? "border-red-200 bg-red-50 text-red-700" : "border-blue-200 bg-blue-50 text-blue-700"
+              }`}
+            >
+              {showIds && <span className="font-mono-data text-[9px] tracking-wider text-slate-400">{mitreId(s)}</span>}
+              <span className="text-[11px] font-semibold uppercase tracking-wide">{s}</span>
+            </span>
+            {!last && <ChevronRight className="w-3.5 h-3.5 text-slate-300 shrink-0" />}
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -1,28 +1,30 @@
-import Marquee from "react-fast-marquee";
+import { motion } from "framer-motion";
 
-const ITEMS = [
-  "REAL-TIME THREAT LANDSCAPE",
-  "ZERO-TRUST ARCHITECTURE",
-  "AI THREAT DETECTION",
-  "INCIDENT RESPONSE",
-  "MITRE ATT&CK MAPPING",
-  "MANAGED DETECTION & RESPONSE",
+const STATS = [
+  { value: "24/7", label: "SOC monitoring" },
+  { value: "<15min", label: "Mean response time" },
+  { value: "99.9%", label: "Uptime SLA" },
+  { value: "500+", label: "Threats neutralized / day" },
 ];
 
-export default function EditorialMarquee() {
+export default function StatsBand() {
   return (
-    <div data-testid="marquee" className="py-8 border-y border-white/10 bg-[#0A1220] overflow-hidden">
-      <Marquee speed={35} gradient={false}>
-        {ITEMS.concat(ITEMS).map((t, i) => (
-          <span
-            key={i}
-            className="mx-8 font-mono-data uppercase tracking-[0.25em] text-2xl md:text-4xl text-white/70 flex items-center gap-8"
+    <section data-testid="stats-band" className="bg-[#0A1220] py-14">
+      <div className="mx-auto max-w-7xl px-6 grid grid-cols-2 md:grid-cols-4 gap-8">
+        {STATS.map((s, i) => (
+          <motion.div
+            key={s.label}
+            initial={{ opacity: 0, y: 12 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5, delay: i * 0.08 }}
+            className="text-center md:text-left"
           >
-            {t}
-            <span className="text-[#F5821F]">✦</span>
-          </span>
+            <div className="font-heading text-3xl md:text-4xl font-bold text-white">{s.value}</div>
+            <div className="mt-1 text-sm text-slate-400">{s.label}</div>
+          </motion.div>
         ))}
-      </Marquee>
-    </div>
+      </div>
+    </section>
   );
 }

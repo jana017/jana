@@ -1,21 +1,21 @@
 import Navbar from "@/components/Navbar";
 import Hero from "@/components/Hero";
-import Manifesto from "@/components/Manifesto";
-import EditorialMarquee from "@/components/EditorialMarquee";
+import About from "@/components/Manifesto";
+import StatsBand from "@/components/EditorialMarquee";
 import LiveThreatLandscape from "@/components/LiveThreatLandscape";
 import ThreatDashboard from "@/components/ThreatDashboard";
-import Gallery from "@/components/Gallery";
 import Services from "@/components/Services";
+import Gallery from "@/components/Gallery";
 import Careers from "@/components/Careers";
 import Contact from "@/components/Contact";
 
 export default function Landing() {
   return (
-    <div data-testid="landing-page">
+    <div data-testid="landing-page" className="bg-white">
       <Navbar />
       <Hero />
-      <Manifesto />
-      <EditorialMarquee />
+      <About />
+      <StatsBand />
       <LiveThreatLandscape />
       <ThreatDashboard />
       <Services />

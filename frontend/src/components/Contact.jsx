@@ -1,70 +1,60 @@
 import { motion } from "framer-motion";
-import { Phone, Mail } from "lucide-react";
+import { Phone, Mail, ArrowRight } from "lucide-react";
 
 export default function Contact() {
   return (
-    <footer id="support" data-testid="support-section" className="relative pt-28 pb-12 border-t border-white/5">
-      <div className="mx-auto max-w-[1400px] px-6">
-        <div className="grid lg:grid-cols-2 gap-16 mb-24">
+    <footer id="support" data-testid="support-section" className="bg-[#0A1220]">
+      <div className="mx-auto max-w-7xl px-6 py-20 lg:py-24">
+        <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-start">
           <div>
-            <div className="font-mono-data text-[11px] uppercase tracking-[0.3em] text-[#F5821F] mb-6">/ Support</div>
-            <h2 className="font-display font-black tracking-tighter text-white text-4xl sm:text-5xl lg:text-6xl leading-[0.92]">
-              Under attack?
-              <br />
-              <span className="text-[#F5821F] text-glow">Talk to us.</span>
+            <div className="text-xs font-bold uppercase tracking-[0.2em] text-[#F5821F] mb-3">Support</div>
+            <h2 className="font-heading text-2xl md:text-3xl font-semibold tracking-tight text-white">
+              Under attack? Talk to us.
             </h2>
-            <p className="text-[#9AA6B8] mt-6 max-w-md text-lg leading-relaxed">
-              Our team is on standby for incident response and consultation. Reach out
-              directly — we answer fast.
+            <p className="mt-4 text-base text-slate-400 leading-relaxed max-w-md">
+              Our team is on standby for incident response and consultation.
+              Reach out directly — we answer fast.
             </p>
           </div>
 
-          <div className="flex flex-col gap-4 justify-center">
+          <div className="grid sm:grid-cols-2 gap-4">
             <motion.a
               href="tel:9059565125"
-              initial={{ opacity: 0, x: 20 }}
-              whileInView={{ opacity: 1, x: 0 }}
+              initial={{ opacity: 0, y: 10 }}
+              whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
+              transition={{ duration: 0.5 }}
               data-testid="support-phone"
-              className="group glass flex items-center gap-5 p-6 hover:border-[#F5821F]/50 transition-colors"
+              className="group rounded-xl border border-slate-700 bg-slate-800/40 hover:border-[#F5821F]/50 p-6 transition-colors"
             >
-              <div className="w-12 h-12 flex items-center justify-center border border-[#F5821F]/30 group-hover:bg-[#F5821F] transition-colors">
-                <Phone className="w-5 h-5 text-[#F5821F] group-hover:text-black transition-colors" />
-              </div>
-              <div>
-                <div className="font-mono-data text-[10px] uppercase tracking-widest text-[#5A6B82]">Mobile</div>
-                <div className="text-white text-xl font-medium">+91 90595 65125</div>
-              </div>
+              <span className="w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center mb-4">
+                <Phone className="w-5 h-5 text-[#F5821F]" strokeWidth={1.8} />
+              </span>
+              <div className="text-xs text-slate-400">Mobile</div>
+              <div className="text-lg font-semibold text-white group-hover:text-[#F5821F] transition-colors">+91 90595 65125</div>
             </motion.a>
 
             <motion.a
               href="mailto:info@nivxmachines.com"
-              initial={{ opacity: 0, x: 20 }}
-              whileInView={{ opacity: 1, x: 0 }}
+              initial={{ opacity: 0, y: 10 }}
+              whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              transition={{ duration: 0.6, delay: 0.1 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
               data-testid="support-email"
-              className="group glass flex items-center gap-5 p-6 hover:border-[#F5821F]/50 transition-colors"
+              className="group rounded-xl border border-slate-700 bg-slate-800/40 hover:border-[#2E7DF5]/50 p-6 transition-colors"
             >
-              <div className="w-12 h-12 flex items-center justify-center border border-[#F5821F]/30 group-hover:bg-[#F5821F] transition-colors">
-                <Mail className="w-5 h-5 text-[#F5821F] group-hover:text-black transition-colors" />
-              </div>
-              <div>
-                <div className="font-mono-data text-[10px] uppercase tracking-widest text-[#5A6B82]">Email</div>
-                <div className="text-white text-xl font-medium">info@nivxmachines.com</div>
-              </div>
+              <span className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center mb-4">
+                <Mail className="w-5 h-5 text-[#2E7DF5]" strokeWidth={1.8} />
+              </span>
+              <div className="text-xs text-slate-400">Email</div>
+              <div className="text-lg font-semibold text-white group-hover:text-[#2E7DF5] transition-colors break-all">info@nivxmachines.com</div>
             </motion.a>
           </div>
         </div>
 
-        <div className="flex flex-col md:flex-row items-center justify-between gap-6 pt-8 border-t border-white/10">
-          <div className="flex items-center gap-2">
-            <img src="/nivx-logo.webp" alt="NivX Machines" className="h-9 w-auto object-contain" />
-          </div>
-          <p className="font-mono-data text-[11px] uppercase tracking-widest text-[#5A6B82]">
-            © {new Date().getFullYear()} NivX Machines · Cybersecurity · AI · Tech
-          </p>
+        <div className="mt-16 pt-8 border-t border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4">
+          <img src="/nivx-logo.webp" alt="NivX Machines" className="h-9 w-auto object-contain rounded-md" />
+          <p className="text-sm text-slate-500">© {new Date().getFullYear()} NivX Machines · Cybersecurity · AI · Tech</p>
         </div>
       </div>
     </footer>

@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import ReactLenis from "lenis/react";
@@ -8,16 +7,11 @@ import Landing from "@/pages/Landing";
 import Admin from "@/pages/Admin";
 
 function App() {
-  useEffect(() => {
-    document.documentElement.classList.add("dark");
-  }, []);
-
   return (
     <AuthProvider>
-      <ReactLenis root options={{ lerp: 0.08, smoothWheel: true }}>
-        <div className="App min-h-screen bg-[#060B14]">
-          <div className="grain-overlay" aria-hidden="true" />
-          <Toaster theme="dark" position="bottom-right" richColors />
+      <ReactLenis root options={{ lerp: 0.09, smoothWheel: true }}>
+        <div className="App min-h-screen bg-white">
+          <Toaster position="bottom-right" richColors />
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<Landing />} />

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Menu, X } from "lucide-react";
+import { Menu, X, Phone } from "lucide-react";
 
 const LINKS = [
   { label: "About", id: "about" },
@@ -16,7 +16,7 @@ export default function Navbar() {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 40);
+    const onScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
@@ -29,30 +29,26 @@ export default function Navbar() {
   return (
     <header
       data-testid="main-navbar"
-      className={`fixed top-0 left-0 right-0 z-50 transition-[background-color,border-color,padding] duration-500 ${
-        scrolled ? "glass py-3 border-b" : "py-5 border-b border-transparent bg-transparent"
+      className={`fixed top-0 left-0 right-0 z-50 transition-shadow duration-300 bg-white/90 backdrop-blur-md border-b border-slate-200 ${
+        scrolled ? "shadow-sm" : ""
       }`}
     >
-      <nav className="mx-auto max-w-[1400px] px-6 flex items-center justify-between">
+      <nav className="mx-auto max-w-7xl px-6 h-16 flex items-center justify-between">
         <button
           data-testid="logo-home"
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-          className="flex items-center group"
+          className="flex items-center"
         >
-          <img
-            src="/nivx-logo.webp"
-            alt="NivX Machines"
-            className="h-9 sm:h-10 w-auto object-contain"
-          />
+          <img src="/nivx-logo.webp" alt="NivX Machines" className="h-9 w-auto object-contain rounded-md" />
         </button>
 
-        <div className="hidden lg:flex items-center gap-9 font-mono-data text-[12px] uppercase tracking-widest">
+        <div className="hidden lg:flex items-center gap-8">
           {LINKS.map((l) => (
             <button
               key={l.id}
               data-testid={`nav-${l.id}`}
               onClick={() => go(l.id)}
-              className="link-underline text-[#9AA6B8] hover:text-white transition-colors duration-300"
+              className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
             >
               {l.label}
             </button>
@@ -63,20 +59,21 @@ export default function Navbar() {
           <Link
             to="/admin"
             data-testid="nav-admin-link"
-            className="hidden sm:inline-flex font-mono-data text-[11px] uppercase tracking-widest text-[#5A6B82] hover:text-[#F5821F] transition-colors"
+            className="hidden sm:inline-flex text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors"
           >
             Admin
           </Link>
           <a
             href="tel:9059565125"
             data-testid="nav-contact-cta"
-            className="hidden sm:inline-flex items-center border border-[#F5821F]/60 text-[#F5821F] px-5 py-2 font-mono-data text-[11px] uppercase tracking-widest hover:bg-[#F5821F] hover:text-black transition-colors duration-300"
+            className="hidden sm:inline-flex items-center gap-2 bg-[#2E7DF5] hover:bg-[#2563EB] text-white text-sm font-semibold px-4 py-2 rounded-md transition-colors"
           >
+            <Phone className="w-4 h-4" strokeWidth={2} />
             Get Secured
           </a>
           <button
             data-testid="mobile-menu-toggle"
-            className="lg:hidden text-white"
+            className="lg:hidden text-slate-700"
             onClick={() => setOpen((o) => !o)}
           >
             {open ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -85,13 +82,9 @@ export default function Navbar() {
       </nav>
 
       {open && (
-        <div className="lg:hidden glass border-t mt-3 px-6 py-6 flex flex-col gap-5" data-testid="mobile-menu">
+        <div className="lg:hidden bg-white border-t border-slate-200 px-6 py-5 flex flex-col gap-4" data-testid="mobile-menu">
           {LINKS.map((l) => (
-            <button
-              key={l.id}
-              onClick={() => go(l.id)}
-              className="text-left font-mono-data text-sm uppercase tracking-widest text-[#9AA6B8]"
-            >
+            <button key={l.id} onClick={() => go(l.id)} className="text-left text-sm font-medium text-slate-700">
               {l.label}
             </button>
           ))}
