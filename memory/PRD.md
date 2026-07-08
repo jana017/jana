@@ -62,6 +62,15 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - Bulk Summary column for domains now includes geo + ports + scans (iocUtils.iocSummary).
 - Keys added to backend/.env: URLSCAN_API_KEY (VIRUSTOTAL_API_KEY, ABUSEIPDB_API_KEY already present).
 - Tests: iteration_13 (domain/url enrichment + IP/hash regression) and iteration_14 (screenshot preview + graceful absence + bulk summary) both fully passed, zero console errors.
+
+## Latest (2026-07-08, session 7)
+- CURATED IOC DATABASE (new): Mongo collection `iocs` (fields: value, key[canonical], type[auto], threat_name, tags, severity, source, notes, created_at). Admin-only manage, public view/search.
+  - Backend: POST /api/iocs (single), POST /api/iocs/bulk (paste), POST /api/iocs/upload (CSV/TXT/XLSX via openpyxl), GET /api/iocs (search/filter q/type/severity/tag), GET /api/iocs/stats, DELETE /api/iocs/bulk (multi), DELETE /api/iocs/{id}. Upsert by canonical key (_ioc_key defang+lowercase). All writes require admin JWT.
+  - Analyzer integration: _do_lookup adds result.local_db when the analyzed IOC exists; frontend shows severity-colored 'Known IOC — in your database' banner (KnownIocBanner.jsx) in single view + a 'Known · <severity>' chip in bulk rows.
+  - Frontend: IocDatabase.jsx on Threat Intelligence page — stats chips, search + type/severity filters, table; admin-only upload panel (single / bulk paste / CSV-Excel file) + multi-select bulk delete + row delete. Admin gating via useAuth().
+  - Tests: iteration_15 passed (guest gating, admin CRUD, upload, bulk/single delete, analyzer banner). Minor: success toast (ioc-db-msg) sometimes auto-clears fast — cosmetic only, operations succeed.
+- Key rotation: VIRUSTOTAL_API_KEY and URLSCAN_API_KEY updated to new values in backend/.env (verified working: EICAR 62/66, urlscan previews OK). ioc_cache cleared on rotation.
+- Dependency added: openpyxl (Excel parsing) — in requirements.txt.
 - Threat Intelligence: type facets + date-range + pagination over ~395 Unit42 reports; in-app report reader (notes/refs/IOC table + copy-all).
 - OSINT section: 5 tool quick-links + SMART IOC ANALYZER (/api/ioc-lookup): classifies hash/IP/domain/URL, live no-key enrichment (Shodan InternetDB + ip-api for IPs, urlscan search for domains/URLs), prefilled deep-links (VT/AbuseIPDB/Talos/urlscan/X-Force).
 - Admin: Leads tab with status workflow (new/contacted/qualified/archived) + CSV export.
