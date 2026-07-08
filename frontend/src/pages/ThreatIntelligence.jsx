@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import Navbar from "@/components/Navbar";
 import Contact from "@/components/Contact";
-import { FileText, ExternalLink, ShieldAlert, BookOpen, ArrowRight } from "lucide-react";
+import IntelReader from "@/components/IntelReader";
+import { FileText, ExternalLink, ShieldAlert, BookOpen, ArrowRight, Search } from "lucide-react";
 
 const CYBERDEFENDERS = [
   { title: "Blue Team Labs & Threat Investigations", desc: "Hands-on DFIR writeups, malware analysis walkthroughs and detection engineering from the CyberDefenders community.", tag: "DFIR", url: "https://cyberdefenders.org/blog/" },
@@ -14,6 +15,8 @@ const CYBERDEFENDERS = [
 export default function ThreatIntelligence() {
   const [intel, setIntel] = useState(null);
   const [err, setErr] = useState(false);
+  const [query, setQuery] = useState("");
+  const [activeName, setActiveName] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -21,6 +24,13 @@ export default function ThreatIntelligence() {
     window.scrollTo({ top: 0 });
     return () => { active = false; };
   }, []);
+
+  const filtered = useMemo(() => {
+    const items = intel?.items || [];
+    const q = query.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((it) => `${it.title} ${it.summary} ${it.date}`.toLowerCase().includes(q));
+  }, [intel, query]);
 
   return (
     <div data-testid="threat-intelligence-page" className="bg-white">
@@ -60,22 +70,35 @@ export default function ThreatIntelligence() {
             )}
           </div>
 
+          <div className="relative max-w-md mb-8">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              data-testid="intel-search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search reports by keyword, malware, date…"
+              className="w-full bg-white border border-slate-300 focus:border-[#2E7DF5] focus:ring-2 focus:ring-blue-100 outline-none pl-10 pr-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 rounded-md transition-shadow"
+            />
+          </div>
+
           {err && <div className="text-sm text-red-500">Intel feed temporarily unavailable.</div>}
           {!intel && !err && <div className="text-sm text-slate-400">Loading Unit42 intelligence…</div>}
+          {intel && filtered.length === 0 && (
+            <div data-testid="intel-no-results" className="text-sm text-slate-500">No reports match “{query}”.</div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {intel?.items?.map((it, i) => (
-              <motion.a
-                key={it.title + i}
-                href={it.url}
-                target="_blank"
-                rel="noopener noreferrer"
+            {filtered.map((it, i) => (
+              <motion.button
+                key={it.name + i}
+                type="button"
+                onClick={() => setActiveName(it.name)}
                 initial={{ opacity: 0, y: 14 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.45, delay: (i % 3) * 0.07 }}
                 data-testid={`intel-card-${i}`}
-                className="group flex flex-col rounded-xl border border-slate-200 bg-white shadow-sm hover:shadow-md hover:-translate-y-1 transition-[transform,box-shadow] overflow-hidden"
+                className="group text-left flex flex-col rounded-xl border border-slate-200 bg-white shadow-sm hover:shadow-md hover:-translate-y-1 transition-[transform,box-shadow] overflow-hidden"
               >
                 <div className="relative h-40 overflow-hidden">
                   <img src={it.image} alt={it.title} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
@@ -90,10 +113,10 @@ export default function ThreatIntelligence() {
                   <p className="text-sm text-slate-600 leading-relaxed line-clamp-3 flex-1">{it.summary}</p>
                   <div className="mt-4 flex items-center justify-between">
                     <span className="text-xs font-semibold text-slate-500">{it.ioc_count} IOCs</span>
-                    <span className="inline-flex items-center gap-1 text-sm font-semibold text-[#2E7DF5]">Read <ExternalLink className="w-3.5 h-3.5" /></span>
+                    <span className="inline-flex items-center gap-1 text-sm font-semibold text-[#2E7DF5]">Read report <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" /></span>
                   </div>
                 </div>
-              </motion.a>
+              </motion.button>
             ))}
           </div>
         </div>
@@ -137,6 +160,7 @@ export default function ThreatIntelligence() {
       </section>
 
       <Contact />
+      <IntelReader name={activeName} onClose={() => setActiveName(null)} />
     </div>
   );
 }

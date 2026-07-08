@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, ConfigDict, BeforeValidator, EmailStr
 from typing import List, Optional, Annotated, Any
 import uuid
 import asyncio
+import re
 from datetime import datetime, timezone, timedelta
 import bcrypt
 import jwt
@@ -359,7 +360,7 @@ def _parse_unit42(name: str, text: str) -> dict:
     title = name[11:-4].replace("-", " ")
     lines = text.splitlines()
     section = None
-    notes, refs, indicators = [], [], []
+    notes, refs, indicators, authors = [], [], [], []
     for ln in lines:
         s = ln.strip()
         up = s.upper()
@@ -381,20 +382,55 @@ def _parse_unit42(name: str, text: str) -> dict:
             notes.append(s.lstrip("- ").strip())
         elif section == "refs" and ("http" in s):
             refs.append(s.lstrip("- ").strip())
+        elif section == "author" and s.startswith("-"):
+            authors.append(s.lstrip("- ").strip())
         elif section == "ind":
             indicators.append(s)
     summary = " ".join(notes[:2])[:320] if notes else title
-    ioc_count = sum(1 for i in indicators if "[.]" in i or "[:]" in i)
+    ioc_lines = [i for i in indicators if "[.]" in i or "[:]" in i or "sha256" in i.lower() or "md5" in i.lower()]
     return {
+        "name": name,
         "title": title,
         "date": date,
+        "authors": authors,
         "summary": summary,
+        "notes": notes,
+        "references": refs,
+        "indicators": ioc_lines,
         "reference": refs[0] if refs else f"https://github.com/{UNIT42_REPO}/blob/main/{name}",
         "url": f"https://github.com/{UNIT42_REPO}/blob/main/{name}",
-        "ioc_count": ioc_count,
+        "ioc_count": len(ioc_lines),
         "image": _pick_intel_image(title),
         "source": "Palo Alto Unit42",
     }
+
+
+def _intel_card(full: dict) -> dict:
+    """Lightweight card view (drops heavy indicator/notes lists)."""
+    return {
+        "name": full["name"], "title": full["title"], "date": full["date"],
+        "summary": full["summary"], "reference": full["reference"], "url": full["url"],
+        "ioc_count": full["ioc_count"], "image": full["image"], "source": full["source"],
+    }
+
+
+@api_router.get("/intel-report/{name}")
+async def intel_report(name: str):
+    """Full parsed Unit42 report for the in-app reader."""
+    if not re.match(r"^[0-9A-Za-z._-]+\.txt$", name):
+        raise HTTPException(status_code=400, detail="Invalid report name")
+    try:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as hc:
+            resp = await hc.get(f"https://raw.githubusercontent.com/{UNIT42_REPO}/main/{name}")
+            resp.raise_for_status()
+            full = _parse_unit42(name, resp.text)
+        full["indicators"] = full["indicators"][:500]
+        return full
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Intel report error for {name}: {e}")
+        raise HTTPException(status_code=502, detail="Unable to load report")
 
 
 @api_router.get("/intel-feed")
@@ -415,9 +451,9 @@ async def intel_feed():
                 try:
                     resp = await hc.get(f["download_url"])
                     resp.raise_for_status()
-                    return _parse_unit42(f["name"], resp.text)
+                    return _intel_card(_parse_unit42(f["name"], resp.text))
                 except Exception:
-                    return _parse_unit42(f["name"], "")
+                    return _intel_card(_parse_unit42(f["name"], ""))
 
             items = await asyncio.gather(*[fetch(f) for f in top])
         result = {

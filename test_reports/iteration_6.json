@@ -1,0 +1,22 @@
+{
+  "summary": "Iteration 6: verified new Threat Intelligence search/filter + in-app IntelReader dialog + Admin Leads tab + responsiveness. Backend: 16/16 pytest cases pass (added test_intel_report_valid, test_intel_report_invalid_name, and asserted intel-feed item 'name' field). Frontend: intel-search filters intel-card-N live; nonsense query shows intel-no-results; clicking intel-card-0 opens intel-reader-dialog which loads notes/references/IOCs from GET /api/intel-report/{name}, ioc-copy-all and 'View original on GitHub' link present. Admin login with admin@nivxmachines.com works; tab-reports and tab-leads toggle correctly; leads-view lists submitted leads (verified end-to-end: submitted via public lead-form then appeared as lead-row-N in admin). Responsiveness at 390x844 for '/' and '/threat-intelligence' shows no horizontal overflow (scrollWidth==clientWidth==390); mobile-menu-toggle visible and opens mobile-menu. Regression: landing sections and admin threat CRUD unchanged.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_nivx_backend.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "IntelReader dialog is accessible (has DialogTitle + sr-only DialogDescription). Console radix warnings observed earlier were for other dialogs — confirm all other Dialog usages (Admin AlertDialog etc.) include DialogTitle/Description to silence a11y warnings."
+  ],
+  "updated_files": ["/app/backend/tests/test_nivx_backend.py"],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "100%"},
+  "test_credentials": "admin@nivxmachines.com / NivX@Admin2025",
+  "seed_data_creation": "Created a TEST_ lead via /api/leads during E2E and cleaned it up post-verification (2 test lead docs deleted from Mongo).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All new endpoints and UI additions for the Threat Intelligence search + in-app reader + Admin Leads tab are working. Backend intel-report validates ^[0-9A-Za-z._-]+\\.txt$ regex and rejects traversal. intel-feed cards include a 'name' field. Frontend testids: intel-search, intel-no-results, intel-reader-dialog, ioc-copy-all, tab-reports, tab-leads, leads-view, lead-row-N. Responsiveness verified at 390x844 mobile and hamburger menu works. Total pytest tests = 16, all pass.",
+  "rca of the issue": "N/A"
+}

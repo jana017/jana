@@ -191,8 +191,9 @@ def test_intel_feed(s):
     assert d["count"] == len(d["items"])
     assert len(d["items"]) >= 1
     it = d["items"][0]
-    for k in ["title", "date", "summary", "url", "ioc_count", "image", "source"]:
+    for k in ["title", "date", "summary", "url", "ioc_count", "image", "source", "name"]:
         assert k in it
+    assert it["name"].endswith(".txt")
     assert it["source"] == "Palo Alto Unit42"
     assert it["url"].startswith("https://github.com/")
     assert isinstance(it["ioc_count"], int)
@@ -226,3 +227,27 @@ def test_lead_create_public_and_list(s, auth_headers):
     assert r2.status_code == 200
     leads = r2.json()
     assert any(l["id"] == lead["id"] for l in leads)
+
+
+# ------- intel-report (Unit42 full reader) -------
+def test_intel_report_invalid_name(s):
+    r = s.get(f"{API}/intel-report/../etc", timeout=15)
+    assert r.status_code in (400, 404)
+
+def test_intel_report_valid(s):
+    feed = s.get(f"{API}/intel-feed", timeout=45)
+    if feed.status_code == 502:
+        pytest.skip("Unit42 upstream unavailable")
+    items = feed.json().get("items", [])
+    assert items, "no intel items"
+    name = items[0]["name"]
+    r = s.get(f"{API}/intel-report/{name}", timeout=30)
+    if r.status_code == 502:
+        pytest.skip("intel-report upstream unavailable")
+    assert r.status_code == 200, r.text
+    d = r.json()
+    for k in ["title", "date", "authors", "notes", "references", "indicators", "ioc_count", "url"]:
+        assert k in d
+    assert isinstance(d["notes"], list)
+    assert isinstance(d["references"], list)
+    assert isinstance(d["indicators"], list)

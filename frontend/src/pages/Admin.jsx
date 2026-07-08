@@ -93,11 +93,16 @@ function Dashboard() {
   const [form, setForm] = useState(EMPTY);
   const [editId, setEditId] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
+  const [view, setView] = useState("reports");
+  const [leads, setLeads] = useState([]);
 
   const load = useCallback(() => {
     api.get("/threats").then(({ data }) => setReports(data)).catch(() => {});
   }, []);
-  useEffect(() => { load(); }, [load]);
+  const loadLeads = useCallback(() => {
+    api.get("/leads").then(({ data }) => setLeads(data)).catch(() => {});
+  }, []);
+  useEffect(() => { load(); loadLeads(); }, [load, loadLeads]);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const reset = () => { setForm(EMPTY); setEditId(null); };
@@ -148,6 +153,26 @@ function Dashboard() {
         </div>
       </header>
 
+      <div className="bg-white border-b border-slate-200">
+        <div className="mx-auto max-w-7xl px-6 flex gap-1">
+          <button
+            data-testid="tab-reports"
+            onClick={() => setView("reports")}
+            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${view === "reports" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+          >
+            Threat Reports <span className="text-xs font-normal">({reports.length})</span>
+          </button>
+          <button
+            data-testid="tab-leads"
+            onClick={() => setView("leads")}
+            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${view === "leads" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+          >
+            Leads <span className="text-xs font-normal">({leads.length})</span>
+          </button>
+        </div>
+      </div>
+
+      {view === "reports" ? (
       <main className="mx-auto max-w-7xl px-6 py-10 grid lg:grid-cols-[400px_1fr] gap-8">
         <form onSubmit={submit} data-testid="threat-form" className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-3.5 lg:sticky lg:top-24 self-start">
           <h2 className="font-heading text-lg font-semibold text-slate-900">{editId ? "Edit threat report" : "New threat report"}</h2>
@@ -197,6 +222,51 @@ function Dashboard() {
           </div>
         </div>
       </main>
+      ) : (
+      <main className="mx-auto max-w-7xl px-6 py-10" data-testid="leads-view">
+        <h2 className="font-heading text-lg font-semibold text-slate-900 mb-4">
+          Security assessment requests <span className="text-sm text-slate-400 font-normal">({leads.length})</span>
+        </h2>
+        {leads.length === 0 ? (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-10 text-center text-sm text-slate-500">
+            No leads yet. Submissions from the “Request a Security Assessment” form appear here.
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <th className="px-4 py-3">Name</th>
+                    <th className="px-4 py-3">Contact</th>
+                    <th className="px-4 py-3">Company</th>
+                    <th className="px-4 py-3">Interest</th>
+                    <th className="px-4 py-3">Received</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {leads.map((l, i) => (
+                    <tr key={l.id} data-testid={`lead-row-${i}`} className="hover:bg-slate-50 align-top">
+                      <td className="px-4 py-3">
+                        <div className="font-semibold text-slate-900">{l.name}</div>
+                        {l.company_size && <div className="text-xs text-slate-400">{l.company_size} employees</div>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <a href={`mailto:${l.email}`} className="text-[#2E7DF5] hover:underline block">{l.email}</a>
+                        {l.phone && <div className="text-xs text-slate-500">{l.phone}</div>}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">{l.company || "—"}</td>
+                      <td className="px-4 py-3 text-slate-700">{l.interest || "—"}</td>
+                      <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{new Date(l.created_at).toLocaleDateString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </main>
+      )}
 
       <AlertDialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
         <AlertDialogContent data-testid="delete-dialog">

@@ -107,11 +107,11 @@ export default function Hero() {
         >
           <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-xl">
             <img
-              src="https://images.pexels.com/photos/5483240/pexels-photo-5483240.jpeg"
-              alt="NivX cyber security operations"
+              src="https://images.unsplash.com/photo-1573164713988-8665fc963095?w=1200&q=80"
+              alt="NivX cyber security operations center"
               className="w-full h-[420px] object-cover"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#0A1220]/60 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#0A1220]/50 to-transparent" />
           </div>
           <div className="absolute -bottom-5 -left-5 bg-white rounded-xl border border-slate-200 shadow-lg p-4 hidden sm:block">
             <div className="flex items-center gap-3">
