@@ -82,7 +82,7 @@ const BLOG_POSTS = [
     category: "Case Study",
     excerpt: "A field guide for Tier 1 and Tier 2 SOC analysts covering removable media triage, evidence collection, insider risk signals, and malware detection.",
     date: "May 3, 2026",
-    image: "https://images.unsplash.com/photo-1614064548237-096d0f6db4e7?auto=format&fit=crop&w=1600&q=80",
+    image: "https://images.unsplash.com/photo-1615247001958-f4bc92fa6a4a?auto=format&fit=crop&w=1600&q=80",
     href: "https://cyberdefenders.org/blog/soc-training-usb-device-alert-investigation/",
   },
   {

@@ -34,6 +34,7 @@ export default function Navbar() {
   };
 
   const isIntel = location.pathname === "/threat-intelligence";
+  const isKb = location.pathname.startsWith("/cybersecurity-101");
 
   return (
     <header
@@ -51,6 +52,13 @@ export default function Navbar() {
               {l.label}
             </button>
           ))}
+          <Link
+            to="/cybersecurity-101"
+            data-testid="nav-cyber-101"
+            className={`text-sm font-medium transition-colors ${isKb ? "text-[#2E7DF5]" : "text-slate-600 hover:text-slate-900"}`}
+          >
+            Cyber 101
+          </Link>
           <Link
             to="/threat-intelligence"
             data-testid="nav-threat-intelligence"
