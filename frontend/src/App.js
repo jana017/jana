@@ -6,6 +6,7 @@ import { AuthProvider } from "@/context/AuthContext";
 import Landing from "@/pages/Landing";
 import Admin from "@/pages/Admin";
 import ThreatIntelligence from "@/pages/ThreatIntelligence";
+import ScrollToTop from "@/components/ScrollToTop";
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
       <ReactLenis root options={{ lerp: 0.09, smoothWheel: true }}>
         <div className="App min-h-screen bg-white">
           <Toaster position="bottom-right" richColors />
+          <ScrollToTop />
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<Landing />} />

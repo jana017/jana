@@ -297,9 +297,112 @@ async def update_lead_status(lead_id: str, payload: LeadStatusUpdate, user: dict
 _feed_cache: dict[str, Any] = {"ts": None, "data": None}
 
 
+# ---------------------------------------------------------------------------
+# Smart IOC lookup / enrichment (key-free sources + prefilled deep links)
+# ---------------------------------------------------------------------------
+def _classify_ioc(value: str) -> str:
+    v = value.strip()
+    if re.fullmatch(r"[a-fA-F0-9]{64}", v):
+        return "sha256"
+    if re.fullmatch(r"[a-fA-F0-9]{40}", v):
+        return "sha1"
+    if re.fullmatch(r"[a-fA-F0-9]{32}", v):
+        return "md5"
+    if re.fullmatch(r"(\d{1,3}\.){3}\d{1,3}", v):
+        return "ip"
+    if v.lower().startswith(("http://", "https://")):
+        return "url"
+    if re.fullmatch(r"([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}", v.replace("[.]", ".")):
+        return "domain"
+    return "unknown"
+
+
+def _ioc_links(value: str, kind: str) -> dict:
+    v = value.strip().replace("[.]", ".")
+    from urllib.parse import quote
+    q = quote(v, safe="")
+    links = {}
+    if kind in ("md5", "sha1", "sha256"):
+        links["VirusTotal"] = f"https://www.virustotal.com/gui/file/{v}"
+        links["IBM X-Force"] = f"https://exchange.xforce.ibmcloud.com/malware/{v}"
+    elif kind == "ip":
+        links["VirusTotal"] = f"https://www.virustotal.com/gui/ip-address/{v}"
+        links["AbuseIPDB"] = f"https://www.abuseipdb.com/check/{v}"
+        links["Cisco Talos"] = f"https://talosintelligence.com/reputation_center/lookup?search={v}"
+        links["IBM X-Force"] = f"https://exchange.xforce.ibmcloud.com/ip/{v}"
+    elif kind == "domain":
+        links["VirusTotal"] = f"https://www.virustotal.com/gui/domain/{v}"
+        links["urlscan.io"] = f"https://urlscan.io/search/#{q}"
+        links["Cisco Talos"] = f"https://talosintelligence.com/reputation_center/lookup?search={v}"
+        links["IBM X-Force"] = f"https://exchange.xforce.ibmcloud.com/url/{v}"
+    elif kind == "url":
+        links["VirusTotal"] = f"https://www.virustotal.com/gui/search/{q}"
+        links["urlscan.io"] = f"https://urlscan.io/search/#{q}"
+        links["IBM X-Force"] = f"https://exchange.xforce.ibmcloud.com/url/{q}"
+    return links
+
+
+@api_router.get("/ioc-lookup")
+async def ioc_lookup(value: str):
+    value = (value or "").strip()
+    if not value or len(value) > 2048:
+        raise HTTPException(status_code=400, detail="Provide a valid IOC (hash, IP, domain or URL)")
+    kind = _classify_ioc(value)
+    if kind == "unknown":
+        raise HTTPException(status_code=422, detail="Could not recognize this as a hash, IP, domain or URL")
+
+    normalized = value.replace("[.]", ".")
+    result = {"value": value, "type": kind, "links": _ioc_links(value, kind), "enrichment": None}
+
+    try:
+        async with httpx.AsyncClient(timeout=12, follow_redirects=True) as hc:
+            if kind == "ip":
+                async def shodan():
+                    try:
+                        r = await hc.get(f"https://internetdb.shodan.io/{normalized}")
+                        return r.json() if r.status_code == 200 else {}
+                    except Exception:
+                        return {}
+
+                async def geo():
+                    try:
+                        r = await hc.get(f"http://ip-api.com/json/{normalized}?fields=status,country,city,isp,org,as,query")
+                        j = r.json()
+                        return j if j.get("status") == "success" else {}
+                    except Exception:
+                        return {}
+
+                sh, gj = await asyncio.gather(shodan(), geo())
+                result["enrichment"] = {
+                    "kind": "ip",
+                    "geo": {"country": gj.get("country"), "city": gj.get("city"), "isp": gj.get("isp"), "org": gj.get("org"), "asn": gj.get("as")} if gj else None,
+                    "open_ports": sh.get("ports", []),
+                    "hostnames": sh.get("hostnames", []),
+                    "tags": sh.get("tags", []),
+                    "vulns": sh.get("vulns", []),
+                    "sources": ["Shodan InternetDB", "ip-api.com"],
+                }
+            elif kind in ("domain", "url"):
+                from urllib.parse import urlparse
+                host = urlparse(normalized).netloc if kind == "url" else normalized
+                query = f"page.domain:{host}" if host else f"page.url:{normalized}"
+                try:
+                    r = await hc.get(f"https://urlscan.io/api/v1/search/?q={query}&size=5")
+                    j = r.json()
+                    recent = [{"url": x["task"]["url"], "date": x["task"].get("time"), "score": x.get("verdicts", {}).get("overall", {}).get("score")} for x in j.get("results", [])[:5]]
+                    result["enrichment"] = {"kind": "web", "scan_count": j.get("total", 0), "recent_scans": recent, "sources": ["urlscan.io"]}
+                except Exception:
+                    result["enrichment"] = {"kind": "web", "scan_count": 0, "recent_scans": [], "sources": ["urlscan.io"]}
+            else:
+                result["enrichment"] = {"kind": "hash", "note": "No key-free reputation source for hashes — use the deep links below for full analysis.", "sources": []}
+    except Exception as e:
+        logger.error(f"IOC lookup error: {e}")
+
+    return result
+
+
 @api_router.get("/live-feed")
 async def live_feed():
-    """Real-time threat landscape from CISA KEV public feed (cached 30 min)."""
     now = datetime.now(timezone.utc)
     if _feed_cache["data"] and _feed_cache["ts"] and (now - _feed_cache["ts"]) < timedelta(minutes=30):
         return _feed_cache["data"]

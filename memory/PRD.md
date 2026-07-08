@@ -31,7 +31,15 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - Admin: admin@nivxmachines.com / NivX@Admin2025 (see /app/memory/test_credentials.md)
 
 ## Backlog / Next
-- P1: Lead-capture form on Support ("Request a Security Assessment") saving to DB.
-- P2: MITRE technique-level tags (T-codes) under tactics; kill-chain node diagram.
-- P2: shadcn AlertDialog for delete confirmation instead of native confirm.
-- P2: Replace remaining logo navy-chip with transparent logo variant if provided.
+- P2: Smart OSINT — DONE (IOC analyzer: auto-detect + inline enrichment + prefilled deep-links).
+- P2: Persist rate-limit in Redis/Mongo if scaling to multiple replicas (currently in-memory per worker).
+- P2: Lead management enhancements — notes/assignee, filter by status.
+- P2: Unit42 reader — search within very large IOC tables.
+
+## Latest (2026-07-08, session 2)
+- Threat Intelligence: type facets + date-range + pagination over ~395 Unit42 reports; in-app report reader (notes/refs/IOC table + copy-all).
+- OSINT section: 5 tool quick-links + SMART IOC ANALYZER (/api/ioc-lookup): classifies hash/IP/domain/URL, live no-key enrichment (Shodan InternetDB + ip-api for IPs, urlscan search for domains/URLs), prefilled deep-links (VT/AbuseIPDB/Talos/urlscan/X-Force).
+- Admin: Leads tab with status workflow (new/contacted/qualified/archived) + CSV export.
+- Anti-spam on lead form (honeypot + IP rate limit 3/10min).
+- Global scroll-to-top button (Lenis-aware, positioned to clear Emergent badge).
+- Responsive verified (mobile 390 / tablet 820, no overflow). Tests: backend 24+7/… all pass; frontend 100%.

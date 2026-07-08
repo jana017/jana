@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import Navbar from "@/components/Navbar";
 import Contact from "@/components/Contact";
 import IntelReader from "@/components/IntelReader";
+import IocAnalyzer from "@/components/IocAnalyzer";
 import { FileText, ExternalLink, ShieldAlert, BookOpen, ArrowRight, Search, Globe } from "lucide-react";
 
 const OSINT_TOOLS = [
@@ -114,6 +115,8 @@ export default function ThreatIntelligence() {
               Jump straight to the industry's leading OSINT platforms to enrich and validate IOCs — hashes, URLs, IPs and domains.
             </p>
           </div>
+
+          <IocAnalyzer />
 
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
             {OSINT_TOOLS.map((t, i) => (
