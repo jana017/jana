@@ -107,8 +107,8 @@ export default function Hero() {
         >
           <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-xl">
             <img
-              src="https://images.unsplash.com/photo-1573164713988-8665fc963095?w=1200&q=80"
-              alt="NivX cyber security operations center"
+              src="https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1200&q=80"
+              alt="Global real-time threat network"
               className="w-full h-[420px] object-cover"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-[#0A1220]/50 to-transparent" />
