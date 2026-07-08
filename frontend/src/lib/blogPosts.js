@@ -296,7 +296,7 @@ export const BLOG_POSTS = [
     excerpt: "A field guide for Tier 1 and Tier 2 SOC analysts covering removable media triage, evidence collection, insider risk signals, and malware detection.",
     date: "May 3, 2026",
     read_mins: 7,
-    image: IMG("1615247001958-f4bc92fa6a4a"),
+    image: IMG("1584646963233-465b08d0e45f"),
     sections: [
       { heading: "The scenario", body: [
         "Tuesday, 2:14 AM. An EDR alert fires: 'Unknown USB mass storage device connected to workstation HR-DESK-047 outside business hours. Files copied: 1,247. Total size: 4.2 GB.' The user account is a legitimate HR analyst. What do you do first?",
