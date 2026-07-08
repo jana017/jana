@@ -11,7 +11,7 @@ export const KB_ARTICLES = [
     read_mins: 9,
     updated: "2026",
     cover_tone: "from-red-500 to-orange-500",
-    cover: "https://images.unsplash.com/photo-1614064641938-3bbee52942c7?auto=format&fit=crop&w=1600&q=80",
+    cover: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=1600&q=80",
     summary:
       "Malware analysis is the process of understanding the behaviour and purpose of a suspicious file or URL. The output aids in detection, triage, and mitigation of the potential threat — enriching incident response, threat hunting and SOC operations.",
     sections: [
@@ -96,7 +96,7 @@ export const KB_ARTICLES = [
     read_mins: 10,
     updated: "2026",
     cover_tone: "from-red-600 to-rose-700",
-    cover: "https://images.unsplash.com/photo-1618044733300-9472054094ee?auto=format&fit=crop&w=1600&q=80",
+    cover: "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=1600&q=80",
     summary:
       "An Advanced Persistent Threat is a stealthy, well-resourced adversary that maintains long-term access to a target network to steal data, disrupt operations or preposition for future action. Understanding the APT lifecycle is core to detecting the invisible attacker.",
     sections: [
@@ -171,7 +171,7 @@ export const KB_ARTICLES = [
     read_mins: 8,
     updated: "2026",
     cover_tone: "from-blue-500 to-indigo-600",
-    cover: "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1600&q=80",
+    cover: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=1600&q=80",
     summary:
       "Incident Response (IR) is the organised approach to preparing for, detecting, containing and recovering from a cyber incident. A mature IR programme reduces dwell time, limits business impact and turns every incident into an opportunity to improve.",
     sections: [
@@ -242,7 +242,7 @@ export const KB_ARTICLES = [
     read_mins: 8,
     updated: "2026",
     cover_tone: "from-purple-500 to-indigo-600",
-    cover: "https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&w=1600&q=80",
+    cover: "https://images.unsplash.com/photo-1520869562399-e772f042f422?auto=format&fit=crop&w=1600&q=80",
     summary:
       "A Man-in-the-Middle attack places the adversary invisibly between two communicating parties, allowing them to intercept, read and often alter the exchange. MITM sits at the intersection of network, cryptography and identity — and defeating it requires all three.",
     sections: [
@@ -304,6 +304,153 @@ export const KB_ARTICLES = [
           { t: "Detect at the edge", d: "Rogue AP detection and certificate anomaly telemetry are cheap wins that catch a broad class of MITM." },
         ],
       },
+    ],
+  },
+
+  {
+    slug: "sql-injection-attack-analysis",
+    title: "SQL Injection Attack Analysis",
+    tagline: "One of the oldest web vulnerabilities and still one of the most dangerous — how SQLi works, how to detect it, and how to stop it.",
+    category: "AppSec",
+    read_mins: 8,
+    updated: "2026",
+    cover_tone: "from-blue-500 to-indigo-600",
+    cover: "https://images.unsplash.com/photo-1555949963-ff9fe0c870eb?auto=format&fit=crop&w=1600&q=80",
+    summary:
+      "SQL Injection occurs when an application concatenates user-controlled input into a SQL query without proper parameterisation, allowing an attacker to change the intent of the query. Two decades after it first appeared in the OWASP Top 10, SQLi remains a leading root cause of data breaches.",
+    sections: [
+      { heading: "What is SQL Injection?", body: [
+        "A web application takes user input, builds a SQL query from it, and executes it against a database. SQL Injection happens when the application fails to distinguish data from code — the attacker's input is interpreted as part of the query syntax, changing what the query does.",
+        "Impact spans data theft, authentication bypass, data destruction, remote code execution (via UDFs or xp_cmdshell on some databases) and, in the worst cases, complete server takeover.",
+      ]},
+      { heading: "The main variants", list: [
+        { t: "In-band (classic)", d: "Attacker sees the query's output directly — via error messages or a UNION-based technique that appends attacker-controlled rows to the legitimate result set." },
+        { t: "Blind (Boolean-based)", d: "The application returns different responses for true vs false conditions. Attacker infers data one bit at a time by asking yes/no questions." },
+        { t: "Blind (Time-based)", d: "No visible difference in response — but the attacker can force the DB to sleep (WAITFOR DELAY, BENCHMARK, pg_sleep) when a condition is true. Slow but reliable." },
+        { t: "Out-of-band", d: "The database exfiltrates data via a side channel — DNS lookup, HTTP request, SMB — when the primary channel is unavailable." },
+        { t: "Second-order", d: "Attacker input is stored safely first, then later concatenated unsafely into a different query. The injection fires without matching the initial input pattern." },
+      ]},
+      { heading: "A classic anatomy", body: [
+        "A login form runs: SELECT * FROM users WHERE username='$user' AND password='$pass'",
+        "Attacker sends username = admin' -- and any password. The resulting query becomes: SELECT * FROM users WHERE username='admin' -- ' AND password='...'. The comment marker (--) neutralises the password check. Auth bypass in one line.",
+        "The same weakness in a search field enables UNION SELECT to append rows from other tables (users, credentials, session tokens) into the visible result.",
+      ]},
+      { heading: "Detection in the SOC", list: [
+        { t: "WAF alerts on SQL keywords", d: "UNION, SELECT, WAITFOR, BENCHMARK, SLEEP, xp_cmdshell in request parameters. Tune to avoid FPs from legitimate CMSes." },
+        { t: "Response-length anomalies", d: "Union-based SQLi often produces responses much larger than baseline — instrument content-length delta detection." },
+        { t: "Response-time anomalies", d: "Time-based SQLi produces predictable latency spikes on hits. Baseline endpoint latency and alert on outliers." },
+        { t: "DB audit logs", d: "Direct DB audit logging on the backend catches successful attacks even when the WAF was bypassed. Enable for high-value databases." },
+        { t: "Error-message leakage", d: "Verbose DB errors (ORA-, ERROR:, MySQL, PDOException) in HTTP responses are strong indicators of both vulnerability and exploitation." },
+      ]},
+      { heading: "Defensive patterns", list: [
+        { t: "Parameterised queries / prepared statements", d: "The only defence that actually works. Every mainstream DB driver supports them. Concatenating SQL is an anti-pattern in 2026." },
+        { t: "ORM with safe defaults", d: "Modern ORMs (Django ORM, SQLAlchemy, Prisma, Entity Framework) parameterise by default — but escape hatches like raw() bypass the safety. Review those." },
+        { t: "Least-privilege DB accounts", d: "Web app accounts should have SELECT/INSERT on their own tables — never DROP, never sysadmin. Limits blast radius when SQLi succeeds." },
+        { t: "WAF as defence-in-depth (not primary)", d: "Signature-based WAFs are bypassed by encoding tricks. Use them as a speed bump, never as the primary defence." },
+        { t: "Input validation with allow-lists", d: "For inputs with a known format (email, UUID, integer), validate strictly. Reject everything else." },
+      ]},
+      { heading: "Key takeaways", list: [
+        { t: "It's still on the OWASP Top 10", d: "For a reason — SQLi remains one of the most common breach root causes 25+ years after discovery." },
+        { t: "Parameterisation is the fix", d: "Not sanitisation. Not escaping. Parameterisation." },
+        { t: "Detect at multiple layers", d: "WAF, application logs and DB audit logs together tell the complete story." },
+      ]},
+    ],
+  },
+
+  {
+    slug: "powershell-fileless-malware-analysis",
+    title: "PowerShell & Fileless Malware Analysis",
+    tagline: "Modern malware increasingly avoids the disk. Understanding PowerShell abuse and in-memory execution is the difference between catching adversaries and missing them.",
+    category: "Malware",
+    read_mins: 9,
+    updated: "2026",
+    cover_tone: "from-purple-500 to-indigo-600",
+    cover: "https://images.unsplash.com/photo-1629654297299-c8506221ca97?auto=format&fit=crop&w=1600&q=80",
+    summary:
+      "Fileless malware executes primarily in memory using legitimate system tools (PowerShell, WMI, .NET assemblies, LOLBins) — leaving no persistent executable to hash. Detecting it requires a shift from file-centric to behaviour-centric analysis.",
+    sections: [
+      { heading: "Why PowerShell is the attacker's best friend", body: [
+        "PowerShell ships on every modern Windows machine. It's signed by Microsoft, trusted by AV, has full .NET Framework access and can download, decode and execute code entirely in memory. For an attacker, it's a perfect Swiss Army knife.",
+        "The pattern that appears in almost every incident: powershell.exe -nop -w hidden -enc <base64_blob>. The blob decodes to a downloader that pulls the real payload from the internet and reflectively loads it — no file written to disk.",
+      ]},
+      { heading: "The fileless toolkit", list: [
+        { t: "PowerShell reflective loader", d: "IEX (New-Object Net.WebClient).DownloadString('...') pattern. Executes remote code in the current process." },
+        { t: ".NET Assembly.Load", d: "Loads a raw DLL byte-buffer directly into memory. Common for Cobalt Strike beacons and Sliver implants." },
+        { t: "WMI event subscriptions", d: "Persistent __EventFilter + __EventConsumer pairs. Persistence with no file, no registry Run key, no scheduled task." },
+        { t: "LOLBins (Living-off-the-Land binaries)", d: "regsvr32, rundll32, mshta, msbuild, installutil — legitimate signed binaries that can execute attacker payloads through built-in features." },
+        { t: "Registry-only payloads", d: "Malicious code stored as base64 blobs in registry values, executed by a lightweight PowerShell loader launched by a Run key." },
+      ]},
+      { heading: "Analysis techniques", list: [
+        { t: "Command-line reconstruction", d: "Sysmon Event 1 gives you the full command line. Decode -EncodedCommand blobs (base64 + UTF-16LE) and analyse the resulting script." },
+        { t: "Script-block logging (4104)", d: "Even encoded PowerShell decodes at runtime and produces Event 4104 with the plain-text script block. Enable via Group Policy — free, high-signal." },
+        { t: "Module-load telemetry", d: "EDR module-load events reveal unusual DLLs loaded into powershell.exe, winword.exe, or explorer.exe. Reflectively loaded assemblies show up here." },
+        { t: "Memory forensics", d: "Volatility's malfind, ldrmodules, and yarascan on process memory catch payloads never on disk. Slow but definitive." },
+        { t: "AMSI telemetry (Anti-Malware Scan Interface)", d: "Windows exposes script content to AMSI at execution time. Alerts on suspicious PowerShell can be routed through your EDR / SIEM." },
+      ]},
+      { heading: "Detection rules that catch 80% of fileless attacks", list: [
+        { t: "Encoded PowerShell > 500 chars", d: "Legitimate encoded commands are usually short. Long ones warrant review." },
+        { t: "Suspicious parent-child", d: "winword.exe → powershell.exe, excel.exe → cmd.exe, outlook.exe → powershell.exe. Rare in legitimate use." },
+        { t: "PowerShell downloading", d: "DownloadString, DownloadFile, WebClient, Invoke-WebRequest with an internet destination — outside allowlisted use." },
+        { t: "WMI event subscription creation", d: "Sysmon 19/20/21 — almost never legitimate outside change windows." },
+        { t: "Registry Run keys with encoded payloads", d: "New Run/RunOnce values containing 'FromBase64String' or long b64 strings are near-100% malicious." },
+      ]},
+      { heading: "What good analysis looks like", body: [
+        "You spot the encoded PowerShell command line. You decode the b64. You see it's a Cobalt Strike stager pointing to a fresh domain. You retrieve the stager (safely), unpack the shellcode, extract the config (beacon interval, C2 hosts, watermark), and generate high-fidelity IOCs. Those IOCs go into every EDR, firewall and SIEM. Total analysis time: 60 minutes. Total analyst investment: high. Coverage improvement: massive.",
+      ]},
+      { heading: "Key takeaways", list: [
+        { t: "Enable script-block logging", d: "Free, and catches the majority of fileless attacks." },
+        { t: "Behaviour over signatures", d: "You can't hash what was never written. Detection must be behavioural." },
+        { t: "AMSI + Sysmon + EDR", d: "Three layers of visibility catch what one alone misses." },
+      ]},
+    ],
+  },
+
+  {
+    slug: "email-phishing-analysis",
+    title: "Email Phishing Analysis",
+    tagline: "Phishing remains the #1 initial-access vector in every industry — how modern SOCs analyse suspicious email and stop the attack before it lands.",
+    category: "Threat Actor Insight",
+    read_mins: 8,
+    updated: "2026",
+    cover_tone: "from-amber-500 to-orange-500",
+    cover: "https://images.unsplash.com/photo-1596526131083-e8c633c948d2?auto=format&fit=crop&w=1600&q=80",
+    summary:
+      "Phishing is the practice of tricking a user into taking an action — clicking a link, opening an attachment, entering credentials — that benefits an attacker. It's cheap, it scales infinitely, and it works. Analysing a phishing email systematically turns a scary alert into actionable intelligence.",
+    sections: [
+      { heading: "The taxonomy of phishing", list: [
+        { t: "Bulk phishing", d: "Untargeted, high-volume campaigns. Cheap to run, low success rate per recipient, high total yield." },
+        { t: "Spear phishing", d: "Targeted at a specific individual using personal / professional details. Much higher success rate — often the initial access vector for APTs." },
+        { t: "Whaling", d: "Spear phishing targeted at executives. High-value payoff (wire transfer authority, sensitive access)." },
+        { t: "Business Email Compromise (BEC)", d: "No malware — pure social engineering. Attacker impersonates an executive or vendor to redirect a payment." },
+        { t: "Vishing / Smishing", d: "Voice or SMS variants. MFA-fatigue and SIM-swap-adjacent techniques." },
+      ]},
+      { heading: "The analysis checklist", list: [
+        { t: "Sender identity", d: "Return-Path, From, Reply-To — do they match? A mismatched Reply-To is a classic phish. Check the actual authenticating domain, not just the display name." },
+        { t: "SPF / DKIM / DMARC results", d: "Full authentication headers. A DMARC=fail from a domain you've configured as p=reject should never reach the user in the first place." },
+        { t: "Message headers", d: "Received: chain reveals the true origin. Client-header inconsistencies (e.g., mail sent 'from Outlook' but no X-Mailer: Microsoft) are telling." },
+        { t: "URL analysis", d: "Extract every URL. Check against VirusTotal, URLScan, and Google Safe Browsing. Look for typosquats (rn instead of m), open-redirect abuse, and homoglyphs." },
+        { t: "Attachment analysis", d: "Hash it. VT + Hybrid Analysis lookup. If unknown, detonate in a sandbox. Common formats: HTML smuggling, macro-enabled Office, ISO/IMG containers hiding LNK files." },
+        { t: "Body pattern matching", d: "Urgency, authority, unusual payment request, credential-harvest landing page. Modern phish templates are eerily polished — the tell is often the ask, not the language." },
+      ]},
+      { heading: "Automating triage", body: [
+        "Mature SOCs have a phishing mailbox (phishing@your-domain) where users report suspicious mail. A SOAR playbook then: (1) extracts headers, URLs, and attachments, (2) runs each against VT / URLScan / HA / internal IOC DB, (3) auto-classifies malicious / suspicious / benign, and (4) purges from every user's mailbox at once (Microsoft 365 has native APIs for this).",
+        "This turns a labour-intensive workflow into a 30-second decision for the analyst.",
+      ]},
+      { heading: "Prevention that actually moves the needle", list: [
+        { t: "DMARC at p=reject", d: "Prevents attackers from spoofing your exact domain. External senders can still impersonate visually — see below." },
+        { t: "External-sender banner", d: "Every email from outside gets a visible tag. Cheap, high-impact user awareness." },
+        { t: "Phishing-resistant MFA", d: "FIDO2 keys, Windows Hello for Business, Authenticator with number matching. Removes the credential-theft payoff." },
+        { t: "URL rewriting + click-time scanning", d: "M365 Safe Links, Google Safe Browsing, Proofpoint URL Defense. Scan the link at click time, not just send time (attacker infra often flips post-delivery)." },
+        { t: "User training", d: "Not enough on its own. But combined with everything above, quarterly phish simulations turn users into a detection layer." },
+      ]},
+      { heading: "What good response looks like", body: [
+        "A user reports a suspicious email at 09:12. SOAR triages it at 09:12:30. Verdict: malicious credential-harvest for O365. Playbook: purge from every mailbox, block the sender domain, add the landing-page URL to the WAF blocklist, sweep sign-in logs for any user who clicked and authenticated, force-reset any successful captures. Time from report to full response: under 10 minutes.",
+      ]},
+      { heading: "Key takeaways", list: [
+        { t: "Users are a detection layer", d: "Make it easy to report suspicious email; reward it." },
+        { t: "Automate the boring parts", d: "Header/URL/attachment triage is perfect for SOAR." },
+        { t: "MFA that resists phishing is table stakes", d: "SMS-based MFA is no longer sufficient in 2026." },
+      ]},
     ],
   },
 ];
