@@ -226,7 +226,7 @@ def test_lead_create_public_and_list(s, auth_headers):
     r2 = s.get(f"{API}/leads", headers=auth_headers, timeout=10)
     assert r2.status_code == 200
     leads = r2.json()
-    assert any(l["id"] == lead["id"] for l in leads)
+    assert any(ld["id"] == lead["id"] for ld in leads)
 
 
 # ------- intel-report (Unit42 full reader) -------
@@ -344,7 +344,7 @@ def test_leads_patch_valid_status(s, auth_headers):
     assert r.json()["status"] == "qualified"
     # verify persisted
     r2 = s.get(f"{API}/leads", headers=auth_headers, timeout=10)
-    match = [l for l in r2.json() if l["id"] == lid]
+    match = [ld for ld in r2.json() if ld["id"] == lid]
     assert match and match[0]["status"] == "qualified"
 
 
@@ -360,4 +360,4 @@ def test_lead_honeypot(s, auth_headers):
     assert r.status_code == 200
     # response is dummy honeypot@blocked.local; verify no real lead created
     all_leads = s.get(f"{API}/leads", headers=auth_headers, timeout=10).json()
-    assert not any(l["email"] == payload["email"] for l in all_leads)
+    assert not any(ld["email"] == payload["email"] for ld in all_leads)
