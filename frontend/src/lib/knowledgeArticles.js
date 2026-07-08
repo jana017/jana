@@ -175,7 +175,7 @@ export const KB_ARTICLES = [
     read_mins: 8,
     updated: "2026",
     cover_tone: "from-blue-500 to-indigo-600",
-    cover: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=1600&q=80",
+    cover: "https://customer-assets.emergentagent.com/job_threat-intel-hub-85/artifacts/4e9clp4i_images.jpeg",
     summary:
       "Incident Response (IR) is the organised approach to preparing for, detecting, containing and recovering from a cyber incident. A mature IR programme reduces dwell time, limits business impact and turns every incident into an opportunity to improve.",
     sections: [
@@ -187,15 +187,16 @@ export const KB_ARTICLES = [
         ],
       },
       {
-        heading: "The NIST 6-phase Incident Response lifecycle",
-        image: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=1600&q=80",
+        heading: "The NIST 4-phase Incident Response lifecycle",
+        image: "https://customer-assets.emergentagent.com/job_threat-intel-hub-85/artifacts/4e9clp4i_images.jpeg",
+        body: [
+          "The NIST SP 800-61 framework defines four continuous phases that form the backbone of every mature IR programme. Note that the cycle is iterative — post-incident learnings feed directly back into preparation for the next event.",
+        ],
         list: [
           { t: "1. Preparation", d: "Build the plan, roles, runbooks, forensic tooling, communications templates and legal / regulatory playbooks — before you need them. Tabletop-test the plan quarterly." },
-          { t: "2. Identification", d: "Detect the incident. Correlate telemetry from SIEM, EDR, identity provider, network flow, threat intel. Classify severity and open the ticket." },
-          { t: "3. Containment", d: "Short-term (isolate the affected host / disable the compromised account) and long-term (rebuild systems from known-good baselines, rotate credentials, patch the exploited vulnerability)." },
-          { t: "4. Eradication", d: "Remove the adversary's footholds: malware, persistence mechanisms, backdoor accounts, malicious GPOs, scheduled tasks and any implanted webshells." },
-          { t: "5. Recovery", d: "Restore systems to production, monitor closely for re-emergence, communicate with stakeholders and progressively increase trust as behaviour normalises." },
-          { t: "6. Lessons learned", d: "Post-incident review: what worked, what failed, what will change. Update runbooks, invest in the gaps, share sanitised findings." },
+          { t: "2. Detection & Analysis", d: "Detect the incident and understand its scope. Correlate telemetry from SIEM, EDR, identity, network flow and threat intel. Classify severity, determine attack vector and open the ticket." },
+          { t: "3. Containment, Eradication & Recovery", d: "Short-term containment (isolate hosts / disable accounts), then eradication (remove attacker footholds, rotate credentials, patch the exploited vulnerability) and finally recovery (restore systems, monitor for re-emergence, progressively increase trust)." },
+          { t: "4. Post-Incident Activity", d: "The learning phase: what worked, what failed, what will change. Update runbooks, invest in the gaps, share sanitised findings across the org. This is where mature programmes compound advantage over time." },
         ],
       },
       {
