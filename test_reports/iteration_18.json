@@ -1,0 +1,22 @@
+{
+  "summary": "Verified Admin SOC Overview + Hybrid Analysis integration end-to-end. Backend: 7/7 pytest tests PASS in test_soc_and_hybrid.py — /api/admin/overview requires JWT (401), returns full shape with populated iocs.by_severity/by_type and providers.hybrid_analysis=true; /api/threat-intel/overview public and includes hybrid_analysis provider flag; /api/ioc-lookup enriches SHA256 with real HA data (EICAR sha256 returned malicious/verdict/score/url) and returns {skipped:true,reason:'sha256_required'} for MD5; POST /api/hybrid/quick-scan-url returns 422 for invalid URL and 200 with full scanners payload for valid EICAR URL. Frontend: /admin defaults to Overview tab (active border/text color styling), SocDashboard renders with all 4 KPI tiles + 6 panels + refresh; Refresh reloads without unmounting; Reports tab switching from SOC dashboard works. Bulk analyzer /threat-intelligence: MD5+SHA256 pasted — MD5 row shows only VT badge (66/68, HA correctly hidden due to skipped), SHA256 row shows VT (65/67) + Hybrid Analysis (Malicious · 100). No console errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_soc_and_hybrid.py",
+    "/app/test_reports/pytest/pytest_iter18.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now 1956 lines — recommend extracting hybrid_analysis, OTX, and admin/overview aggregation into separate modules for maintainability.",
+    "admin_overview issues ~10 sequential count_documents queries; could be reduced with a single $facet aggregation for lower DB round-trip time on larger collections.",
+    "IOC lookup response is unauthenticated but performs paid VT + HA API calls — consider rate-limiting or adding auth to prevent abuse of upstream keys."
+  ],
+  "updated_files": ["/app/backend/tests/test_soc_and_hybrid.py"],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100%"},
+  "test_credentials": "admin@nivxmachines.com / NivX@Admin2025",
+  "seed_data_creation": "None — used existing OTX-synced IOCs (444) and leads.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "SOC dashboard testids: soc-dashboard, soc-kpi-{iocs,leads,reports,otx}, soc-{ioc-breakdown,lead-pipeline,recent-leads,recent-iocs,providers,recent-reports,refresh}. Reputation badge testids: ioc-rep-vt, ioc-rep-ha, ioc-rep-abuseipdb. HA badge intentionally hidden for MD5/SHA1 (skipped:true — HA v2.35 requires SHA256). /api/hybrid/quick-scan-url takes ~2-30s depending on sandbox load; scan_type accepts 'all'. Admin login button has no type='submit' — use text 'Sign in'."
+}

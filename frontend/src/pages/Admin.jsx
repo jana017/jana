@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import { LogOut, Plus, Pencil, Trash2, ArrowLeft, ShieldCheck, Download } from "lucide-react";
+import { LogOut, Plus, Pencil, Trash2, ArrowLeft, ShieldCheck, Download, LayoutDashboard } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import useSeo from "@/lib/useSeo";
+import SocDashboard from "@/components/SocDashboard";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -94,7 +95,7 @@ function Dashboard() {
   const [form, setForm] = useState(EMPTY);
   const [editId, setEditId] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
-  const [view, setView] = useState("reports");
+  const [view, setView] = useState("overview");
   const [leads, setLeads] = useState([]);
   const [statusFilter, setStatusFilter] = useState("all");
 
@@ -105,6 +106,11 @@ function Dashboard() {
     api.get("/leads").then(({ data }) => setLeads(data)).catch(() => {});
   }, []);
   useEffect(() => { load(); loadLeads(); }, [load, loadLeads]);
+  useEffect(() => {
+    const h = (e) => { if (e.detail) setView(e.detail); };
+    window.addEventListener("nivx-admin-goto", h);
+    return () => window.removeEventListener("nivx-admin-goto", h);
+  }, []);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const reset = () => { setForm(EMPTY); setEditId(null); };
@@ -197,6 +203,13 @@ function Dashboard() {
       <div className="bg-white border-b border-slate-200">
         <div className="mx-auto max-w-7xl px-6 flex gap-1">
           <button
+            data-testid="tab-overview"
+            onClick={() => setView("overview")}
+            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${view === "overview" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+          >
+            <LayoutDashboard className="w-4 h-4" /> Overview
+          </button>
+          <button
             data-testid="tab-reports"
             onClick={() => setView("reports")}
             className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${view === "reports" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
@@ -213,7 +226,9 @@ function Dashboard() {
         </div>
       </div>
 
-      {view === "reports" ? (
+      {view === "overview" ? (
+        <SocDashboard />
+      ) : view === "reports" ? (
       <main className="mx-auto max-w-7xl px-6 py-10 grid lg:grid-cols-[400px_1fr] gap-8">
         <form onSubmit={submit} data-testid="threat-form" className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-3.5 lg:sticky lg:top-24 self-start">
           <h2 className="font-heading text-lg font-semibold text-slate-900">{editId ? "Edit threat report" : "New threat report"}</h2>

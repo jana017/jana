@@ -537,6 +537,69 @@ async def delete_ioc(ioc_id: str, user: dict = Depends(get_current_user)):
 
 
 # ---------------------------------------------------------------------------
+# Admin SOC Overview — aggregated operational dashboard (auth required)
+# ---------------------------------------------------------------------------
+@api_router.get("/admin/overview")
+async def admin_overview(user: dict = Depends(get_current_user)):
+    """Consolidated SOC dashboard: IOC stats, lead pipeline, OTX sync,
+    recent activity, provider status. Powers the Admin > Overview tab."""
+    # IOCs
+    ioc_total = await db.iocs.count_documents({})
+    ioc_by_severity = {s: await db.iocs.count_documents({"severity": s}) for s in IOC_SEVERITIES}
+    ioc_by_type = {}
+    for t in ("ip", "domain", "url", "md5", "sha1", "sha256"):
+        ioc_by_type[t] = await db.iocs.count_documents({"type": t})
+    ioc_by_type["hash"] = ioc_by_type.pop("md5", 0) + ioc_by_type.pop("sha1", 0) + ioc_by_type.pop("sha256", 0)
+
+    # Leads pipeline
+    lead_total = await db.leads.count_documents({})
+    lead_by_status = {s: await db.leads.count_documents({"status": s}) for s in LEAD_STATUSES}
+    # Leads added in last 7 days (using created_at ISO string comparison since we store ISO)
+    seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    lead_week = await db.leads.count_documents({"created_at": {"$gte": seven_days_ago}})
+
+    # Threat reports
+    reports_total = await db.threat_reports.count_documents({})
+
+    # OTX
+    otx_meta = await db.otx_meta.find_one({"_id": "last_sync"}, {"_id": 0})
+
+    # Recent activity
+    recent_leads = await db.leads.find({}, {"_id": 0, "id": 1, "name": 1, "email": 1, "company": 1, "status": 1, "assignee": 1, "created_at": 1}).sort("created_at", -1).limit(6).to_list(6)
+    recent_iocs = await db.iocs.find({}, {"_id": 0, "value": 1, "type": 1, "severity": 1, "threat_name": 1, "source": 1, "created_at": 1}).sort("created_at", -1).limit(6).to_list(6)
+    recent_reports = await db.threat_reports.find({}, {"_id": 0, "id": 1, "title": 1, "severity": 1, "category": 1, "created_at": 1}).sort("created_at", -1).limit(5).to_list(5)
+
+    # Top malware families (from IOC tags) — reuse aggregation
+    fam_pipeline = [
+        {"$unwind": "$tags"},
+        {"$match": {"tags": {"$regex": "^family:", "$options": "i"}}},
+        {"$group": {"_id": "$tags", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 5},
+    ]
+    fam_docs = await db.iocs.aggregate(fam_pipeline).to_list(5)
+    top_families = [{"name": d["_id"].split(":", 1)[1] if ":" in d["_id"] else d["_id"], "count": d["count"]} for d in fam_docs]
+
+    return {
+        "iocs": {"total": ioc_total, "by_severity": ioc_by_severity, "by_type": ioc_by_type},
+        "leads": {"total": lead_total, "by_status": lead_by_status, "last_7_days": lead_week},
+        "reports": {"total": reports_total},
+        "otx": {"configured": bool(OTX_API_KEY), "last_sync": otx_meta},
+        "recent": {"leads": recent_leads, "iocs": recent_iocs, "reports": recent_reports},
+        "top_families": top_families,
+        "providers": {
+            "virustotal": bool(VT_API_KEY),
+            "abuseipdb": bool(ABUSEIPDB_API_KEY),
+            "urlscan": bool(URLSCAN_API_KEY),
+            "otx": bool(OTX_API_KEY),
+            "hybrid_analysis": bool(HYBRID_ANALYSIS_API_KEY),
+            "ai_summary": bool(EMERGENT_LLM_KEY),
+        },
+        "generated_at": now_iso(),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Threat Intelligence overview (aggregated stats for the /threat-intelligence hub)
 # ---------------------------------------------------------------------------
 @api_router.get("/threat-intel/overview")
@@ -851,7 +914,7 @@ ABUSEIPDB_API_KEY = os.environ.get("ABUSEIPDB_API_KEY")
 URLSCAN_API_KEY = os.environ.get("URLSCAN_API_KEY")
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY")
 HYBRID_ANALYSIS_API_KEY = os.environ.get("HYBRID_ANALYSIS_API_KEY")
-_HA_BASE = "https://www.hybrid-analysis.com/api/v2"
+_HA_BASE = "https://hybrid-analysis.com/api/v2"  # non-www — www 301-redirects and Cloudflare drops POST bodies
 _HA_HEADERS = {"api-key": HYBRID_ANALYSIS_API_KEY or "", "User-Agent": "Falcon Sandbox", "Accept": "application/json"}
 _REP_TTL = timedelta(hours=6)
 
@@ -904,6 +967,131 @@ async def _ha_hash_lookup(hc: httpx.AsyncClient, hash_value: str) -> Optional[di
         }
     except Exception:
         return {"error": "request_failed"}
+
+
+async def _ha_search_terms(hc: httpx.AsyncClient, params: dict, limit: int = 12) -> Optional[dict]:
+    """Search HA for sandboxed samples matching the given terms (host/domain/url/etc).
+    `params` is a dict like {'host': '1.2.3.4'} or {'domain': 'example.com'}.
+    Returns normalized {count, families:[...], samples:[...]} or None if disabled."""
+    if not HYBRID_ANALYSIS_API_KEY:
+        return None
+    try:
+        r = await hc.post(f"{_HA_BASE}/search/terms", data=params, headers={**_HA_HEADERS, "Content-Type": "application/x-www-form-urlencoded"})
+        if r.status_code == 401:
+            return {"error": "unauthorized"}
+        if r.status_code == 429:
+            return {"error": "rate_limited"}
+        if r.status_code != 200:
+            return {"error": "request_failed"}
+        j = r.json() or {}
+        results = j.get("result") or []
+        if not results:
+            return {"found": False, "count": 0, "families": [], "samples": []}
+        # Aggregate families
+        fam_counts: dict = {}
+        for x in results:
+            f = (x.get("vx_family") or "").strip()
+            if f:
+                fam_counts[f] = fam_counts.get(f, 0) + 1
+        families = sorted([{"name": f, "count": c} for f, c in fam_counts.items()], key=lambda x: x["count"], reverse=True)[:5]
+        samples = []
+        for x in results[:limit]:
+            samples.append({
+                "sha256": x.get("sha256"),
+                "verdict": x.get("verdict"),
+                "threat_score": x.get("threat_score"),
+                "vx_family": x.get("vx_family"),
+                "av_detect": x.get("av_detect"),
+                "submit_name": x.get("submit_name"),
+                "environment": x.get("environment_description") or x.get("environment_id"),
+                "analysis_start_time": x.get("analysis_start_time"),
+                "url": f"https://www.hybrid-analysis.com/sample/{x.get('sha256')}" if x.get("sha256") else None,
+            })
+        # Overall malicious count
+        malicious = sum(1 for x in results if (x.get("verdict") or "").lower() == "malicious")
+        return {
+            "found": True,
+            "count": j.get("count") or len(results),
+            "malicious": malicious,
+            "families": families,
+            "samples": samples,
+        }
+    except Exception:
+        return {"error": "request_failed"}
+
+
+async def _ha_quick_scan_url(hc: httpx.AsyncClient, url_value: str, scan_type: str = "all") -> dict:
+    """Submit a URL for shallow multi-scanner analysis. Returns normalized verdict."""
+    if not HYBRID_ANALYSIS_API_KEY:
+        return {"error": "not_configured"}
+    try:
+        r = await hc.post(
+            f"{_HA_BASE}/quick-scan/url",
+            data={"url": url_value, "scan_type": scan_type},
+            headers={**_HA_HEADERS, "Content-Type": "application/x-www-form-urlencoded"},
+            timeout=30,
+        )
+        if r.status_code == 401:
+            return {"error": "unauthorized"}
+        if r.status_code == 429:
+            return {"error": "rate_limited"}
+        if r.status_code >= 400:
+            try:
+                return {"error": "invalid_input", "detail": r.json()}
+            except Exception:
+                return {"error": "request_failed"}
+        j = r.json() or {}
+        scanners = j.get("scanners") or []
+        # Normalize scanner rows.
+        rows = []
+        malicious_hits = 0
+        for s in scanners:
+            positives = s.get("positives")
+            is_mal = (positives is not None and positives > 0)
+            if is_mal:
+                malicious_hits += 1
+            rows.append({
+                "name": s.get("name"),
+                "status": s.get("status"),
+                "positives": positives,
+                "total": s.get("total"),
+                "percent": s.get("percent"),
+                "error_message": s.get("error_message"),
+            })
+        verdict = "malicious" if malicious_hits >= 2 else ("suspicious" if malicious_hits == 1 else "no threat")
+        return {
+            "id": j.get("id"),
+            "sha256": j.get("sha256"),
+            "submission_type": j.get("submission_type"),
+            "verdict": verdict,
+            "malicious_scanners": malicious_hits,
+            "total_scanners": len(scanners),
+            "scanners": rows,
+            "reports_count": len(j.get("reports") or []),
+            "report_url": f"https://www.hybrid-analysis.com/sample/{j['sha256']}" if j.get("sha256") else None,
+        }
+    except Exception as e:
+        logger.warning(f"HA quick scan error: {e}")
+        return {"error": "request_failed"}
+
+
+class HaUrlInput(BaseModel):
+    url: str
+    scan_type: str = "all"
+
+
+@api_router.post("/hybrid/quick-scan-url")
+async def hybrid_quick_scan_url(payload: HaUrlInput):
+    if not HYBRID_ANALYSIS_API_KEY:
+        raise HTTPException(status_code=503, detail="Hybrid Analysis is not configured")
+    url_value = (payload.url or "").strip()
+    if not url_value or not url_value.lower().startswith(("http://", "https://")):
+        raise HTTPException(status_code=422, detail="Provide a valid http(s) URL")
+    async with httpx.AsyncClient(timeout=35, follow_redirects=True) as hc:
+        result = await _ha_quick_scan_url(hc, url_value, payload.scan_type or "all")
+    if result.get("error"):
+        raise HTTPException(status_code=502, detail=f"Hybrid Analysis error: {result['error']}")
+    return result
 
 
 def _vt_url_id(u: str) -> str:
