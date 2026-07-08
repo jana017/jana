@@ -1,0 +1,150 @@
+{
+  "project_name": "NivX Machines",
+  "theme_mode": "dark",
+  "typography": {
+    "headings": {
+      "family": "Unbounded, sans-serif",
+      "import_url": "https://fonts.googleapis.com/css2?family=Unbounded:wght@300;400;600;800;900&display=swap",
+      "rules": "Use font-black or font-light for radical contrast. tracking-tighter for sizes > 32px. No generic sans."
+    },
+    "body": {
+      "family": "Satoshi, sans-serif",
+      "import_url": "https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap",
+      "rules": "Clean, readable body text. leading-relaxed."
+    },
+    "mono_data": {
+      "family": "JetBrains Mono, monospace",
+      "import_url": "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap",
+      "rules": "Use exclusively for threat report data, logs, metrics, tags, and overlines. tracking-widest for labels."
+    }
+  },
+  "colors": {
+    "background": {
+      "primary": "#050505",
+      "secondary": "#0A0A0B",
+      "tertiary": "#121214"
+    },
+    "text": {
+      "primary": "#FFFFFF",
+      "secondary": "#A1A1A5",
+      "muted": "#66666E"
+    },
+    "accents": {
+      "primary": "#00F0FF",
+      "warning": "#FFB800",
+      "danger": "#FF0055",
+      "success": "#ccff00"
+    },
+    "surface": {
+      "glass": "rgba(255, 255, 255, 0.03)",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "glow": "rgba(0, 240, 255, 0.15)"
+    }
+  },
+  "visual_enhancers": {
+    "glassmorphism": "Use backdrop-blur-2xl bg-white/5 border border-white/10 for headers, cards, and floating panels. Never use purely transparent headers.",
+    "textures": "Apply a subtle SVG noise/grain overlay fixed to the viewport (`pointer-events-none opacity-20 z-50 mix-blend-overlay`) to kill digital flatness.",
+    "grid_borders": "Use border-collapse techniques with border-white/10 for Threat Report tables and features sections. The 'Technical Look'.",
+    "glow_effects": "Use drop-shadow-[0_0_15px_rgba(0,240,255,0.3)] on primary CTAs and critical threat indicators."
+  },
+  "layouts": {
+    "spacing": "Generous spacing. Use p-8 to p-16 for containers. Avoid cramped designs.",
+    "bento_grid": "For Services and Gallery: grid-cols-1 md:grid-cols-12 gap-8. Mix col-span-4, col-span-8, row-span-2 for severe asymmetry.",
+    "hero": "100vh height minimum. Kinetic typography. Use framer-motion for line-by-line masked text reveal. DO NOT center content lazily; opt for optical alignment or dramatic left alignment.",
+    "threat_dashboard": "High-density grid (grid-cols-1 md:grid-cols-3 lg:grid-cols-4) with tight gaps (gap-4). Use glass cards. Include live stats counters.",
+    "admin_panel": "Cardless, pure structural layouts. Dense information, JetBrains Mono font for inputs."
+  },
+  "motion": {
+    "scrolling": "MUST USE '@studio-freight/react-lenis' for smooth momentum scrolling across the entire site.",
+    "reveals": "Framer Motion: <motion.div> with initial={{ y: 40, opacity: 0 }} whileInView={{ y: 0, opacity: 1 }} viewport={{ once: true }} transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}.",
+    "micro_interactions": "Hover states on cards: -translate-y-2 with glowing border. Button hovers: expand letter-spacing slightly."
+  },
+  "components_instructions": {
+    "buttons": "Sharp rectangular with 1px border. On hover, background fills with accent color (cyan) and text flips to black. Use Framer Motion for tap states.",
+    "tabs": "Custom tab navigation. Strip default Shadcn backgrounds. Use JetBrains Mono, underline active state, glowing text.",
+    "threat_card": "Includes MITRE ATT&CK chain steps in micro-tags, process tree visualization (framer-motion nodes), and severity badge.",
+    "editorial_marquee": "Use react-fast-marquee. Slow speed. Font: JetBrains Mono uppercase, wide tracking.",
+    "forms": "Admin panel and forms must use Shadcn customized inputs, but strip generic 'Vercel' looks.",
+    "file_extension": "Build all components as .jsx/.js. Do not use TypeScript (.tsx/.ts) as per environment rules."
+  },
+  "media": {
+    "hero_3d": "Use react-force-graph-3d or TSParticles for an abstract network mesh in the hero background.",
+    "images": [
+      {
+        "url": "https://images.unsplash.com/photo-1680992046626-418f7e910589?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxNzV8MHwxfHNlYXJjaHwxfHxkYXJrJTIwc2VydmVyJTIwcm9vbXxlbnwwfHx8fDE3ODM1MjM5NjR8MA&ixlib=rb-4.1.0&q=85",
+        "category": "gallery",
+        "description": "Server room for Gallery/About Us"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1644088379091-d574269d422f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzZ8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMG5lb24lMjBuZXR3b3JrJTIwbm9kZXxlbnwwfHx8fDE3ODM1MjM5NjV8MA&ixlib=rb-4.1.0&q=85",
+        "category": "hero_bg",
+        "description": "Abstract neon nodes for threat report background"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1555066931-4365d14bab8c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA4Mzl8MHwxfHNlYXJjaHwyfHxoYWNrZXIlMjBjb2RlJTIwdGVybWluYWx8ZW58MHx8fHwxNzgzNTIzOTY1fDA&ixlib=rb-4.1.0&q=85",
+        "category": "services",
+        "description": "Hacker terminal for Cyber Security Services"
+      }
+    ],
+    "icons": "Use lucide-react. Ensure to use data-testid on all icons and interactive elements."
+  },
+  "sections": [
+    {
+      "name": "Navigation",
+      "features": "Fixed top nav. Glassmorphism `backdrop-blur-2xl bg-black/60`. Logo left, Links center, Support CTA right."
+    },
+    {
+      "name": "Hero",
+      "features": "Large kinetic text 'NIVX.MACHINES', line-by-line reveal. Subtitle: 'Cybersecurity & AI Architecture'. Background: 3D/Particles abstract network."
+    },
+    {
+      "name": "Numbered Manifesto (About Us)",
+      "features": "Scroll-triggered chapter reveals (01, 02, 03) in massive Unbounded font. Content explaining AI-driven defense."
+    },
+    {
+      "name": "Marquee",
+      "features": "Slow scrolling text: 'REAL TIME THREAT LANDSCAPE — ZERO TRUST ARCHITECTURE — AI THREAT DETECTION'"
+    },
+    {
+      "name": "Live Threat Report Dashboard",
+      "features": "High-density grid. Live counters. Cards showing MITRE ATT&CK chains, Process Trees (node diagrams), and threat screenshots. Must pull from mock external live feed logic."
+    },
+    {
+      "name": "Gallery",
+      "features": "Real product/tech photography with 'spotlight' and 'clipped frame' treatments. Grayscale filters on default, color on hover."
+    },
+    {
+      "name": "Services Grid",
+      "features": "Bento box grid outlining Cyber Security, AI, Tech offerings."
+    },
+    {
+      "name": "Careers & Support",
+      "features": "Careers: Clean static list format for jobs with 'Apply via Email' links. Support: Mobile 9059565125, Email info@nivxmachines.com. Use distinct icons."
+    },
+    {
+      "name": "Admin Panel",
+      "features": "Login-gated area (mock auth). Form UI to add/edit threat reports. JetBrains Mono inputs, minimalist lines, focus on function."
+    }
+  ],
+  "accessibility": {
+    "contrast": "Ensure text over images has background gradients (e.g., from-black/80 to-transparent) to maintain APCA readability.",
+    "testing": "All interactive and key informational elements MUST include a `data-testid` attribute (e.g., data-testid='hero-cta-button', data-testid='contact-email')."
+  },
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "You tend to converge toward generic, 'on distribution' outputs. In frontend design, this creates what users call the 'AI slop' aesthetic. Avoid this: make creative, distinctive frontends that surprise and delight.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur).",
+    "You MUST NOT apply universal transition. Eg: `transition: all`. This results in breaking transforms.",
+    "You MUST NOT center align the app container, ie do not add `.App { text-align: center; }` in the css file.",
+    "Always use modern button styles like pill-shaped, or sharp button with interaction animations & color relevant to the app style.",
+    "NEVER: use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯 etc for icons.",
+    "Every interaction needs micro-animations - hover states, transitions, parallax effects, and entrance animations. Static = dead.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Subtle grain textures, noise overlays, custom cursors, selection states, and loading animations: separates good from extraordinary.",
+    "Use sonner for toasts.",
+    "Do not use generic Inter font. Follow the typography guide exactly.",
+    "Implement using .js and .jsx files. Do not use TypeScript (.tsx/.ts)."
+  ]
+}
