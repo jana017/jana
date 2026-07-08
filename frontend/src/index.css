@@ -1,5 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@300;400;600;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
-@import url('https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -58,7 +57,7 @@ body {
   margin: 0;
   background-color: var(--bg-primary);
   color: var(--txt-primary);
-  font-family: 'Satoshi', sans-serif;
+  font-family: 'JetBrains Mono', monospace;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
@@ -69,7 +68,7 @@ body {
   color: #000;
 }
 
-.font-display { font-family: 'Unbounded', sans-serif; }
+.font-display { font-family: 'JetBrains Mono', monospace; }
 .font-mono-data { font-family: 'JetBrains Mono', monospace; }
 
 /* Grain / noise overlay */

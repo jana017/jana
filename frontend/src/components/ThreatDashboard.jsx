@@ -105,6 +105,9 @@ export default function ThreatDashboard() {
                 <DialogTitle className="font-display font-black text-2xl tracking-tight text-white text-left">
                   {active.title}
                 </DialogTitle>
+                <DialogDescription className="sr-only">
+                  Full threat intelligence report including attack chain, process tree, and indicators of compromise.
+                </DialogDescription>
                 <DialogDescription className="font-mono-data text-[11px] uppercase tracking-widest text-[#5A6B82] text-left">
                   {active.source} · Threat Report
                 </DialogDescription>
