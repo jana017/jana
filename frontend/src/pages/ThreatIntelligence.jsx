@@ -4,7 +4,15 @@ import { api } from "@/lib/api";
 import Navbar from "@/components/Navbar";
 import Contact from "@/components/Contact";
 import IntelReader from "@/components/IntelReader";
-import { FileText, ExternalLink, ShieldAlert, BookOpen, ArrowRight, Search } from "lucide-react";
+import { FileText, ExternalLink, ShieldAlert, BookOpen, ArrowRight, Search, Globe } from "lucide-react";
+
+const OSINT_TOOLS = [
+  { name: "VirusTotal", domain: "virustotal.com", url: "https://www.virustotal.com/gui/home/search", desc: "Files, URLs, hashes & domains across 70+ engines" },
+  { name: "urlscan.io", domain: "urlscan.io", url: "https://urlscan.io/", desc: "Sandbox & analyze suspicious URLs" },
+  { name: "AbuseIPDB", domain: "abuseipdb.com", url: "https://www.abuseipdb.com/", desc: "Check IP reputation & abuse reports" },
+  { name: "Cisco Talos", domain: "talosintelligence.com", url: "https://talosintelligence.com/reputation_center", desc: "IP/domain reputation & threat intel" },
+  { name: "IBM X-Force Exchange", domain: "exchange.xforce.ibmcloud.com", url: "https://exchange.xforce.ibmcloud.com/", desc: "Threat intelligence sharing platform" },
+];
 
 const CYBERDEFENDERS = [
   { title: "Blue Team Labs & Threat Investigations", desc: "Hands-on DFIR writeups, malware analysis walkthroughs and detection engineering from the CyberDefenders community.", tag: "DFIR", url: "https://cyberdefenders.org/blog/" },
@@ -91,6 +99,46 @@ export default function ThreatIntelligence() {
             Live, published threat research from Palo Alto Unit42 and hand-picked analysis from
             the security community — searchable across {total || "hundreds of"} reports.
           </p>
+        </div>
+      </section>
+
+      {/* OSINT quick-access */}
+      <section data-testid="osint-section" className="py-16 lg:py-20 bg-white border-b border-slate-100">
+        <div className="mx-auto max-w-7xl px-6">
+          <div className="max-w-2xl mb-8">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-[#F5821F] mb-3">
+              <Globe className="w-4 h-4" /> OSINT · IOC Analysis
+            </div>
+            <h2 className="font-heading text-2xl md:text-3xl font-semibold tracking-tight text-slate-900">Investigate indicators in one click</h2>
+            <p className="mt-4 text-base text-slate-600 leading-relaxed">
+              Jump straight to the industry's leading OSINT platforms to enrich and validate IOCs — hashes, URLs, IPs and domains.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            {OSINT_TOOLS.map((t, i) => (
+              <a
+                key={t.name}
+                href={t.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid={`osint-${i}`}
+                className="group rounded-xl border border-slate-200 bg-white shadow-sm hover:shadow-md hover:-translate-y-1 hover:border-[#2E7DF5]/40 transition-[transform,box-shadow,border-color] p-5 flex flex-col items-start"
+              >
+                <div className="w-11 h-11 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center mb-4 overflow-hidden">
+                  <img
+                    src={`https://www.google.com/s2/favicons?domain=${t.domain}&sz=64`}
+                    alt={t.name}
+                    className="w-6 h-6"
+                    onError={(e) => { e.currentTarget.style.display = "none"; }}
+                  />
+                </div>
+                <div className="font-heading text-sm font-semibold text-slate-900 group-hover:text-[#2E7DF5] transition-colors">{t.name}</div>
+                <div className="text-xs text-slate-500 mt-1 mb-3 leading-snug flex-1">{t.desc}</div>
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#2E7DF5]">Open <ExternalLink className="w-3 h-3" /></span>
+              </a>
+            ))}
+          </div>
         </div>
       </section>
 

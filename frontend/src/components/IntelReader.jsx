@@ -37,20 +37,23 @@ export default function IntelReader({ name, onClose }) {
   return (
     <Dialog open={!!name} onOpenChange={(o) => !o && onClose()}>
       <DialogContent data-testid="intel-reader-dialog" className="max-w-3xl bg-white max-h-[88vh] overflow-y-auto">
+        <DialogHeader className="sr-only">
+          <DialogTitle>{report?.title || "Threat intelligence report"}</DialogTitle>
+          <DialogDescription>Unit42 threat intelligence report with analysis notes, references and indicators of compromise.</DialogDescription>
+        </DialogHeader>
         {loading && <div className="py-16 text-center text-sm text-slate-400">Loading report…</div>}
         {err && <div className="py-16 text-center text-sm text-red-500">Unable to load this report.</div>}
         {report && (
           <>
-            <DialogHeader>
+            <div>
               <div className="flex items-center gap-2 mb-1">
                 <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-blue-50 text-blue-700">
                   <FileText className="w-3 h-3" /> {report.source}
                 </span>
                 <span className="text-xs text-slate-400">{report.date}</span>
               </div>
-              <DialogTitle className="font-heading text-xl font-semibold text-slate-900 text-left">{report.title}</DialogTitle>
-              <DialogDescription className="sr-only">Full Unit42 threat intelligence report with notes, references and indicators of compromise.</DialogDescription>
-            </DialogHeader>
+              <h2 className="font-heading text-xl font-semibold text-slate-900 text-left">{report.title}</h2>
+            </div>
 
             {report.notes?.length > 0 && (
               <div>

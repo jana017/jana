@@ -151,7 +151,11 @@ function Dashboard() {
   const exportLeadsCsv = () => {
     if (!leads.length) return;
     const cols = ["name", "email", "phone", "company", "company_size", "interest", "status", "created_at", "message"];
-    const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const esc = (v) => {
+      let s = String(v ?? "");
+      if (/^[=+\-@]/.test(s)) s = "'" + s; // guard against CSV injection
+      return `"${s.replace(/"/g, '""')}"`;
+    };
     const rows = [cols.join(",")].concat(leads.map((l) => cols.map((c) => esc(l[c])).join(",")));
     const blob = new Blob([rows.join("\n")], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
