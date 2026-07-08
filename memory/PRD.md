@@ -102,3 +102,7 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - Anti-spam on lead form (honeypot + IP rate limit 3/10min).
 - Global scroll-to-top button (Lenis-aware, positioned to clear Emergent badge).
 - Responsive verified (mobile 390 / tablet 820, no overflow). Tests: backend 24+7/… all pass; frontend 100%.
+
+
+## Latest (2026-07-08, session 12 — quick fix)
+- **Blog back-arrow routing fixed** (`/app/frontend/src/components/ScrollToTopOnNav.jsx`): previously ignored URL hash and always scrolled to top of Landing (Hero), so clicking "← NivX Blogs" from `/blog/:slug` dumped users at "Engineering digital immunity...". Now watches `hash` in addition to `pathname`, polls for the target element (handles lazy-loaded Landing chunk) and re-scrolls at 150/400/800/1400ms to compensate for late layout shifts (images, lazy sections). Verified via screenshot tool — landing on `/#blog` now lands precisely on "NIVX BLOGS — Threats & Attacks · articles from the field" with 80px offset. All existing `<Link to="/#blog">` anchors (including 404 fallback) work as expected.
