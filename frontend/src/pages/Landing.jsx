@@ -10,8 +10,14 @@ import Services from "@/components/Services";
 import Gallery from "@/components/Gallery";
 import Careers from "@/components/Careers";
 import Contact from "@/components/Contact";
+import useSeo from "@/lib/useSeo";
 
 export default function Landing() {
+  useSeo({
+    title: "NivX Machines · Cybersecurity, AI & Threat Intelligence",
+    description: "NivX Machines delivers enterprise cybersecurity, managed detection & response, threat intelligence and incident response — with a live global threat landscape and smart IOC analyzer.",
+    canonical: "https://nivxmachines.com/",
+  });
   useEffect(() => {
     const target = sessionStorage.getItem("scrollTo");
     if (target) {

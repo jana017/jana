@@ -7,6 +7,7 @@ import IntelReader from "@/components/IntelReader";
 import IocAnalyzer from "@/components/IocAnalyzer";
 import IocDatabase from "@/components/IocDatabase";
 import { FileText, ExternalLink, ShieldAlert, BookOpen, ArrowRight, Search, Globe, Database } from "lucide-react";
+import useSeo from "@/lib/useSeo";
 
 const OSINT_TOOLS = [
   { name: "VirusTotal", domain: "virustotal.com", url: "https://www.virustotal.com/gui/home/search", desc: "Files, URLs, hashes & domains across 70+ engines" },
@@ -43,6 +44,11 @@ function sinceDate(days) {
 const PAGE_SIZE = 9;
 
 export default function ThreatIntelligence() {
+  useSeo({
+    title: "Threat Intelligence · Live IOC Analyzer & OSINT | NivX Machines",
+    description: "Search 390+ Unit42 threat reports, run bulk IOC analysis across VirusTotal, AbuseIPDB, URLScan and Shodan, and browse the curated NivX IOC database powered by AlienVault OTX.",
+    canonical: "https://nivxmachines.com/threat-intelligence",
+  });
   const [items, setItems] = useState([]);
   const [types, setTypes] = useState([]);
   const [total, setTotal] = useState(0);

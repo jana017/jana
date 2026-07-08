@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { LogOut, Plus, Pencil, Trash2, ArrowLeft, ShieldCheck, Download } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
+import useSeo from "@/lib/useSeo";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -393,6 +394,11 @@ function Dashboard() {
 }
 
 export default function Admin() {
+  useSeo({
+    title: "Admin · NivX Machines",
+    description: "NivX Machines admin console. Manage threat reports, leads and the curated IOC database.",
+    noindex: true,
+  });
   const { user } = useAuth();
   if (user === null) return <div className="min-h-screen flex items-center justify-center text-slate-400 text-sm bg-slate-50">Loading…</div>;
   return user ? <Dashboard /> : <LoginView />;
