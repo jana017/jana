@@ -10,8 +10,7 @@ const BLOG_POSTS = [
     category: "News & Announcements",
     excerpt: "Bridging the gap between modern cloud security training and real-world cyber defense — a look at the NATO CyberDefense Center exercise sharpening the next generation of defenders.",
     date: "May 14, 2026",
-    image: "https://images.unsplash.com/photo-1614064548237-096d0f6db4e7?auto=format&fit=crop&w=1200&q=80",
-    tone: "from-red-500 to-orange-500",
+    image: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=1600&q=80",
     href: "https://cyberdefenders.org/blog/cyberdefenders-in-locked-shields-2026/",
   },
   {
@@ -20,8 +19,7 @@ const BLOG_POSTS = [
     category: "SOC Playbook",
     excerpt: "Traditional malware detection assumes malware writes files to disk. What happens when attackers never touch the file system? A field guide to hunting in-memory threats.",
     date: "May 13, 2026",
-    image: "https://images.unsplash.com/photo-1614064641938-3bbee52942c7?auto=format&fit=crop&w=1200&q=80",
-    tone: "from-purple-500 to-indigo-600",
+    image: "https://images.unsplash.com/photo-1555949963-ff9fe0c870eb?auto=format&fit=crop&w=1600&q=80",
     href: "https://cyberdefenders.org/blog/fileless-malware-soc-detection/",
   },
   {
@@ -30,8 +28,7 @@ const BLOG_POSTS = [
     category: "SOC Playbook",
     excerpt: "PowerShell's -EncodedCommand flag accepts a Base64-encoded UTF-16LE string and executes it at runtime — attackers know it, defenders must decode it.",
     date: "May 12, 2026",
-    image: "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=1200&q=80",
-    tone: "from-blue-500 to-cyan-500",
+    image: "https://images.unsplash.com/photo-1629654297299-c8506221ca97?auto=format&fit=crop&w=1600&q=80",
     href: "https://cyberdefenders.org/blog/encoded-powershell-detection-soc-playbook/",
   },
   {
@@ -40,8 +37,7 @@ const BLOG_POSTS = [
     category: "Cloud Security",
     excerpt: "Azure Cloud Security is not just a product suite; it's an operational discipline. A comprehensive detection and threat hunting reference for SOC analysts.",
     date: "May 11, 2026",
-    image: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80",
-    tone: "from-sky-500 to-blue-600",
+    image: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1600&q=80",
     href: "https://cyberdefenders.org/blog/azure-cloud-security/",
   },
   {
@@ -50,8 +46,7 @@ const BLOG_POSTS = [
     category: "SOC Playbook",
     excerpt: "The alert triage process is the backbone of every effective SOC. On any given day, a team may receive thousands of alerts — here's how the best cut through the noise.",
     date: "May 10, 2026",
-    image: "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80",
-    tone: "from-orange-500 to-amber-500",
+    image: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=1600&q=80",
     href: "https://cyberdefenders.org/blog/alert-triage-process/",
   },
   {
@@ -60,8 +55,7 @@ const BLOG_POSTS = [
     category: "Threat Actor Insight",
     excerpt: "The hacker mindset is not a skillset — it's a way of thinking. If you work in a SOC, understanding it is the difference between chasing alerts and preventing attacks.",
     date: "May 6, 2026",
-    image: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=1200&q=80",
-    tone: "from-rose-500 to-red-600",
+    image: "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=1600&q=80",
     href: "https://cyberdefenders.org/blog/hacker-mindset-how-do-attackers-really-think/",
   },
   {
@@ -70,8 +64,7 @@ const BLOG_POSTS = [
     category: "Forensics",
     excerpt: "Disk forensics is no longer the exclusive domain of incident responders or law enforcement. Modern SOC analysts need it in their kit — here's the operational playbook.",
     date: "May 5, 2026",
-    image: "https://images.unsplash.com/photo-1544197150-b99a580bb7a8?auto=format&fit=crop&w=1200&q=80",
-    tone: "from-emerald-500 to-teal-600",
+    image: "https://images.unsplash.com/photo-1597852074816-d933c7d2b988?auto=format&fit=crop&w=1600&q=80",
     href: "https://cyberdefenders.org/blog/disk-forensics-for-soc-analysts/",
   },
   {
@@ -80,8 +73,7 @@ const BLOG_POSTS = [
     category: "AppSec",
     excerpt: "XSS is a web application vulnerability that lets attackers inject malicious scripts into pages viewed by other users — a deep dive into the browser security model.",
     date: "May 4, 2026",
-    image: "https://images.unsplash.com/photo-1555949963-ff9fe0c870eb?auto=format&fit=crop&w=1200&q=80",
-    tone: "from-fuchsia-500 to-purple-600",
+    image: "https://images.unsplash.com/photo-1516116216624-53e697fedbea?auto=format&fit=crop&w=1600&q=80",
     href: "https://cyberdefenders.org/blog/cross-site-scripting-xss/",
   },
   {
@@ -90,8 +82,7 @@ const BLOG_POSTS = [
     category: "Case Study",
     excerpt: "A field guide for Tier 1 and Tier 2 SOC analysts covering removable media triage, evidence collection, insider risk signals, and malware detection.",
     date: "May 3, 2026",
-    image: "https://images.unsplash.com/photo-1563770660941-20978e870e26?auto=format&fit=crop&w=1200&q=80",
-    tone: "from-yellow-500 to-orange-500",
+    image: "https://images.unsplash.com/photo-1614064548237-096d0f6db4e7?auto=format&fit=crop&w=1600&q=80",
     href: "https://cyberdefenders.org/blog/soc-training-usb-device-alert-investigation/",
   },
   {
@@ -100,8 +91,7 @@ const BLOG_POSTS = [
     category: "Case Study",
     excerpt: "A step-by-step case study for SOC analysts investigating a Microsoft 365 account compromise — from initial alert to root-cause and remediation.",
     date: "Apr 29, 2026",
-    image: "https://images.unsplash.com/photo-1573164574572-cb89e39749b4?auto=format&fit=crop&w=1200&q=80",
-    tone: "from-cyan-500 to-blue-500",
+    image: "https://images.unsplash.com/photo-1573164574572-cb89e39749b4?auto=format&fit=crop&w=1600&q=80",
     href: "https://cyberdefenders.org/blog/cloud-compromise-case-study/",
   },
   {
@@ -110,8 +100,7 @@ const BLOG_POSTS = [
     category: "Case Study",
     excerpt: "A practical SOC case study for detecting and responding to suspicious file downloads — with real browser telemetry patterns and detonation workflow.",
     date: "Apr 26, 2026",
-    image: "https://images.unsplash.com/photo-1526628953301-3e589a6a8b74?auto=format&fit=crop&w=1200&q=80",
-    tone: "from-lime-500 to-emerald-500",
+    image: "https://images.unsplash.com/photo-1518432031352-d6fc5c10da5a?auto=format&fit=crop&w=1600&q=80",
     href: "https://cyberdefenders.org/blog/practical-soc-case-study/",
   },
   {
@@ -120,8 +109,7 @@ const BLOG_POSTS = [
     category: "Case Study",
     excerpt: "Business Email Compromise (BEC) remains one of the most pervasive and financially damaging threats. A hands-on investigation walk-through for finance teams.",
     date: "Apr 23, 2026",
-    image: "https://images.unsplash.com/photo-1596526131083-e8c633c948d2?auto=format&fit=crop&w=1200&q=80",
-    tone: "from-amber-500 to-red-500",
+    image: "https://images.unsplash.com/photo-1596526131083-e8c633c948d2?auto=format&fit=crop&w=1600&q=80",
     href: "https://cyberdefenders.org/blog/email-compromise-investigation-training/",
   },
   {
@@ -130,8 +118,7 @@ const BLOG_POSTS = [
     category: "Fundamentals",
     excerpt: "A data breach is any security incident where unauthorized individuals gain access to sensitive data. Causes, signs, impact and the modern response playbook.",
     date: "Apr 14, 2026",
-    image: "https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&w=1200&q=80",
-    tone: "from-slate-600 to-slate-900",
+    image: "https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&w=1600&q=80",
     href: "https://cyberdefenders.org/blog/what-is-a-data-breach-detection-and-response-full-guide/",
   },
   {
@@ -140,8 +127,7 @@ const BLOG_POSTS = [
     category: "APT Deep Dive",
     excerpt: "APTs are not your average cyberattack — they don't smash and grab; they infiltrate, lurk, and operate on timelines measured in months. A lifecycle-based defender's guide.",
     date: "Apr 13, 2026",
-    image: "https://images.unsplash.com/photo-1618044733300-9472054094ee?auto=format&fit=crop&w=1200&q=80",
-    tone: "from-red-600 to-rose-700",
+    image: "https://images.unsplash.com/photo-1544197150-b99a580bb7a8?auto=format&fit=crop&w=1600&q=80",
     href: "https://cyberdefenders.org/blog/advanced-persistence-threats/",
   },
   {
@@ -150,8 +136,7 @@ const BLOG_POSTS = [
     category: "Fundamentals",
     excerpt: "An IDS monitors network traffic or host activity for signs of malicious behavior. Architecture, deployment modes, and how modern SOCs actually operationalize them.",
     date: "Apr 12, 2026",
-    image: "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=1200&q=80",
-    tone: "from-indigo-500 to-blue-700",
+    image: "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=1600&q=80",
     href: "https://cyberdefenders.org/blog/what-is-intrusion-detection-system-ids/",
   },
 ];
@@ -183,13 +168,13 @@ export default function NivxBlogs() {
           initial={{ opacity: 0, y: 16 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="group grid grid-cols-1 lg:grid-cols-[1.35fr_1fr] gap-0 rounded-2xl border border-slate-200 overflow-hidden hover:shadow-xl hover:border-slate-300 transition-all mb-14"
+          className="group grid grid-cols-1 lg:grid-cols-[1.35fr_1fr] gap-0 rounded-2xl border border-slate-200 overflow-hidden hover:shadow-xl hover:border-slate-300 transition-all mb-14 bg-white"
         >
-          <div className="relative aspect-[16/10] lg:aspect-auto overflow-hidden">
-            <div className={`absolute inset-0 bg-gradient-to-br ${featured.tone} opacity-90`} />
-            <img src={featured.image} alt={featured.title} loading="lazy" className="w-full h-full object-cover mix-blend-overlay group-hover:scale-105 transition-transform duration-500" />
+          <div className="relative aspect-[16/10] lg:aspect-auto overflow-hidden bg-slate-100">
+            <img src={featured.image} alt={featured.title} loading="lazy" className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
             <div className="absolute top-4 left-4">
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-white/95 text-slate-900 px-2.5 py-1 rounded">
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-white/95 text-slate-900 px-2.5 py-1 rounded shadow-sm">
                 <Tag className="w-3 h-3" /> {featured.category}
               </span>
             </div>
@@ -226,11 +211,11 @@ export default function NivxBlogs() {
               transition={{ duration: 0.4, delay: (i % 3) * 0.05 }}
               className="group flex flex-col rounded-xl border border-slate-200 overflow-hidden bg-white hover:shadow-lg hover:-translate-y-1 hover:border-slate-300 transition-all"
             >
-              <div className="relative aspect-[16/9] overflow-hidden">
-                <div className={`absolute inset-0 bg-gradient-to-br ${p.tone} opacity-90`} />
-                <img src={p.image} alt={p.title} loading="lazy" className="w-full h-full object-cover mix-blend-overlay group-hover:scale-105 transition-transform duration-500" />
+              <div className="relative aspect-[16/9] overflow-hidden bg-slate-100">
+                <img src={p.image} alt={p.title} loading="lazy" className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
                 <div className="absolute top-3 left-3">
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-white/95 text-slate-900 px-2 py-0.5 rounded">
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-white/95 text-slate-900 px-2 py-0.5 rounded shadow-sm">
                     {p.category}
                   </span>
                 </div>
