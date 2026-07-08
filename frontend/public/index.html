@@ -40,6 +40,19 @@
         Learn how to configure a non-root public URL by running `npm run build`.
         -->
         <title>NivX Machines · Cybersecurity, AI &amp; Threat Intelligence</title>
+        <script>
+          // 301-equivalent client redirect: consolidate SEO link equity on the canonical domain.
+          // Only redirects production emergent.host hosts to nivxmachines.com (preview + local dev untouched).
+          (function () {
+            try {
+              var h = window.location.hostname || "";
+              if (h.endsWith(".emergent.host")) {
+                var target = "https://nivxmachines.com" + window.location.pathname + window.location.search + window.location.hash;
+                window.location.replace(target);
+              }
+            } catch (e) { /* noop */ }
+          })();
+        </script>
         <script>window.addEventListener("error",function(e){if(e.error instanceof DOMException&&e.error.name==="DataCloneError"&&e.message&&e.message.includes("PerformanceServerTiming")){e.stopImmediatePropagation();e.preventDefault()}},true);</script>
         <script src="https://assets.emergent.sh/scripts/emergent-main.js"></script>
     </head>
