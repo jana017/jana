@@ -1,0 +1,32 @@
+{
+  "summary": "Frontend-only testing of P2-A (Single/Bulk toggle + bulk table + CSV) and P2-B (graceful empty reputation) on /threat-intelligence. All 6 acceptance criteria pass. No console errors. Reputation gracefully shows '—' for all rows since VT/AbuseIPDB keys unset.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a", "frontend": "100%"},
+  "test_credentials": "none required (public page)",
+  "seed_data_creation": "none",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "IOC Analyzer bulk mode fully verified: toggle works, textarea + counter (4 unique IOCs detected), Analyze all POST /api/ioc-lookup-batch renders ioc-bulk-results table with 4 rows for 8.8.8.8 (IP), example.com (Domain), SHA256 hash, malware.wicar.org (Domain). Type badges, summaries (Ashburn 2 ports; 10,000 urlscan scans; Known malicious), 20 favicon investigate links (5 per row) all target=_blank. Reputation column shows '—' cleanly. CSV download triggers file nivx-ioc-analysis.csv. Switching back to Single restores ioc-analyzer-form and single lookup of 8.8.8.8 renders ioc-result with IP enrichment + deep links. Zero console errors.",
+  "test_results": {
+    "single_mode_default_and_ioc_result_8888": "PASS",
+    "bulk_toggle_and_textarea_visible": "PASS",
+    "unique_ioc_counter": "PASS (4 unique IOCs detected)",
+    "bulk_results_table_4_rows": "PASS (rows 0-3 present)",
+    "type_badges_correct": "PASS (IP ADDRESS, DOMAIN, SHA256 HASH, DOMAIN)",
+    "reputation_em_dash": "PASS (— shown for all rows)",
+    "investigate_links_new_tab": "PASS (20 links total, target=_blank)",
+    "csv_download": "PASS (nivx-ioc-analysis.csv)",
+    "switch_back_to_single": "PASS",
+    "no_console_errors": "PASS (0 errors)",
+    "no_visible_reputation_error_text": "PASS"
+  }
+}

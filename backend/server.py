@@ -348,91 +348,254 @@ def _ioc_links(value: str, kind: str) -> dict:
     return links
 
 
+# ---------------------------------------------------------------------------
+# Optional key-based reputation providers (VirusTotal v3 + AbuseIPDB v2)
+# Keys are OPTIONAL: absent keys are skipped gracefully. Results are cached in
+# MongoDB (ioc_cache) for 6h to conserve free-tier daily quotas.
+# ---------------------------------------------------------------------------
+VT_API_KEY = os.environ.get("VIRUSTOTAL_API_KEY")
+ABUSEIPDB_API_KEY = os.environ.get("ABUSEIPDB_API_KEY")
+_REP_TTL = timedelta(hours=6)
+
+
+def _vt_url_id(u: str) -> str:
+    import base64
+    return base64.urlsafe_b64encode(u.encode("utf-8")).decode("utf-8").strip("=")
+
+
+async def _vt_lookup(hc: httpx.AsyncClient, kind: str, normalized: str) -> Optional[dict]:
+    if not VT_API_KEY:
+        return None
+    if kind == "ip":
+        path = f"ip_addresses/{normalized}"
+    elif kind == "domain":
+        path = f"domains/{normalized}"
+    elif kind == "url":
+        path = f"urls/{_vt_url_id(normalized)}"
+    else:
+        path = f"files/{normalized}"
+    try:
+        r = await hc.get(f"https://www.virustotal.com/api/v3/{path}", headers={"x-apikey": VT_API_KEY, "accept": "application/json"})
+        if r.status_code == 404:
+            return {"found": False, "malicious": 0, "suspicious": 0, "harmless": 0, "undetected": 0, "total": 0, "reputation": None}
+        if r.status_code == 401:
+            return {"error": "unauthorized"}
+        if r.status_code == 429:
+            return {"error": "rate_limited"}
+        if r.status_code != 200:
+            return {"error": f"http_{r.status_code}"}
+        attrs = ((r.json() or {}).get("data") or {}).get("attributes") or {}
+        stats = attrs.get("last_analysis_stats") or {}
+        mal = stats.get("malicious", 0) or 0
+        susp = stats.get("suspicious", 0) or 0
+        harm = stats.get("harmless", 0) or 0
+        undet = stats.get("undetected", 0) or 0
+        total = mal + susp + harm + undet + (stats.get("timeout", 0) or 0)
+        return {
+            "found": True,
+            "malicious": mal,
+            "suspicious": susp,
+            "harmless": harm,
+            "undetected": undet,
+            "total": total,
+            "reputation": attrs.get("reputation"),
+            "label": attrs.get("meaningful_name") or attrs.get("type_description"),
+        }
+    except Exception:
+        return {"error": "request_failed"}
+
+
+async def _abuseipdb_lookup(hc: httpx.AsyncClient, normalized: str) -> Optional[dict]:
+    if not ABUSEIPDB_API_KEY:
+        return None
+    try:
+        r = await hc.get(
+            "https://api.abuseipdb.com/api/v2/check",
+            headers={"Key": ABUSEIPDB_API_KEY, "Accept": "application/json"},
+            params={"ipAddress": normalized, "maxAgeInDays": "90"},
+        )
+        if r.status_code == 401:
+            return {"error": "unauthorized"}
+        if r.status_code == 429:
+            return {"error": "rate_limited"}
+        if r.status_code != 200:
+            return {"error": f"http_{r.status_code}"}
+        d = (r.json() or {}).get("data") or {}
+        return {
+            "score": d.get("abuseConfidenceScore"),
+            "reports": d.get("totalReports"),
+            "country": d.get("countryCode"),
+            "isp": d.get("isp"),
+            "domain": d.get("domain"),
+            "whitelisted": d.get("isWhitelisted"),
+        }
+    except Exception:
+        return {"error": "request_failed"}
+
+
+async def _reputation(hc: httpx.AsyncClient, kind: str, normalized: str) -> Optional[dict]:
+    """VT + AbuseIPDB reputation with 6h Mongo cache. Returns None when no keys set."""
+    if not VT_API_KEY and not ABUSEIPDB_API_KEY:
+        return None
+    cache_key = f"{kind}:{normalized}"
+    try:
+        doc = await db.ioc_cache.find_one({"_id": cache_key})
+        if doc and doc.get("ts"):
+            if datetime.now(timezone.utc) - datetime.fromisoformat(doc["ts"]) < _REP_TTL:
+                return doc.get("reputation")
+    except Exception:
+        pass
+    rep = {"vt": await _vt_lookup(hc, kind, normalized), "abuseipdb": None}
+    if kind == "ip":
+        rep["abuseipdb"] = await _abuseipdb_lookup(hc, normalized)
+    try:
+        await db.ioc_cache.update_one({"_id": cache_key}, {"$set": {"reputation": rep, "ts": now_iso()}}, upsert=True)
+    except Exception:
+        pass
+    return rep
+
+
+async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
+    """Full IOC lookup: classify + free enrichment + optional key-based reputation."""
+    value = (value or "").strip()
+    kind = _classify_ioc(value)
+    if kind == "unknown":
+        return {"value": value, "type": "unknown", "links": {}, "enrichment": None, "reputation": None}
+    normalized = value.replace("[.]", ".")
+    result = {"value": value, "type": kind, "links": _ioc_links(value, kind), "enrichment": None, "reputation": None}
+
+    try:
+        if kind == "ip":
+            async def shodan():
+                try:
+                    r = await hc.get(f"https://internetdb.shodan.io/{normalized}")
+                    return r.json() if r.status_code == 200 else {}
+                except Exception:
+                    return {}
+
+            async def geo():
+                try:
+                    r = await hc.get(f"http://ip-api.com/json/{normalized}?fields=status,country,city,isp,org,as,query")
+                    j = r.json()
+                    return j if j.get("status") == "success" else {}
+                except Exception:
+                    return {}
+
+            sh, gj = await asyncio.gather(shodan(), geo())
+            result["enrichment"] = {
+                "kind": "ip",
+                "geo": {"country": gj.get("country"), "city": gj.get("city"), "isp": gj.get("isp"), "org": gj.get("org"), "asn": gj.get("as")} if gj else None,
+                "open_ports": sh.get("ports", []),
+                "hostnames": sh.get("hostnames", []),
+                "tags": sh.get("tags", []),
+                "vulns": sh.get("vulns", []),
+                "sources": ["Shodan InternetDB", "ip-api.com"],
+            }
+        elif kind in ("domain", "url"):
+            from urllib.parse import urlparse
+            host = urlparse(normalized).netloc if kind == "url" else normalized
+            query = f"page.domain:{host}" if host else f"page.url:{normalized}"
+            try:
+                r = await hc.get(f"https://urlscan.io/api/v1/search/?q={query}&size=5")
+                j = r.json()
+                recent = [{"url": x["task"]["url"], "date": x["task"].get("time"), "score": x.get("verdicts", {}).get("overall", {}).get("score")} for x in j.get("results", [])[:5]]
+                result["enrichment"] = {"kind": "web", "scan_count": j.get("total", 0), "recent_scans": recent, "sources": ["urlscan.io"]}
+            except Exception:
+                result["enrichment"] = {"kind": "web", "scan_count": 0, "recent_scans": [], "sources": ["urlscan.io"]}
+        else:
+            # File hash — key-free lookup against CIRCL hashlookup (known-file DB)
+            enr = {
+                "kind": "hash",
+                "hash_type": kind,
+                "found": False,
+                "known_malicious": False,
+                "filename": None,
+                "filesize": None,
+                "product": None,
+                "source_label": None,
+                "note": "Not found in the CIRCL known-file database. Use the deep links below to check reputation on VirusTotal, MalwareBazaar and others.",
+                "sources": ["CIRCL hashlookup"],
+            }
+            try:
+                r = await hc.get(f"https://hashlookup.circl.lu/lookup/{kind}/{normalized}", headers={"Accept": "application/json"})
+                if r.status_code == 200:
+                    j = r.json()
+                    if isinstance(j, dict) and not j.get("message"):
+                        enr["found"] = True
+                        enr["known_malicious"] = bool(j.get("KnownMalicious"))
+                        enr["filename"] = j.get("FileName")
+                        enr["filesize"] = j.get("FileSize")
+                        enr["product"] = (j.get("ProductCode") or {}).get("ProductName") if isinstance(j.get("ProductCode"), dict) else None
+                        enr["source_label"] = j.get("KnownMalicious") or ("NSRL known-good file" if j.get("RDS:package_id") else "Known file")
+                        enr["note"] = None
+            except Exception:
+                pass
+            result["enrichment"] = enr
+    except Exception as e:
+        logger.error(f"IOC enrichment error: {e}")
+
+    try:
+        result["reputation"] = await _reputation(hc, kind, normalized)
+    except Exception as e:
+        logger.error(f"IOC reputation error: {e}")
+
+    return result
+
+
+@api_router.get("/ioc-config")
+async def ioc_config():
+    """Tells the frontend which key-based reputation providers are active."""
+    return {"vt_enabled": bool(VT_API_KEY), "abuseipdb_enabled": bool(ABUSEIPDB_API_KEY)}
+
+
 @api_router.get("/ioc-lookup")
 async def ioc_lookup(value: str):
     value = (value or "").strip()
     if not value or len(value) > 2048:
         raise HTTPException(status_code=400, detail="Provide a valid IOC (hash, IP, domain or URL)")
-    kind = _classify_ioc(value)
-    if kind == "unknown":
+    if _classify_ioc(value) == "unknown":
         raise HTTPException(status_code=422, detail="Could not recognize this as a hash, IP, domain or URL")
+    async with httpx.AsyncClient(timeout=12, follow_redirects=True) as hc:
+        return await _do_lookup(hc, value)
 
-    normalized = value.replace("[.]", ".")
-    result = {"value": value, "type": kind, "links": _ioc_links(value, kind), "enrichment": None}
 
-    try:
-        async with httpx.AsyncClient(timeout=12, follow_redirects=True) as hc:
-            if kind == "ip":
-                async def shodan():
-                    try:
-                        r = await hc.get(f"https://internetdb.shodan.io/{normalized}")
-                        return r.json() if r.status_code == 200 else {}
-                    except Exception:
-                        return {}
+class BatchIOCInput(BaseModel):
+    values: List[str] = Field(default_factory=list)
 
-                async def geo():
-                    try:
-                        r = await hc.get(f"http://ip-api.com/json/{normalized}?fields=status,country,city,isp,org,as,query")
-                        j = r.json()
-                        return j if j.get("status") == "success" else {}
-                    except Exception:
-                        return {}
 
-                sh, gj = await asyncio.gather(shodan(), geo())
-                result["enrichment"] = {
-                    "kind": "ip",
-                    "geo": {"country": gj.get("country"), "city": gj.get("city"), "isp": gj.get("isp"), "org": gj.get("org"), "asn": gj.get("as")} if gj else None,
-                    "open_ports": sh.get("ports", []),
-                    "hostnames": sh.get("hostnames", []),
-                    "tags": sh.get("tags", []),
-                    "vulns": sh.get("vulns", []),
-                    "sources": ["Shodan InternetDB", "ip-api.com"],
-                }
-            elif kind in ("domain", "url"):
-                from urllib.parse import urlparse
-                host = urlparse(normalized).netloc if kind == "url" else normalized
-                query = f"page.domain:{host}" if host else f"page.url:{normalized}"
+@api_router.post("/ioc-lookup-batch")
+async def ioc_lookup_batch(payload: BatchIOCInput):
+    # Accept a list of raw entries; split each on whitespace/comma/semicolon/newline.
+    tokens: List[str] = []
+    for entry in (payload.values or []):
+        for tok in re.split(r"[\s,;]+", (entry or "").strip()):
+            tok = tok.strip()
+            if tok:
+                tokens.append(tok)
+    # Dedupe (case-insensitive) preserving order, cap at 50.
+    seen = set()
+    items: List[str] = []
+    for t in tokens:
+        key = t.lower()
+        if key not in seen:
+            seen.add(key)
+            items.append(t)
+    if not items:
+        raise HTTPException(status_code=400, detail="Provide at least one IOC to analyze")
+    if len(items) > 50:
+        items = items[:50]
+
+    sem = asyncio.Semaphore(8)
+    async with httpx.AsyncClient(timeout=12, follow_redirects=True) as hc:
+        async def one(v: str) -> dict:
+            async with sem:
                 try:
-                    r = await hc.get(f"https://urlscan.io/api/v1/search/?q={query}&size=5")
-                    j = r.json()
-                    recent = [{"url": x["task"]["url"], "date": x["task"].get("time"), "score": x.get("verdicts", {}).get("overall", {}).get("score")} for x in j.get("results", [])[:5]]
-                    result["enrichment"] = {"kind": "web", "scan_count": j.get("total", 0), "recent_scans": recent, "sources": ["urlscan.io"]}
+                    return await _do_lookup(hc, v)
                 except Exception:
-                    result["enrichment"] = {"kind": "web", "scan_count": 0, "recent_scans": [], "sources": ["urlscan.io"]}
-            else:
-                # File hash — key-free lookup against CIRCL hashlookup (known-file DB)
-                enr = {
-                    "kind": "hash",
-                    "hash_type": kind,
-                    "found": False,
-                    "known_malicious": False,
-                    "filename": None,
-                    "filesize": None,
-                    "product": None,
-                    "source_label": None,
-                    "note": "Not found in the CIRCL known-file database. Use the deep links below to check reputation on VirusTotal, MalwareBazaar and others.",
-                    "sources": ["CIRCL hashlookup"],
-                }
-                try:
-                    r = await hc.get(f"https://hashlookup.circl.lu/lookup/{kind}/{normalized}", headers={"Accept": "application/json"})
-                    if r.status_code == 200:
-                        j = r.json()
-                        if isinstance(j, dict) and not j.get("message"):
-                            enr["found"] = True
-                            mal = j.get("KnownMalicious") or j.get("hashlookup:trust")
-                            enr["known_malicious"] = bool(j.get("KnownMalicious"))
-                            enr["filename"] = j.get("FileName")
-                            enr["filesize"] = j.get("FileSize")
-                            enr["product"] = (j.get("ProductCode") or {}).get("ProductName") if isinstance(j.get("ProductCode"), dict) else None
-                            enr["source_label"] = j.get("KnownMalicious") or ("NSRL known-good file" if j.get("RDS:package_id") else "Known file")
-                            enr["note"] = None
-                except Exception:
-                    pass
-                result["enrichment"] = enr
-    except Exception as e:
-        logger.error(f"IOC lookup error: {e}")
+                    return {"value": v, "type": "unknown", "links": {}, "enrichment": None, "reputation": None}
+        results = await asyncio.gather(*[one(v) for v in items])
 
-    return result
+    return {"count": len(results), "results": results}
 
 
 @api_router.get("/live-feed")

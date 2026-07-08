@@ -1,24 +1,13 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, ExternalLink, Loader2, ShieldQuestion, MapPin, Server, AlertTriangle, Globe2, ShieldCheck } from "lucide-react";
+import { Search, ExternalLink, Loader2, ShieldQuestion, MapPin, Server, AlertTriangle, Globe2, ShieldCheck, List } from "lucide-react";
 import { api, formatApiErrorDetail } from "@/lib/api";
-
-const FAVICON = {
-  "VirusTotal": "virustotal.com",
-  "AbuseIPDB": "abuseipdb.com",
-  "Cisco Talos": "talosintelligence.com",
-  "IBM X-Force": "exchange.xforce.ibmcloud.com",
-  "urlscan.io": "urlscan.io",
-  "MalwareBazaar": "abuse.ch",
-  "ThreatFox": "threatfox.abuse.ch",
-  "Hybrid Analysis": "hybrid-analysis.com",
-  "Shodan": "shodan.io",
-  "GreyNoise": "greynoise.io",
-};
-
-const TYPE_LABEL = { md5: "MD5 Hash", sha1: "SHA1 Hash", sha256: "SHA256 Hash", ip: "IP Address", domain: "Domain", url: "URL" };
+import { FAVICON, TYPE_LABEL } from "@/lib/iocUtils";
+import ReputationBadges from "./ReputationBadges";
+import IocBulkTable from "./IocBulkTable";
 
 export default function IocAnalyzer() {
+  const [mode, setMode] = useState("single");
   const [value, setValue] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -44,6 +33,28 @@ export default function IocAnalyzer() {
 
   return (
     <div className="mb-10">
+      {/* Mode toggle */}
+      <div className="inline-flex items-center gap-1 p-1 mb-4 bg-slate-100 rounded-lg" data-testid="ioc-mode-toggle">
+        <button
+          onClick={() => setMode("single")}
+          data-testid="ioc-mode-single"
+          className={`inline-flex items-center gap-1.5 text-sm font-semibold px-3.5 py-1.5 rounded-md transition-colors ${mode === "single" ? "bg-white text-[#2E7DF5] shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+        >
+          <Search className="w-4 h-4" /> Single
+        </button>
+        <button
+          onClick={() => setMode("bulk")}
+          data-testid="ioc-mode-bulk"
+          className={`inline-flex items-center gap-1.5 text-sm font-semibold px-3.5 py-1.5 rounded-md transition-colors ${mode === "bulk" ? "bg-white text-[#2E7DF5] shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+        >
+          <List className="w-4 h-4" /> Bulk paste
+        </button>
+      </div>
+
+      {mode === "bulk" ? (
+        <IocBulkTable />
+      ) : (
+        <>
       <form onSubmit={analyze} data-testid="ioc-analyzer-form" className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -74,6 +85,7 @@ export default function IocAnalyzer() {
             <div className="flex flex-wrap items-center gap-3 px-5 py-4 bg-white border-b border-slate-100">
               <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-[#2E7DF5] text-white">{TYPE_LABEL[result.type] || result.type}</span>
               <code className="font-mono-data text-sm text-slate-800 break-all">{result.value}</code>
+              <div className="ml-auto"><ReputationBadges reputation={result.reputation} size="md" /></div>
             </div>
 
             {/* Enrichment */}
@@ -180,6 +192,8 @@ export default function IocAnalyzer() {
           </motion.div>
         )}
       </AnimatePresence>
+        </>
+      )}
     </div>
   );
 }
