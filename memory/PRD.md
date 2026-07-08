@@ -18,10 +18,14 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 
 ## Implemented (2026-07-08)
 - All 6 sections + hero + live threat landscape + admin panel.
-- Live CISA feed (1,635 CVEs, ransomware counters).
-- Threat Report featured brief: MITRE ATT&CK kill-chain w/ tactic IDs, process tree, IOCs; grid cards + detail dialog.
-- Admin CRUD verified via UI. Backend 9/9 tests pass; frontend 100%.
-- Full redesign from dark hacker theme -> light corporate enterprise theme.
+- Live CISA feed (1,635 CVEs) — CVE rows link to NVD detail (new tab).
+- Live Attack Feed (ransomware.live recent victims, screenshots) — real-time online attack data.
+- 7 detailed threat reports, each with MITRE attack chain, process tree, image. Featured brief uses an animated kill-chain node diagram + MITRE T-codes.
+- Support "Request a Security Assessment" lead-capture form -> POST /api/leads (EmailStr validated); admin GET /api/leads.
+- Admin delete uses shadcn AlertDialog (no native confirm).
+- Transparent/light logo variants (nivx-logo-light.png for white nav, nivx-logo-transparent.png for navy footer).
+- Full redesign: light corporate enterprise theme (Outfit/Inter/IBM Plex Mono).
+- Tests: backend 13/13, frontend 100%.
 
 ## Credentials
 - Admin: admin@nivxmachines.com / NivX@Admin2025 (see /app/memory/test_credentials.md)

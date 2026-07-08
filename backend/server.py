@@ -9,7 +9,7 @@ from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import logging
-from pydantic import BaseModel, Field, ConfigDict, BeforeValidator
+from pydantic import BaseModel, Field, ConfigDict, BeforeValidator, EmailStr
 from typing import List, Optional, Annotated, Any
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -138,7 +138,7 @@ ProcessNode.model_rebuild()
 
 class LeadCreate(BaseModel):
     name: str
-    email: str
+    email: EmailStr
     company: Optional[str] = None
     phone: Optional[str] = None
     company_size: Optional[str] = None
