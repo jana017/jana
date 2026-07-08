@@ -141,6 +141,12 @@ function ArticleView({ slug }) {
             <section key={si} className="mb-12">
               <h2 className="font-heading text-2xl md:text-3xl font-semibold text-slate-900 tracking-tight mb-5">{s.heading}</h2>
 
+              {s.image && (
+                <figure className="mb-6 rounded-xl overflow-hidden border border-slate-200 shadow-sm">
+                  <img src={s.image} alt={s.heading} loading="lazy" className="w-full aspect-[16/8] object-cover" />
+                </figure>
+              )}
+
               {s.body && s.body.map((p, pi) => (
                 <p key={pi} className="text-slate-700 leading-relaxed mb-4">{p}</p>
               ))}

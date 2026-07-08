@@ -24,6 +24,7 @@ export const KB_ARTICLES = [
       },
       {
         heading: "Types of malware analysis",
+        image: "https://images.unsplash.com/photo-1614064548237-096d0f6db4e7?auto=format&fit=crop&w=1600&q=80",
         subs: [
           {
             title: "Static analysis",
@@ -61,6 +62,7 @@ export const KB_ARTICLES = [
       },
       {
         heading: "Stages of malware analysis",
+        image: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=1600&q=80",
         list: [
           { t: "Static properties analysis", d: "Strings, headers, hashes, metadata, embedded resources. Fast, no execution needed — useful to create initial IOCs and decide if deeper investigation is warranted." },
           { t: "Interactive behaviour analysis", d: "Observe registry, filesystem, process and network activity inside a lab. Memory forensics complements this to understand how the sample manipulates memory." },
@@ -119,6 +121,7 @@ export const KB_ARTICLES = [
       },
       {
         heading: "The APT attack lifecycle",
+        image: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=1600&q=80",
         list: [
           { t: "1. Reconnaissance", d: "Passive and active intelligence gathering — LinkedIn scraping, DNS enumeration, supply-chain mapping, phishing pretext research." },
           { t: "2. Initial access", d: "Spear-phishing, watering-hole compromise, exploit of an internet-facing service, or supply-chain implant. The goal: one foothold, minimal noise." },
@@ -142,6 +145,7 @@ export const KB_ARTICLES = [
       },
       {
         heading: "Detecting and defending against APTs",
+        image: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1600&q=80",
         list: [
           { t: "Baseline behaviour", d: "Know what normal PowerShell / WMI / lateral movement looks like in your environment so anomalies stand out." },
           { t: "Endpoint & identity telemetry", d: "EDR + Active Directory audit logs + identity provider logs (Okta / Azure AD) catch credential-based lateral movement." },
@@ -184,6 +188,7 @@ export const KB_ARTICLES = [
       },
       {
         heading: "The NIST 6-phase Incident Response lifecycle",
+        image: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=1600&q=80",
         list: [
           { t: "1. Preparation", d: "Build the plan, roles, runbooks, forensic tooling, communications templates and legal / regulatory playbooks — before you need them. Tabletop-test the plan quarterly." },
           { t: "2. Identification", d: "Detect the incident. Correlate telemetry from SIEM, EDR, identity provider, network flow, threat intel. Classify severity and open the ticket." },
@@ -206,6 +211,7 @@ export const KB_ARTICLES = [
       },
       {
         heading: "Key metrics for a mature IR programme",
+        image: "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1600&q=80",
         list: [
           { t: "MTTD", d: "Mean Time To Detect — from initial compromise to alert. Target: minutes to hours." },
           { t: "MTTR", d: "Mean Time To Respond / Contain — from alert to attacker eviction. Target: hours to a day." },
@@ -255,6 +261,7 @@ export const KB_ARTICLES = [
       },
       {
         heading: "Common MITM techniques",
+        image: "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=1600&q=80",
         list: [
           { t: "ARP spoofing", d: "On a local Ethernet segment, the attacker floods the network with forged ARP responses, associating their MAC address with the gateway's IP. Traffic destined for the gateway now flows through the attacker." },
           { t: "DNS spoofing / cache poisoning", d: "The attacker corrupts a DNS resolver's cache so that lookups for a legitimate domain return an IP the attacker controls. The victim's browser then happily connects to the wrong server." },
@@ -323,7 +330,9 @@ export const KB_ARTICLES = [
         "A web application takes user input, builds a SQL query from it, and executes it against a database. SQL Injection happens when the application fails to distinguish data from code — the attacker's input is interpreted as part of the query syntax, changing what the query does.",
         "Impact spans data theft, authentication bypass, data destruction, remote code execution (via UDFs or xp_cmdshell on some databases) and, in the worst cases, complete server takeover.",
       ]},
-      { heading: "The main variants", list: [
+      { heading: "The main variants",
+        image: "https://images.unsplash.com/photo-1555949963-ff9fe0c870eb?auto=format&fit=crop&w=1600&q=80",
+        list: [
         { t: "In-band (classic)", d: "Attacker sees the query's output directly — via error messages or a UNION-based technique that appends attacker-controlled rows to the legitimate result set." },
         { t: "Blind (Boolean-based)", d: "The application returns different responses for true vs false conditions. Attacker infers data one bit at a time by asking yes/no questions." },
         { t: "Blind (Time-based)", d: "No visible difference in response — but the attacker can force the DB to sleep (WAITFOR DELAY, BENCHMARK, pg_sleep) when a condition is true. Slow but reliable." },
@@ -335,7 +344,9 @@ export const KB_ARTICLES = [
         "Attacker sends username = admin' -- and any password. The resulting query becomes: SELECT * FROM users WHERE username='admin' -- ' AND password='...'. The comment marker (--) neutralises the password check. Auth bypass in one line.",
         "The same weakness in a search field enables UNION SELECT to append rows from other tables (users, credentials, session tokens) into the visible result.",
       ]},
-      { heading: "Detection in the SOC", list: [
+      { heading: "Detection in the SOC",
+        image: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1600&q=80",
+        list: [
         { t: "WAF alerts on SQL keywords", d: "UNION, SELECT, WAITFOR, BENCHMARK, SLEEP, xp_cmdshell in request parameters. Tune to avoid FPs from legitimate CMSes." },
         { t: "Response-length anomalies", d: "Union-based SQLi often produces responses much larger than baseline — instrument content-length delta detection." },
         { t: "Response-time anomalies", d: "Time-based SQLi produces predictable latency spikes on hits. Baseline endpoint latency and alert on outliers." },
@@ -373,14 +384,18 @@ export const KB_ARTICLES = [
         "PowerShell ships on every modern Windows machine. It's signed by Microsoft, trusted by AV, has full .NET Framework access and can download, decode and execute code entirely in memory. For an attacker, it's a perfect Swiss Army knife.",
         "The pattern that appears in almost every incident: powershell.exe -nop -w hidden -enc <base64_blob>. The blob decodes to a downloader that pulls the real payload from the internet and reflectively loads it — no file written to disk.",
       ]},
-      { heading: "The fileless toolkit", list: [
+      { heading: "The fileless toolkit",
+        image: "https://images.unsplash.com/photo-1629654297299-c8506221ca97?auto=format&fit=crop&w=1600&q=80",
+        list: [
         { t: "PowerShell reflective loader", d: "IEX (New-Object Net.WebClient).DownloadString('...') pattern. Executes remote code in the current process." },
         { t: ".NET Assembly.Load", d: "Loads a raw DLL byte-buffer directly into memory. Common for Cobalt Strike beacons and Sliver implants." },
         { t: "WMI event subscriptions", d: "Persistent __EventFilter + __EventConsumer pairs. Persistence with no file, no registry Run key, no scheduled task." },
         { t: "LOLBins (Living-off-the-Land binaries)", d: "regsvr32, rundll32, mshta, msbuild, installutil — legitimate signed binaries that can execute attacker payloads through built-in features." },
         { t: "Registry-only payloads", d: "Malicious code stored as base64 blobs in registry values, executed by a lightweight PowerShell loader launched by a Run key." },
       ]},
-      { heading: "Analysis techniques", list: [
+      { heading: "Analysis techniques",
+        image: "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=1600&q=80",
+        list: [
         { t: "Command-line reconstruction", d: "Sysmon Event 1 gives you the full command line. Decode -EncodedCommand blobs (base64 + UTF-16LE) and analyse the resulting script." },
         { t: "Script-block logging (4104)", d: "Even encoded PowerShell decodes at runtime and produces Event 4104 with the plain-text script block. Enable via Group Policy — free, high-signal." },
         { t: "Module-load telemetry", d: "EDR module-load events reveal unusual DLLs loaded into powershell.exe, winword.exe, or explorer.exe. Reflectively loaded assemblies show up here." },
@@ -424,7 +439,9 @@ export const KB_ARTICLES = [
         { t: "Business Email Compromise (BEC)", d: "No malware — pure social engineering. Attacker impersonates an executive or vendor to redirect a payment." },
         { t: "Vishing / Smishing", d: "Voice or SMS variants. MFA-fatigue and SIM-swap-adjacent techniques." },
       ]},
-      { heading: "The analysis checklist", list: [
+      { heading: "The analysis checklist",
+        image: "https://images.unsplash.com/photo-1596526131083-e8c633c948d2?auto=format&fit=crop&w=1600&q=80",
+        list: [
         { t: "Sender identity", d: "Return-Path, From, Reply-To — do they match? A mismatched Reply-To is a classic phish. Check the actual authenticating domain, not just the display name." },
         { t: "SPF / DKIM / DMARC results", d: "Full authentication headers. A DMARC=fail from a domain you've configured as p=reject should never reach the user in the first place." },
         { t: "Message headers", d: "Received: chain reveals the true origin. Client-header inconsistencies (e.g., mail sent 'from Outlook' but no X-Mailer: Microsoft) are telling." },
@@ -436,7 +453,9 @@ export const KB_ARTICLES = [
         "Mature SOCs have a phishing mailbox (phishing@your-domain) where users report suspicious mail. A SOAR playbook then: (1) extracts headers, URLs, and attachments, (2) runs each against VT / URLScan / HA / internal IOC DB, (3) auto-classifies malicious / suspicious / benign, and (4) purges from every user's mailbox at once (Microsoft 365 has native APIs for this).",
         "This turns a labour-intensive workflow into a 30-second decision for the analyst.",
       ]},
-      { heading: "Prevention that actually moves the needle", list: [
+      { heading: "Prevention that actually moves the needle",
+        image: "https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&w=1600&q=80",
+        list: [
         { t: "DMARC at p=reject", d: "Prevents attackers from spoofing your exact domain. External senders can still impersonate visually — see below." },
         { t: "External-sender banner", d: "Every email from outside gets a visible tag. Cheap, high-impact user awareness." },
         { t: "Phishing-resistant MFA", d: "FIDO2 keys, Windows Hello for Business, Authenticator with number matching. Removes the credential-theft payoff." },
