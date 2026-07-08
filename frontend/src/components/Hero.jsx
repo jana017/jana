@@ -19,17 +19,17 @@ export default function Hero() {
       className="relative min-h-screen flex flex-col justify-center overflow-hidden pt-28 pb-16"
     >
       <div className="absolute inset-0 hero-grid-bg" aria-hidden="true" />
-      <div className="absolute -top-40 -right-40 w-[520px] h-[520px] rounded-full bg-[#00F0FF]/10 blur-[120px]" aria-hidden="true" />
-      <div className="absolute bottom-0 left-1/4 w-[380px] h-[380px] rounded-full bg-[#FF0055]/5 blur-[120px]" aria-hidden="true" />
+      <div className="absolute -top-40 -right-40 w-[520px] h-[520px] rounded-full bg-[#F5821F]/10 blur-[120px]" aria-hidden="true" />
+      <div className="absolute bottom-0 left-1/4 w-[380px] h-[380px] rounded-full bg-[#FF3B5C]/5 blur-[120px]" aria-hidden="true" />
 
       <div className="relative mx-auto max-w-[1400px] w-full px-6">
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.1 }}
-          className="flex items-center gap-3 mb-8 font-mono-data text-[11px] uppercase tracking-[0.3em] text-[#00F0FF]"
+          className="flex items-center gap-3 mb-8 font-mono-data text-[11px] uppercase tracking-[0.3em] text-[#F5821F]"
         >
-          <span className="w-2 h-2 rounded-full bg-[#00F0FF] pulse-dot" />
+          <span className="w-2 h-2 rounded-full bg-[#F5821F] pulse-dot" />
           Cybersecurity · Artificial Intelligence · Tech
         </motion.div>
 
@@ -41,7 +41,7 @@ export default function Hero() {
                 variants={line}
                 initial="hidden"
                 animate="show"
-                className={`block ${i === 2 ? "text-[#00F0FF] text-glow" : ""}`}
+                className={`block ${i === 2 ? "text-[#2E7DF5] text-glow-blue" : ""}`}
               >
                 {t}
               </motion.span>
@@ -54,7 +54,7 @@ export default function Hero() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.9, duration: 0.8 }}
-            className="max-w-xl text-[#A1A1A5] text-base sm:text-lg leading-relaxed"
+            className="max-w-xl text-[#9AA6B8] text-base sm:text-lg leading-relaxed"
           >
             NivX Machines defends the enterprise with AI-driven threat detection,
             zero-trust architecture, and real-time intelligence — turning raw signal
@@ -70,23 +70,23 @@ export default function Hero() {
             <a
               href="tel:9059565125"
               data-testid="hero-phone"
-              className="glass flex items-center gap-4 px-5 py-4 hover:border-[#00F0FF]/50 transition-colors group"
+              className="glass flex items-center gap-4 px-5 py-4 hover:border-[#F5821F]/50 transition-colors group"
             >
-              <Phone className="w-5 h-5 text-[#00F0FF]" />
+              <Phone className="w-5 h-5 text-[#F5821F]" />
               <div>
-                <div className="font-mono-data text-[10px] uppercase tracking-widest text-[#66666E]">Mobile</div>
-                <div className="text-white font-medium group-hover:text-[#00F0FF] transition-colors">+91 90595 65125</div>
+                <div className="font-mono-data text-[10px] uppercase tracking-widest text-[#5A6B82]">Mobile</div>
+                <div className="text-white font-medium group-hover:text-[#F5821F] transition-colors">+91 90595 65125</div>
               </div>
             </a>
             <a
               href="mailto:info@nivxmachines.com"
               data-testid="hero-email"
-              className="glass flex items-center gap-4 px-5 py-4 hover:border-[#00F0FF]/50 transition-colors group"
+              className="glass flex items-center gap-4 px-5 py-4 hover:border-[#F5821F]/50 transition-colors group"
             >
-              <Mail className="w-5 h-5 text-[#00F0FF]" />
+              <Mail className="w-5 h-5 text-[#F5821F]" />
               <div>
-                <div className="font-mono-data text-[10px] uppercase tracking-widest text-[#66666E]">Email</div>
-                <div className="text-white font-medium group-hover:text-[#00F0FF] transition-colors">info@nivxmachines.com</div>
+                <div className="font-mono-data text-[10px] uppercase tracking-widest text-[#5A6B82]">Email</div>
+                <div className="text-white font-medium group-hover:text-[#F5821F] transition-colors">info@nivxmachines.com</div>
               </div>
             </a>
           </motion.div>
@@ -97,7 +97,7 @@ export default function Hero() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 1.4 }}
-        className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-[#66666E]"
+        className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-[#5A6B82]"
       >
         <span className="font-mono-data text-[10px] uppercase tracking-widest">Scroll</span>
         <ArrowDown className="w-4 h-4 animate-bounce" />

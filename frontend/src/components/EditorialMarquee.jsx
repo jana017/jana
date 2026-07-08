@@ -11,7 +11,7 @@ const ITEMS = [
 
 export default function EditorialMarquee() {
   return (
-    <div data-testid="marquee" className="py-8 border-y border-white/10 bg-[#0A0A0B] overflow-hidden">
+    <div data-testid="marquee" className="py-8 border-y border-white/10 bg-[#0A1220] overflow-hidden">
       <Marquee speed={35} gradient={false}>
         {ITEMS.concat(ITEMS).map((t, i) => (
           <span
@@ -19,7 +19,7 @@ export default function EditorialMarquee() {
             className="mx-8 font-mono-data uppercase tracking-[0.25em] text-2xl md:text-4xl text-white/70 flex items-center gap-8"
           >
             {t}
-            <span className="text-[#00F0FF]">✦</span>
+            <span className="text-[#F5821F]">✦</span>
           </span>
         ))}
       </Marquee>

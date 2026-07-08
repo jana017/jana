@@ -34,11 +34,11 @@ export default function Manifesto() {
           variants={reveal}
           className="max-w-3xl mb-20"
         >
-          <div className="font-mono-data text-[11px] uppercase tracking-[0.3em] text-[#00F0FF] mb-6">
+          <div className="font-mono-data text-[11px] uppercase tracking-[0.3em] text-[#F5821F] mb-6">
             / About Us — The Manifesto
           </div>
           <h2 className="font-display font-black tracking-tighter text-white text-4xl sm:text-5xl lg:text-6xl leading-[0.95]">
-            Defense is not a product. <span className="text-[#66666E]">It&apos;s a discipline.</span>
+            Defense is not a product. <span className="text-[#5A6B82]">It&apos;s a discipline.</span>
           </h2>
         </motion.div>
 
@@ -53,14 +53,14 @@ export default function Manifesto() {
               data-testid={`manifesto-${c.n}`}
               className="grid md:grid-cols-[auto_1fr] gap-6 md:gap-14 py-10 border-t border-white/10 group"
             >
-              <div className="font-display font-black text-6xl md:text-8xl text-white/10 group-hover:text-[#00F0FF]/40 transition-colors duration-500 leading-none">
+              <div className="font-display font-black text-6xl md:text-8xl text-white/10 group-hover:text-[#F5821F]/40 transition-colors duration-500 leading-none">
                 {c.n}
               </div>
               <div className="max-w-2xl">
                 <h3 className="font-display font-semibold text-2xl md:text-3xl text-white mb-4 tracking-tight">
                   {c.title}
                 </h3>
-                <p className="text-[#A1A1A5] leading-relaxed text-base md:text-lg">{c.body}</p>
+                <p className="text-[#9AA6B8] leading-relaxed text-base md:text-lg">{c.body}</p>
               </div>
             </motion.div>
           ))}

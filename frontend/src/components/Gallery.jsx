@@ -10,10 +10,10 @@ const IMAGES = [
 
 export default function Gallery() {
   return (
-    <section id="gallery" data-testid="gallery-section" className="relative py-28 border-t border-white/5 bg-[#0A0A0B]">
+    <section id="gallery" data-testid="gallery-section" className="relative py-28 border-t border-white/5 bg-[#0A1220]">
       <div className="mx-auto max-w-[1400px] px-6">
         <div className="max-w-3xl mb-16">
-          <div className="font-mono-data text-[11px] uppercase tracking-[0.3em] text-[#00F0FF] mb-6">/ Gallery</div>
+          <div className="font-mono-data text-[11px] uppercase tracking-[0.3em] text-[#F5821F] mb-6">/ Gallery</div>
           <h2 className="font-display font-black tracking-tighter text-white text-4xl sm:text-5xl lg:text-6xl leading-[0.95]">
             Inside the machine.
           </h2>
@@ -36,10 +36,10 @@ export default function Gallery() {
                 className="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-105 transition-[filter,transform] duration-700"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-              <div className="absolute bottom-4 left-4 font-mono-data text-[11px] uppercase tracking-widest text-white/80 group-hover:text-[#00F0FF] transition-colors">
+              <div className="absolute bottom-4 left-4 font-mono-data text-[11px] uppercase tracking-widest text-white/80 group-hover:text-[#F5821F] transition-colors">
                 {img.label}
               </div>
-              <div className="absolute inset-0 ring-1 ring-inset ring-[#00F0FF]/0 group-hover:ring-[#00F0FF]/40 transition-[box-shadow] duration-500" />
+              <div className="absolute inset-0 ring-1 ring-inset ring-[#F5821F]/0 group-hover:ring-[#F5821F]/40 transition-[box-shadow] duration-500" />
             </motion.div>
           ))}
         </div>

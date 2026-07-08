@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Menu, X, ShieldHalf } from "lucide-react";
+import { Menu, X } from "lucide-react";
 
 const LINKS = [
   { label: "About", id: "about" },
@@ -37,12 +37,13 @@ export default function Navbar() {
         <button
           data-testid="logo-home"
           onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-          className="flex items-center gap-2 group"
+          className="flex items-center group"
         >
-          <ShieldHalf className="w-6 h-6 text-[#00F0FF]" strokeWidth={1.5} />
-          <span className="font-display font-black text-lg tracking-tighter text-white">
-            NIVX<span className="text-[#00F0FF]">.</span>MACHINES
-          </span>
+          <img
+            src="/nivx-logo.webp"
+            alt="NivX Machines"
+            className="h-9 sm:h-10 w-auto object-contain"
+          />
         </button>
 
         <div className="hidden lg:flex items-center gap-9 font-mono-data text-[12px] uppercase tracking-widest">
@@ -51,7 +52,7 @@ export default function Navbar() {
               key={l.id}
               data-testid={`nav-${l.id}`}
               onClick={() => go(l.id)}
-              className="link-underline text-[#A1A1A5] hover:text-white transition-colors duration-300"
+              className="link-underline text-[#9AA6B8] hover:text-white transition-colors duration-300"
             >
               {l.label}
             </button>
@@ -62,14 +63,14 @@ export default function Navbar() {
           <Link
             to="/admin"
             data-testid="nav-admin-link"
-            className="hidden sm:inline-flex font-mono-data text-[11px] uppercase tracking-widest text-[#66666E] hover:text-[#00F0FF] transition-colors"
+            className="hidden sm:inline-flex font-mono-data text-[11px] uppercase tracking-widest text-[#5A6B82] hover:text-[#F5821F] transition-colors"
           >
             Admin
           </Link>
           <a
             href="tel:9059565125"
             data-testid="nav-contact-cta"
-            className="hidden sm:inline-flex items-center border border-[#00F0FF]/60 text-[#00F0FF] px-5 py-2 font-mono-data text-[11px] uppercase tracking-widest hover:bg-[#00F0FF] hover:text-black transition-colors duration-300"
+            className="hidden sm:inline-flex items-center border border-[#F5821F]/60 text-[#F5821F] px-5 py-2 font-mono-data text-[11px] uppercase tracking-widest hover:bg-[#F5821F] hover:text-black transition-colors duration-300"
           >
             Get Secured
           </a>
@@ -89,7 +90,7 @@ export default function Navbar() {
             <button
               key={l.id}
               onClick={() => go(l.id)}
-              className="text-left font-mono-data text-sm uppercase tracking-widest text-[#A1A1A5]"
+              className="text-left font-mono-data text-sm uppercase tracking-widest text-[#9AA6B8]"
             >
               {l.label}
             </button>

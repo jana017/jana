@@ -15,7 +15,7 @@ export default function Services() {
     <section id="services" data-testid="services-section" className="relative py-28 border-t border-white/5">
       <div className="mx-auto max-w-[1400px] px-6">
         <div className="max-w-3xl mb-16">
-          <div className="font-mono-data text-[11px] uppercase tracking-[0.3em] text-[#00F0FF] mb-6">/ Services</div>
+          <div className="font-mono-data text-[11px] uppercase tracking-[0.3em] text-[#F5821F] mb-6">/ Services</div>
           <h2 className="font-display font-black tracking-tighter text-white text-4xl sm:text-5xl lg:text-6xl leading-[0.95]">
             Full-spectrum defense.
           </h2>
@@ -30,16 +30,16 @@ export default function Services() {
               viewport={{ once: true }}
               transition={{ duration: 0.6, delay: (i % 3) * 0.08 }}
               data-testid={`service-${i}`}
-              className={`group glass p-8 hover:-translate-y-2 hover:border-[#00F0FF]/40 transition-[transform,border-color] duration-400 ${s.span} ${
+              className={`group glass p-8 hover:-translate-y-2 hover:border-[#F5821F]/40 transition-[transform,border-color] duration-400 ${s.span} ${
                 s.big ? "min-h-[220px] flex flex-col justify-between" : ""
               }`}
             >
-              <s.icon className="w-8 h-8 text-[#00F0FF] mb-8" strokeWidth={1.4} />
+              <s.icon className="w-8 h-8 text-[#F5821F] mb-8" strokeWidth={1.4} />
               <div>
                 <h3 className={`font-display font-semibold text-white mb-3 tracking-tight ${s.big ? "text-2xl md:text-3xl" : "text-xl"}`}>
                   {s.title}
                 </h3>
-                <p className="text-[#A1A1A5] leading-relaxed">{s.desc}</p>
+                <p className="text-[#9AA6B8] leading-relaxed">{s.desc}</p>
               </div>
             </motion.div>
           ))}

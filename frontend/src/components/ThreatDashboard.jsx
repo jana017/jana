@@ -12,10 +12,10 @@ import {
 } from "@/components/ui/dialog";
 
 const SEV = {
-  critical: "text-[#FF0055] border-[#FF0055]/50 bg-[#FF0055]/10",
+  critical: "text-[#FF3B5C] border-[#FF3B5C]/50 bg-[#FF3B5C]/10",
   high: "text-[#FFB800] border-[#FFB800]/50 bg-[#FFB800]/10",
-  medium: "text-[#00F0FF] border-[#00F0FF]/50 bg-[#00F0FF]/10",
-  low: "text-[#A1A1A5] border-white/20 bg-white/5",
+  medium: "text-[#F5821F] border-[#F5821F]/50 bg-[#F5821F]/10",
+  low: "text-[#9AA6B8] border-white/20 bg-white/5",
 };
 
 export default function ThreatDashboard() {
@@ -30,13 +30,13 @@ export default function ThreatDashboard() {
     <section id="threats" data-testid="threats-section" className="relative py-28 border-t border-white/5">
       <div className="mx-auto max-w-[1400px] px-6">
         <div className="max-w-3xl mb-16">
-          <div className="font-mono-data text-[11px] uppercase tracking-[0.3em] text-[#00F0FF] mb-6">
+          <div className="font-mono-data text-[11px] uppercase tracking-[0.3em] text-[#F5821F] mb-6">
             / Threat Report
           </div>
           <h2 className="font-display font-black tracking-tighter text-white text-4xl sm:text-5xl lg:text-6xl leading-[0.95]">
             Attack chains, dissected.
           </h2>
-          <p className="text-[#A1A1A5] mt-6 text-lg leading-relaxed">
+          <p className="text-[#9AA6B8] mt-6 text-lg leading-relaxed">
             Curated intelligence from the NivX research team — full kill-chain mapping,
             process-tree forensics, and indicators of compromise.
           </p>
@@ -52,7 +52,7 @@ export default function ThreatDashboard() {
               transition={{ duration: 0.6, delay: (i % 3) * 0.08 }}
               data-testid={`threat-card-${i}`}
               onClick={() => setActive(r)}
-              className="group text-left glass overflow-hidden hover:-translate-y-2 hover:border-[#00F0FF]/40 transition-[transform,border-color] duration-400"
+              className="group text-left glass overflow-hidden hover:-translate-y-2 hover:border-[#F5821F]/40 transition-[transform,border-color] duration-400"
             >
               <div className="relative h-40 overflow-hidden">
                 {r.image_url && (
@@ -62,7 +62,7 @@ export default function ThreatDashboard() {
                     className="w-full h-full object-cover grayscale group-hover:grayscale-0 scale-105 group-hover:scale-110 transition-[filter,transform] duration-700"
                   />
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/30 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#060B14] via-[#060B14]/30 to-transparent" />
                 <span
                   className={`absolute top-3 left-3 font-mono-data text-[10px] uppercase tracking-widest px-2 py-1 border ${
                     SEV[r.severity] || SEV.low
@@ -72,13 +72,13 @@ export default function ThreatDashboard() {
                 </span>
               </div>
               <div className="p-5">
-                <div className="font-mono-data text-[10px] uppercase tracking-widest text-[#66666E] mb-2">
+                <div className="font-mono-data text-[10px] uppercase tracking-widest text-[#5A6B82] mb-2">
                   {r.category}
                 </div>
-                <h3 className="font-display font-semibold text-lg text-white leading-tight mb-3 group-hover:text-[#00F0FF] transition-colors">
+                <h3 className="font-display font-semibold text-lg text-white leading-tight mb-3 group-hover:text-[#F5821F] transition-colors">
                   {r.title}
                 </h3>
-                <p className="text-sm text-[#A1A1A5] leading-relaxed line-clamp-2 mb-4">{r.summary}</p>
+                <p className="text-sm text-[#9AA6B8] leading-relaxed line-clamp-2 mb-4">{r.summary}</p>
                 <AttackChain steps={r.attack_chain?.slice(0, 3)} compact />
               </div>
             </motion.button>
@@ -89,7 +89,7 @@ export default function ThreatDashboard() {
       <Dialog open={!!active} onOpenChange={(o) => !o && setActive(null)}>
         <DialogContent
           data-testid="threat-detail-dialog"
-          className="max-w-3xl bg-[#0A0A0B] border-white/10 text-white max-h-[88vh] overflow-y-auto"
+          className="max-w-3xl bg-[#0A1220] border-white/10 text-white max-h-[88vh] overflow-y-auto"
         >
           {active && (
             <>
@@ -98,14 +98,14 @@ export default function ThreatDashboard() {
                   <span className={`font-mono-data text-[10px] uppercase tracking-widest px-2 py-1 border ${SEV[active.severity] || SEV.low}`}>
                     {active.severity}
                   </span>
-                  <span className="font-mono-data text-[10px] uppercase tracking-widest text-[#66666E]">
+                  <span className="font-mono-data text-[10px] uppercase tracking-widest text-[#5A6B82]">
                     {active.category}
                   </span>
                 </div>
                 <DialogTitle className="font-display font-black text-2xl tracking-tight text-white text-left">
                   {active.title}
                 </DialogTitle>
-                <DialogDescription className="font-mono-data text-[11px] uppercase tracking-widest text-[#66666E] text-left">
+                <DialogDescription className="font-mono-data text-[11px] uppercase tracking-widest text-[#5A6B82] text-left">
                   {active.source} · Threat Report
                 </DialogDescription>
               </DialogHeader>
@@ -114,17 +114,17 @@ export default function ThreatDashboard() {
                 <img src={active.image_url} alt={active.title} className="w-full h-52 object-cover border border-white/10" />
               )}
 
-              <p className="text-[#A1A1A5] leading-relaxed">{active.summary}</p>
+              <p className="text-[#9AA6B8] leading-relaxed">{active.summary}</p>
 
               {active.threat_actor && (
                 <div className="font-mono-data text-sm">
-                  <span className="text-[#66666E] uppercase tracking-widest text-[11px]">Threat Actor: </span>
+                  <span className="text-[#5A6B82] uppercase tracking-widest text-[11px]">Threat Actor: </span>
                   <span className="text-[#FFB800]">{active.threat_actor}</span>
                 </div>
               )}
 
               <div>
-                <div className="font-mono-data text-[11px] uppercase tracking-widest text-[#00F0FF] mb-3">
+                <div className="font-mono-data text-[11px] uppercase tracking-widest text-[#F5821F] mb-3">
                   Attack Chain / MITRE ATT&CK
                 </div>
                 <AttackChain steps={active.attack_chain} />
@@ -132,7 +132,7 @@ export default function ThreatDashboard() {
 
               {active.process_tree && (
                 <div>
-                  <div className="font-mono-data text-[11px] uppercase tracking-widest text-[#00F0FF] mb-3">
+                  <div className="font-mono-data text-[11px] uppercase tracking-widest text-[#F5821F] mb-3">
                     Process Tree
                   </div>
                   <ProcessTree tree={active.process_tree} />
@@ -141,12 +141,12 @@ export default function ThreatDashboard() {
 
               {active.iocs?.length > 0 && (
                 <div>
-                  <div className="font-mono-data text-[11px] uppercase tracking-widest text-[#00F0FF] mb-3">
+                  <div className="font-mono-data text-[11px] uppercase tracking-widest text-[#F5821F] mb-3">
                     Indicators of Compromise
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {active.iocs.map((ioc, i) => (
-                      <code key={i} className="font-mono-data text-[11px] text-[#A1A1A5] bg-black/40 border border-white/10 px-2 py-1">
+                      <code key={i} className="font-mono-data text-[11px] text-[#9AA6B8] bg-black/40 border border-white/10 px-2 py-1">
                         {ioc}
                       </code>
                     ))}

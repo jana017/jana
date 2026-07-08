@@ -11,14 +11,14 @@ const JOBS = [
 
 export default function Careers() {
   return (
-    <section id="careers" data-testid="careers-section" className="relative py-28 border-t border-white/5 bg-[#0A0A0B]">
+    <section id="careers" data-testid="careers-section" className="relative py-28 border-t border-white/5 bg-[#0A1220]">
       <div className="mx-auto max-w-[1400px] px-6">
         <div className="max-w-3xl mb-16">
-          <div className="font-mono-data text-[11px] uppercase tracking-[0.3em] text-[#00F0FF] mb-6">/ Careers</div>
+          <div className="font-mono-data text-[11px] uppercase tracking-[0.3em] text-[#F5821F] mb-6">/ Careers</div>
           <h2 className="font-display font-black tracking-tighter text-white text-4xl sm:text-5xl lg:text-6xl leading-[0.95]">
             Defend the frontier.
           </h2>
-          <p className="text-[#A1A1A5] mt-6 text-lg">Open roles — apply directly via email with your résumé.</p>
+          <p className="text-[#9AA6B8] mt-6 text-lg">Open roles — apply directly via email with your résumé.</p>
         </div>
 
         <div className="space-y-px">
@@ -38,16 +38,16 @@ export default function Careers() {
                 className="group grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-4 md:items-center py-7 border-t border-white/10 hover:bg-white/[0.02] px-2 transition-colors"
               >
                 <div>
-                  <div className="font-mono-data text-[10px] uppercase tracking-widest text-[#66666E] mb-1">{j.team}</div>
-                  <h3 className="font-display font-semibold text-xl md:text-2xl text-white group-hover:text-[#00F0FF] transition-colors tracking-tight">
+                  <div className="font-mono-data text-[10px] uppercase tracking-widest text-[#5A6B82] mb-1">{j.team}</div>
+                  <h3 className="font-display font-semibold text-xl md:text-2xl text-white group-hover:text-[#F5821F] transition-colors tracking-tight">
                     {j.title}
                   </h3>
                 </div>
-                <div className="flex items-center gap-4 font-mono-data text-[11px] uppercase tracking-widest text-[#A1A1A5]">
+                <div className="flex items-center gap-4 font-mono-data text-[11px] uppercase tracking-widest text-[#9AA6B8]">
                   <span className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" />{j.loc}</span>
-                  <span className="text-[#66666E]">{j.type}</span>
+                  <span className="text-[#5A6B82]">{j.type}</span>
                 </div>
-                <span className="inline-flex items-center gap-1.5 font-mono-data text-[11px] uppercase tracking-widest text-[#00F0FF]">
+                <span className="inline-flex items-center gap-1.5 font-mono-data text-[11px] uppercase tracking-widest text-[#F5821F]">
                   Apply <ArrowUpRight className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                 </span>
               </motion.a>

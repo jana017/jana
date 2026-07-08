@@ -15,7 +15,7 @@ function App() {
   return (
     <AuthProvider>
       <ReactLenis root options={{ lerp: 0.08, smoothWheel: true }}>
-        <div className="App min-h-screen bg-[#050505]">
+        <div className="App min-h-screen bg-[#060B14]">
           <div className="grain-overlay" aria-hidden="true" />
           <Toaster theme="dark" position="bottom-right" richColors />
           <BrowserRouter>

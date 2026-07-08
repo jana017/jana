@@ -11,13 +11,13 @@ export default function AttackChain({ steps = [], compact = false }) {
               compact ? "text-[9px]" : "text-[10px]"
             } ${
               i === steps.length - 1
-                ? "text-[#FF0055] border-[#FF0055]/50 bg-[#FF0055]/5"
-                : "text-[#00F0FF] border-[#00F0FF]/30"
+                ? "text-[#FF3B5C] border-[#FF3B5C]/50 bg-[#FF3B5C]/5"
+                : "text-[#F5821F] border-[#F5821F]/30"
             }`}
           >
             {s}
           </span>
-          {i < steps.length - 1 && <ChevronRight className="w-3 h-3 text-[#66666E]" />}
+          {i < steps.length - 1 && <ChevronRight className="w-3 h-3 text-[#5A6B82]" />}
         </div>
       ))}
     </div>

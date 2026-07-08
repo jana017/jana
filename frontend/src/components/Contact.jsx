@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Phone, Mail, ShieldHalf } from "lucide-react";
+import { Phone, Mail } from "lucide-react";
 
 export default function Contact() {
   return (
@@ -7,13 +7,13 @@ export default function Contact() {
       <div className="mx-auto max-w-[1400px] px-6">
         <div className="grid lg:grid-cols-2 gap-16 mb-24">
           <div>
-            <div className="font-mono-data text-[11px] uppercase tracking-[0.3em] text-[#00F0FF] mb-6">/ Support</div>
+            <div className="font-mono-data text-[11px] uppercase tracking-[0.3em] text-[#F5821F] mb-6">/ Support</div>
             <h2 className="font-display font-black tracking-tighter text-white text-4xl sm:text-5xl lg:text-6xl leading-[0.92]">
               Under attack?
               <br />
-              <span className="text-[#00F0FF] text-glow">Talk to us.</span>
+              <span className="text-[#F5821F] text-glow">Talk to us.</span>
             </h2>
-            <p className="text-[#A1A1A5] mt-6 max-w-md text-lg leading-relaxed">
+            <p className="text-[#9AA6B8] mt-6 max-w-md text-lg leading-relaxed">
               Our team is on standby for incident response and consultation. Reach out
               directly — we answer fast.
             </p>
@@ -27,13 +27,13 @@ export default function Contact() {
               viewport={{ once: true }}
               transition={{ duration: 0.6 }}
               data-testid="support-phone"
-              className="group glass flex items-center gap-5 p-6 hover:border-[#00F0FF]/50 transition-colors"
+              className="group glass flex items-center gap-5 p-6 hover:border-[#F5821F]/50 transition-colors"
             >
-              <div className="w-12 h-12 flex items-center justify-center border border-[#00F0FF]/30 group-hover:bg-[#00F0FF] transition-colors">
-                <Phone className="w-5 h-5 text-[#00F0FF] group-hover:text-black transition-colors" />
+              <div className="w-12 h-12 flex items-center justify-center border border-[#F5821F]/30 group-hover:bg-[#F5821F] transition-colors">
+                <Phone className="w-5 h-5 text-[#F5821F] group-hover:text-black transition-colors" />
               </div>
               <div>
-                <div className="font-mono-data text-[10px] uppercase tracking-widest text-[#66666E]">Mobile</div>
+                <div className="font-mono-data text-[10px] uppercase tracking-widest text-[#5A6B82]">Mobile</div>
                 <div className="text-white text-xl font-medium">+91 90595 65125</div>
               </div>
             </motion.a>
@@ -45,13 +45,13 @@ export default function Contact() {
               viewport={{ once: true }}
               transition={{ duration: 0.6, delay: 0.1 }}
               data-testid="support-email"
-              className="group glass flex items-center gap-5 p-6 hover:border-[#00F0FF]/50 transition-colors"
+              className="group glass flex items-center gap-5 p-6 hover:border-[#F5821F]/50 transition-colors"
             >
-              <div className="w-12 h-12 flex items-center justify-center border border-[#00F0FF]/30 group-hover:bg-[#00F0FF] transition-colors">
-                <Mail className="w-5 h-5 text-[#00F0FF] group-hover:text-black transition-colors" />
+              <div className="w-12 h-12 flex items-center justify-center border border-[#F5821F]/30 group-hover:bg-[#F5821F] transition-colors">
+                <Mail className="w-5 h-5 text-[#F5821F] group-hover:text-black transition-colors" />
               </div>
               <div>
-                <div className="font-mono-data text-[10px] uppercase tracking-widest text-[#66666E]">Email</div>
+                <div className="font-mono-data text-[10px] uppercase tracking-widest text-[#5A6B82]">Email</div>
                 <div className="text-white text-xl font-medium">info@nivxmachines.com</div>
               </div>
             </motion.a>
@@ -60,12 +60,9 @@ export default function Contact() {
 
         <div className="flex flex-col md:flex-row items-center justify-between gap-6 pt-8 border-t border-white/10">
           <div className="flex items-center gap-2">
-            <ShieldHalf className="w-5 h-5 text-[#00F0FF]" strokeWidth={1.5} />
-            <span className="font-display font-black tracking-tighter text-white">
-              NIVX<span className="text-[#00F0FF]">.</span>MACHINES
-            </span>
+            <img src="/nivx-logo.webp" alt="NivX Machines" className="h-9 w-auto object-contain" />
           </div>
-          <p className="font-mono-data text-[11px] uppercase tracking-widest text-[#66666E]">
+          <p className="font-mono-data text-[11px] uppercase tracking-widest text-[#5A6B82]">
             © {new Date().getFullYear()} NivX Machines · Cybersecurity · AI · Tech
           </p>
         </div>

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import { LogOut, Plus, Pencil, Trash2, ShieldHalf, ArrowLeft } from "lucide-react";
+import { LogOut, Plus, Pencil, Trash2, ArrowLeft } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 
@@ -20,7 +20,7 @@ const EMPTY = {
 };
 
 const inputCls =
-  "w-full bg-black/40 border border-white/10 focus:border-[#00F0FF] outline-none px-4 py-3 font-mono-data text-sm text-white placeholder:text-[#66666E] transition-colors";
+  "w-full bg-black/40 border border-white/10 focus:border-[#F5821F] outline-none px-4 py-3 font-mono-data text-sm text-white placeholder:text-[#5A6B82] transition-colors";
 
 function LoginView() {
   const { login } = useAuth();
@@ -50,24 +50,24 @@ function LoginView() {
         className="relative glass w-full max-w-md p-10"
       >
         <div className="flex items-center gap-2 mb-8">
-          <ShieldHalf className="w-6 h-6 text-[#00F0FF]" strokeWidth={1.5} />
-          <span className="font-display font-black tracking-tighter text-white">NIVX<span className="text-[#00F0FF]">.</span>ADMIN</span>
+          <img src="/nivx-logo.webp" alt="NivX Machines" className="h-8 w-auto object-contain" />
+          <span className="font-display font-bold tracking-widest text-[#5A6B82] text-[11px] uppercase">Admin</span>
         </div>
         <h1 className="font-display font-black text-2xl text-white mb-2 tracking-tight">Secure Access</h1>
-        <p className="font-mono-data text-[11px] uppercase tracking-widest text-[#66666E] mb-8">Authorized personnel only</p>
+        <p className="font-mono-data text-[11px] uppercase tracking-widest text-[#5A6B82] mb-8">Authorized personnel only</p>
 
-        <label className="block font-mono-data text-[10px] uppercase tracking-widest text-[#A1A1A5] mb-2">Email</label>
+        <label className="block font-mono-data text-[10px] uppercase tracking-widest text-[#9AA6B8] mb-2">Email</label>
         <input data-testid="login-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className={`${inputCls} mb-4`} placeholder="admin@nivxmachines.com" />
 
-        <label className="block font-mono-data text-[10px] uppercase tracking-widest text-[#A1A1A5] mb-2">Password</label>
+        <label className="block font-mono-data text-[10px] uppercase tracking-widest text-[#9AA6B8] mb-2">Password</label>
         <input data-testid="login-password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className={`${inputCls} mb-6`} placeholder="••••••••" />
 
-        {error && <div data-testid="login-error" className="font-mono-data text-[12px] text-[#FF0055] mb-4">{error}</div>}
+        {error && <div data-testid="login-error" className="font-mono-data text-[12px] text-[#FF3B5C] mb-4">{error}</div>}
 
-        <button data-testid="login-submit" disabled={loading} className="w-full border border-[#00F0FF] text-[#00F0FF] py-3 font-mono-data text-[12px] uppercase tracking-widest hover:bg-[#00F0FF] hover:text-black transition-colors disabled:opacity-50">
+        <button data-testid="login-submit" disabled={loading} className="w-full border border-[#F5821F] text-[#F5821F] py-3 font-mono-data text-[12px] uppercase tracking-widest hover:bg-[#F5821F] hover:text-black transition-colors disabled:opacity-50">
           {loading ? "Authenticating…" : "Enter"}
         </button>
-        <Link to="/" className="block text-center mt-6 font-mono-data text-[11px] uppercase tracking-widest text-[#66666E] hover:text-white transition-colors">
+        <Link to="/" className="block text-center mt-6 font-mono-data text-[11px] uppercase tracking-widest text-[#5A6B82] hover:text-white transition-colors">
           ← Back to site
         </Link>
       </motion.form>
@@ -156,15 +156,15 @@ function Dashboard() {
       <header className="glass border-b sticky top-0 z-30">
         <div className="mx-auto max-w-[1400px] px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <ShieldHalf className="w-5 h-5 text-[#00F0FF]" strokeWidth={1.5} />
-            <span className="font-display font-black tracking-tighter text-white text-sm">NIVX<span className="text-[#00F0FF]">.</span>ADMIN</span>
-            <span className="font-mono-data text-[10px] text-[#66666E] uppercase tracking-widest ml-2">{user?.email}</span>
+            <img src="/nivx-logo.webp" alt="NivX Machines" className="h-7 w-auto object-contain" />
+            <span className="font-mono-data text-[10px] text-[#5A6B82] uppercase tracking-widest">Admin</span>
+            <span className="font-mono-data text-[10px] text-[#5A6B82] uppercase tracking-widest ml-2">{user?.email}</span>
           </div>
           <div className="flex items-center gap-5">
-            <Link to="/" className="flex items-center gap-1.5 font-mono-data text-[11px] uppercase tracking-widest text-[#A1A1A5] hover:text-white transition-colors">
+            <Link to="/" className="flex items-center gap-1.5 font-mono-data text-[11px] uppercase tracking-widest text-[#9AA6B8] hover:text-white transition-colors">
               <ArrowLeft className="w-3.5 h-3.5" /> Site
             </Link>
-            <button data-testid="logout-btn" onClick={logout} className="flex items-center gap-1.5 font-mono-data text-[11px] uppercase tracking-widest text-[#FF0055] hover:text-white transition-colors">
+            <button data-testid="logout-btn" onClick={logout} className="flex items-center gap-1.5 font-mono-data text-[11px] uppercase tracking-widest text-[#FF3B5C] hover:text-white transition-colors">
               <LogOut className="w-3.5 h-3.5" /> Logout
             </button>
           </div>
@@ -193,11 +193,11 @@ function Dashboard() {
           <input data-testid="form-iocs" placeholder="IOCs (comma separated)" value={form.iocs} onChange={set("iocs")} className={inputCls} />
           <textarea data-testid="form-tree" placeholder='Process tree JSON (optional)' value={form.process_tree} onChange={set("process_tree")} rows={4} className={`${inputCls} text-[11px]`} />
           <div className="flex gap-3">
-            <button data-testid="form-submit" type="submit" className="flex-1 flex items-center justify-center gap-2 border border-[#00F0FF] text-[#00F0FF] py-3 font-mono-data text-[11px] uppercase tracking-widest hover:bg-[#00F0FF] hover:text-black transition-colors">
+            <button data-testid="form-submit" type="submit" className="flex-1 flex items-center justify-center gap-2 border border-[#F5821F] text-[#F5821F] py-3 font-mono-data text-[11px] uppercase tracking-widest hover:bg-[#F5821F] hover:text-black transition-colors">
               <Plus className="w-4 h-4" /> {editId ? "Update" : "Publish"}
             </button>
             {editId && (
-              <button type="button" onClick={reset} className="px-4 border border-white/15 text-[#A1A1A5] font-mono-data text-[11px] uppercase tracking-widest hover:text-white transition-colors">
+              <button type="button" onClick={reset} className="px-4 border border-white/15 text-[#9AA6B8] font-mono-data text-[11px] uppercase tracking-widest hover:text-white transition-colors">
                 Cancel
               </button>
             )}
@@ -206,23 +206,23 @@ function Dashboard() {
 
         <div className="space-y-3">
           <h2 className="font-display font-black text-xl text-white tracking-tight mb-4">
-            Published Reports <span className="text-[#66666E] text-sm font-mono-data">({reports.length})</span>
+            Published Reports <span className="text-[#5A6B82] text-sm font-mono-data">({reports.length})</span>
           </h2>
           {reports.map((r, i) => (
             <div key={r.id} data-testid={`admin-report-${i}`} className="glass p-5 flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="font-mono-data text-[9px] uppercase tracking-widest text-[#00F0FF] border border-[#00F0FF]/30 px-1.5 py-0.5">{r.severity}</span>
-                  <span className="font-mono-data text-[10px] text-[#66666E] uppercase tracking-widest">{r.category}</span>
+                  <span className="font-mono-data text-[9px] uppercase tracking-widest text-[#F5821F] border border-[#F5821F]/30 px-1.5 py-0.5">{r.severity}</span>
+                  <span className="font-mono-data text-[10px] text-[#5A6B82] uppercase tracking-widest">{r.category}</span>
                 </div>
                 <h3 className="font-display font-semibold text-white truncate">{r.title}</h3>
-                <p className="text-sm text-[#A1A1A5] line-clamp-1">{r.summary}</p>
+                <p className="text-sm text-[#9AA6B8] line-clamp-1">{r.summary}</p>
               </div>
               <div className="flex gap-2 shrink-0">
-                <button data-testid={`edit-${i}`} onClick={() => edit(r)} className="w-9 h-9 flex items-center justify-center border border-white/10 text-[#A1A1A5] hover:text-[#00F0FF] hover:border-[#00F0FF]/40 transition-colors">
+                <button data-testid={`edit-${i}`} onClick={() => edit(r)} className="w-9 h-9 flex items-center justify-center border border-white/10 text-[#9AA6B8] hover:text-[#F5821F] hover:border-[#F5821F]/40 transition-colors">
                   <Pencil className="w-4 h-4" />
                 </button>
-                <button data-testid={`delete-${i}`} onClick={() => remove(r.id)} className="w-9 h-9 flex items-center justify-center border border-white/10 text-[#A1A1A5] hover:text-[#FF0055] hover:border-[#FF0055]/40 transition-colors">
+                <button data-testid={`delete-${i}`} onClick={() => remove(r.id)} className="w-9 h-9 flex items-center justify-center border border-white/10 text-[#9AA6B8] hover:text-[#FF3B5C] hover:border-[#FF3B5C]/40 transition-colors">
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
@@ -237,6 +237,6 @@ function Dashboard() {
 export default function Admin() {
   const { user } = useAuth();
   if (user === null)
-    return <div className="min-h-screen flex items-center justify-center font-mono-data text-[#66666E] text-sm">Loading…</div>;
+    return <div className="min-h-screen flex items-center justify-center font-mono-data text-[#5A6B82] text-sm">Loading…</div>;
   return user ? <Dashboard /> : <LoginView />;
 }

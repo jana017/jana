@@ -24,23 +24,23 @@ export default function ProcessTree({ tree }) {
         <div key={idx} style={{ marginLeft: depth * 18 }}>
           <div
             className={`flex items-start gap-3 py-2 pl-3 border-l-2 ${
-              node.malicious ? "border-[#FF0055]" : "border-white/15"
+              node.malicious ? "border-[#FF3B5C]" : "border-white/15"
             }`}
           >
             {node.malicious ? (
-              <AlertTriangle className="w-4 h-4 text-[#FF0055] mt-0.5 shrink-0" />
+              <AlertTriangle className="w-4 h-4 text-[#FF3B5C] mt-0.5 shrink-0" />
             ) : (
-              <Terminal className="w-4 h-4 text-[#00F0FF] mt-0.5 shrink-0" />
+              <Terminal className="w-4 h-4 text-[#F5821F] mt-0.5 shrink-0" />
             )}
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className={`font-mono-data text-sm ${node.malicious ? "text-[#FF0055]" : "text-white"}`}>
+                <span className={`font-mono-data text-sm ${node.malicious ? "text-[#FF3B5C]" : "text-white"}`}>
                   {node.name}
                 </span>
-                {node.pid && <span className="font-mono-data text-[10px] text-[#66666E]">PID {node.pid}</span>}
+                {node.pid && <span className="font-mono-data text-[10px] text-[#5A6B82]">PID {node.pid}</span>}
               </div>
               {node.cmd && (
-                <code className="font-mono-data text-[11px] text-[#A1A1A5] block mt-1 break-all">$ {node.cmd}</code>
+                <code className="font-mono-data text-[11px] text-[#9AA6B8] block mt-1 break-all">$ {node.cmd}</code>
               )}
             </div>
           </div>
