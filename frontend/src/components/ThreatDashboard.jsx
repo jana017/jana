@@ -100,17 +100,6 @@ export default function ThreatDashboard() {
   return (
     <section id="threats" data-testid="threats-section" className="py-20 lg:py-28 bg-slate-50">
       <div className="mx-auto max-w-7xl px-6">
-        <div className="max-w-2xl mb-12">
-          <div className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600 mb-3">Threat Report</div>
-          <h2 className="font-heading text-2xl md:text-3xl font-semibold tracking-tight text-slate-900">
-            Attack chains, dissected
-          </h2>
-          <p className="mt-4 text-base text-slate-600 leading-relaxed">
-            Every brief is mapped to the <span className="font-semibold text-slate-900">MITRE ATT&CK</span> framework
-            with full process-tree forensics and indicators of compromise.
-          </p>
-        </div>
-
         {featured && <FeaturedBrief r={featured} />}
 
         {rest.length > 0 && (

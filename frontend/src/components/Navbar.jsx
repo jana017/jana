@@ -6,6 +6,7 @@ const SECTION_LINKS = [
   { label: "About", id: "about" },
   { label: "Services", id: "services" },
   { label: "Threat Report", id: "threats" },
+  { label: "Blog", id: "blog" },
   { label: "Gallery", id: "gallery" },
   { label: "Careers", id: "careers" },
   { label: "Support", id: "support" },

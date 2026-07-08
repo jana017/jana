@@ -10,6 +10,7 @@ import Services from "@/components/Services";
 import Gallery from "@/components/Gallery";
 import Careers from "@/components/Careers";
 import Contact from "@/components/Contact";
+import NivxBlogs from "@/components/NivxBlogs";
 import useSeo from "@/lib/useSeo";
 
 export default function Landing() {
@@ -35,6 +36,7 @@ export default function Landing() {
       <LiveThreatLandscape />
       <AttackFeed />
       <ThreatDashboard />
+      <NivxBlogs />
       <Services />
       <Gallery />
       <Careers />
