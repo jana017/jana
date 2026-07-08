@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import { LogOut, Plus, Pencil, Trash2, ArrowLeft, ShieldCheck } from "lucide-react";
+import { LogOut, Plus, Pencil, Trash2, ArrowLeft, ShieldCheck, Download } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import {
@@ -138,6 +138,30 @@ function Dashboard() {
     load();
   };
 
+  const setLeadStatus = async (id, status) => {
+    try {
+      await api.patch(`/leads/${id}`, { status });
+      setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, status } : l)));
+      toast.success(`Marked ${status}`);
+    } catch {
+      toast.error("Failed to update status");
+    }
+  };
+
+  const exportLeadsCsv = () => {
+    if (!leads.length) return;
+    const cols = ["name", "email", "phone", "company", "company_size", "interest", "status", "created_at", "message"];
+    const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const rows = [cols.join(",")].concat(leads.map((l) => cols.map((c) => esc(l[c])).join(",")));
+    const blob = new Blob([rows.join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `nivx-leads-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50" data-testid="admin-dashboard">
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
@@ -224,9 +248,19 @@ function Dashboard() {
       </main>
       ) : (
       <main className="mx-auto max-w-7xl px-6 py-10" data-testid="leads-view">
-        <h2 className="font-heading text-lg font-semibold text-slate-900 mb-4">
-          Security assessment requests <span className="text-sm text-slate-400 font-normal">({leads.length})</span>
-        </h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-heading text-lg font-semibold text-slate-900">
+            Security assessment requests <span className="text-sm text-slate-400 font-normal">({leads.length})</span>
+          </h2>
+          <button
+            data-testid="export-csv"
+            onClick={exportLeadsCsv}
+            disabled={!leads.length}
+            className="inline-flex items-center gap-2 border border-slate-300 hover:border-[#2E7DF5] hover:text-[#2E7DF5] text-slate-700 text-sm font-semibold px-4 py-2 rounded-md transition-colors disabled:opacity-50"
+          >
+            <Download className="w-4 h-4" /> Export CSV
+          </button>
+        </div>
         {leads.length === 0 ? (
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-10 text-center text-sm text-slate-500">
             No leads yet. Submissions from the “Request a Security Assessment” form appear here.
@@ -241,6 +275,7 @@ function Dashboard() {
                     <th className="px-4 py-3">Contact</th>
                     <th className="px-4 py-3">Company</th>
                     <th className="px-4 py-3">Interest</th>
+                    <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3">Received</th>
                   </tr>
                 </thead>
@@ -257,6 +292,24 @@ function Dashboard() {
                       </td>
                       <td className="px-4 py-3 text-slate-700">{l.company || "—"}</td>
                       <td className="px-4 py-3 text-slate-700">{l.interest || "—"}</td>
+                      <td className="px-4 py-3">
+                        <select
+                          data-testid={`lead-status-${i}`}
+                          value={l.status}
+                          onChange={(e) => setLeadStatus(l.id, e.target.value)}
+                          className={`text-xs font-semibold rounded-md border px-2 py-1.5 outline-none focus:border-[#2E7DF5] ${
+                            l.status === "qualified" ? "bg-green-50 text-green-700 border-green-200"
+                            : l.status === "contacted" ? "bg-blue-50 text-blue-700 border-blue-200"
+                            : l.status === "archived" ? "bg-slate-100 text-slate-500 border-slate-200"
+                            : "bg-orange-50 text-orange-700 border-orange-200"
+                          }`}
+                        >
+                          <option value="new">New</option>
+                          <option value="contacted">Contacted</option>
+                          <option value="qualified">Qualified</option>
+                          <option value="archived">Archived</option>
+                        </select>
+                      </td>
                       <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{new Date(l.created_at).toLocaleDateString()}</td>
                     </tr>
                   ))}

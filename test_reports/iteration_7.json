@@ -1,0 +1,28 @@
+{
+  "summary": "Iteration 7 (P2 round): validated intel-feed pagination + facets + date filter + search, admin Leads status PATCH + CSV export, honeypot anti-spam, and process_tree on all 7 curated threats. Backend: 24/24 pytest cases pass (added 7 new tests: intel_feed_pagination/type/since+q, all_threats_have_process_tree, leads_patch_requires_auth, leads_patch_invalid_status, leads_patch_valid_status, lead_honeypot). Frontend: intel-type-facets (all/Ransomware/... 8 chips) filters cards (9->7 for Ransomware); intel-date-filter (90/365/all) refetches; intel-load-more appends (9->18); intel-search debounce filters (ransom => 6 cards); intel-card-0 opens intel-reader-dialog. Admin: tab-leads shows lead-row-N; lead-status-0 dropdown PATCHes to qualified and PERSISTS after full page reload; export-csv triggers download (nivx-leads-2026-07-08.csv) and button is disabled when 0 leads; delete-dialog opens for threat CRUD regression. Landing regression: featured-brief + threat-card detail dialogs render process trees. Honeypot: hidden input has tabIndex=-1, aria-hidden=true, positioned at x=-9247 (off-screen); backend confirms honeypot payload does not persist a real lead (verified via /api/leads listing).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "IntelReader Dialog (Threat Intelligence)", "issues": ["Radix a11y console error: 'DialogContent requires a DialogTitle' + missing Description/aria-describedby when opening intel-reader-dialog. Non-blocking (functionally works) but should be fixed by wrapping DialogTitle with VisuallyHidden and adding DialogDescription."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_nivx_backend.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "(Minor a11y) Add DialogTitle (VisuallyHidden if needed) and DialogDescription/aria-describedby to the IntelReader Dialog to silence Radix warnings."
+  ],
+  "critical_code_review_comments": [
+    "create_lead honeypot branch returns Lead(name=payload.name, email='honeypot@blocked.local') — this synthesized Lead is not persisted (good) but it may confuse clients since the response looks like a normal 200. Consider returning a neutral response (still 200, but without a Lead-shaped body) or logging with client IP for detection. Current UX-only impact is acceptable.",
+    "_lead_rate is in-memory per-process; behind multiple workers/replicas the 3/10min limit becomes per-worker. Fine for MVP; document or move to a shared store (redis/mongo TTL) if scaled.",
+    "Admin exportLeadsCsv does not sanitize leading `=/+/-/@` (CSV injection). Low risk since admin-only, but worth prefixing dangerous fields with a single quote."
+  ],
+  "updated_files": ["/app/backend/tests/test_nivx_backend.py"],
+  "success_rate": {"backend": "100% (24/24)", "frontend": "100%"},
+  "test_credentials": "admin@nivxmachines.com / NivX@Admin2025",
+  "seed_data_creation": "Inserted 1 UI_TEST lead directly into Mongo to bypass 429 rate limit for admin UI testing; cleaned up after (0 test leads remain). Backend pytest also creates + cleans TEST_ leads.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "New testids verified: intel-type-facets, facet-<type> (facet-all, facet-Ransomware...), intel-date-filter, intel-load-more, lead-status-N, export-csv. Backend paginated /api/intel-feed returns total ~395 (~44 pages of 9). Rate limit for /api/leads is 3 per 10 min per client IP; expect 429 on repeated create. Honeypot 'website' field is off-screen (x=-9999). All 24 pytest cases pass. Only outstanding issue is Radix a11y warning on IntelReader Dialog — non-blocking.",
+  "rca of the issue": "N/A (all features working). Note: while testing I initially inserted a Mongo lead with a datetime object which broke GET /api/leads (Lead.created_at is str). Reinserted with .isoformat() and it worked. This is a self-inflicted seed error, not a backend bug — the API always writes ISO strings via model_dump."
+}

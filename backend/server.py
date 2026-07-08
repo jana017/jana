@@ -146,13 +146,28 @@ class LeadCreate(BaseModel):
     company_size: Optional[str] = None
     interest: Optional[str] = None
     message: Optional[str] = None
+    website: Optional[str] = None  # honeypot — real users leave blank
 
 
-class Lead(LeadCreate):
+class Lead(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    email: str
+    company: Optional[str] = None
+    phone: Optional[str] = None
+    company_size: Optional[str] = None
+    interest: Optional[str] = None
+    message: Optional[str] = None
     status: str = "new"
     created_at: str = Field(default_factory=now_iso)
+
+
+LEAD_STATUSES = ["new", "contacted", "qualified", "archived"]
+
+
+class LeadStatusUpdate(BaseModel):
+    status: str
 
 
 # ---------------------------------------------------------------------------
@@ -223,9 +238,36 @@ async def delete_threat(threat_id: str, user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 # Leads (Request a Security Assessment)
 # ---------------------------------------------------------------------------
+_lead_rate: dict[str, list] = {}
+LEAD_RATE_LIMIT = 3          # max submissions
+LEAD_RATE_WINDOW = 600       # per 10 minutes (seconds)
+
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 @api_router.post("/leads", response_model=Lead)
-async def create_lead(payload: LeadCreate):
-    lead = Lead(**payload.model_dump())
+async def create_lead(payload: LeadCreate, request: Request):
+    # Honeypot: bots fill hidden 'website' field
+    if payload.website:
+        logger.info("Lead rejected: honeypot triggered")
+        return Lead(name=payload.name, email="honeypot@blocked.local")
+
+    # Simple in-memory IP rate limiting
+    ip = _client_ip(request)
+    now_ts = datetime.now(timezone.utc).timestamp()
+    hits = [t for t in _lead_rate.get(ip, []) if now_ts - t < LEAD_RATE_WINDOW]
+    if len(hits) >= LEAD_RATE_LIMIT:
+        raise HTTPException(status_code=429, detail="Too many requests. Please try again in a few minutes.")
+    hits.append(now_ts)
+    _lead_rate[ip] = hits
+
+    data = payload.model_dump(exclude={"website"})
+    lead = Lead(**data)
     await db.leads.insert_one(lead.model_dump())
     logger.info(f"New security assessment lead: {lead.email} ({lead.company})")
     return lead
@@ -235,6 +277,18 @@ async def create_lead(payload: LeadCreate):
 async def list_leads(user: dict = Depends(get_current_user)):
     docs = await db.leads.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
     return [Lead(**d) for d in docs]
+
+
+@api_router.patch("/leads/{lead_id}", response_model=Lead)
+async def update_lead_status(lead_id: str, payload: LeadStatusUpdate, user: dict = Depends(get_current_user)):
+    if payload.status not in LEAD_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Allowed: {LEAD_STATUSES}")
+    doc = await db.leads.find_one({"id": lead_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    await db.leads.update_one({"id": lead_id}, {"$set": {"status": payload.status}})
+    doc["status"] = payload.status
+    return Lead(**doc)
 
 
 # ---------------------------------------------------------------------------
@@ -355,6 +409,44 @@ def _pick_intel_image(title: str) -> str:
     return _INTEL_IMAGES["default"]
 
 
+INTEL_TYPES = ["Ransomware", "Phishing", "RAT", "Loader", "Stealer", "Scam", "APT", "Other"]
+
+
+def _intel_type(title: str) -> str:
+    t = title.lower()
+    if any(k in t for k in ["ransom", "lockbit", "akira", "blackcat", "alphv", "encrypt"]):
+        return "Ransomware"
+    if any(k in t for k in ["phish", "smish", "clickfix", "credential"]):
+        return "Phishing"
+    if any(k in t for k in ["rat", "asyncrat", "remote access", "njrat", "remcos"]):
+        return "RAT"
+    if any(k in t for k in ["loader", "castleloader", "downloader", "dropper"]):
+        return "Loader"
+    if any(k in t for k in ["stealer", "infostealer", "lumma", "redline"]):
+        return "Stealer"
+    if any(k in t for k in ["scam", "fraud", "impersonat"]):
+        return "Scam"
+    if any(k in t for k in ["apt", "espionage", "state-sponsored", "nation"]):
+        return "APT"
+    return "Other"
+
+
+_intel_listing: dict[str, Any] = {"ts": None, "names": None}
+
+
+async def _get_unit42_listing() -> list:
+    now = datetime.now(timezone.utc)
+    if _intel_listing["names"] and _intel_listing["ts"] and (now - _intel_listing["ts"]) < timedelta(minutes=60):
+        return _intel_listing["names"]
+    async with httpx.AsyncClient(timeout=20, follow_redirects=True) as hc:
+        listing = await hc.get(f"https://api.github.com/repos/{UNIT42_REPO}/contents/")
+        listing.raise_for_status()
+        names = sorted([f["name"] for f in listing.json() if f["name"].endswith(".txt")], reverse=True)
+    _intel_listing["names"] = names
+    _intel_listing["ts"] = now
+    return names
+
+
 def _parse_unit42(name: str, text: str) -> dict:
     date = name[:10]
     title = name[11:-4].replace("-", " ")
@@ -392,6 +484,7 @@ def _parse_unit42(name: str, text: str) -> dict:
         "name": name,
         "title": title,
         "date": date,
+        "type": _intel_type(title),
         "authors": authors,
         "summary": summary,
         "notes": notes,
@@ -408,7 +501,7 @@ def _parse_unit42(name: str, text: str) -> dict:
 def _intel_card(full: dict) -> dict:
     """Lightweight card view (drops heavy indicator/notes lists)."""
     return {
-        "name": full["name"], "title": full["title"], "date": full["date"],
+        "name": full["name"], "title": full["title"], "date": full["date"], "type": full["type"],
         "summary": full["summary"], "reference": full["reference"], "url": full["url"],
         "ioc_count": full["ioc_count"], "image": full["image"], "source": full["source"],
     }
@@ -434,42 +527,54 @@ async def intel_report(name: str):
 
 
 @api_router.get("/intel-feed")
-async def intel_feed():
-    """Real published threat intel from Palo Alto Unit42 timely-threat-intel repo (cached 60 min)."""
-    now = datetime.now(timezone.utc)
-    if _intel_cache["data"] and _intel_cache["ts"] and (now - _intel_cache["ts"]) < timedelta(minutes=60):
-        return _intel_cache["data"]
+async def intel_feed(page: int = 1, page_size: int = 9, q: str = "", type: str = "", since: str = ""):
+    """Paginated + filterable Unit42 intel feed. Filters on filename metadata, fetches content per page."""
+    page = max(1, page)
+    page_size = min(max(1, page_size), 24)
     try:
+        names = await _get_unit42_listing()
+
+        def match(name: str) -> bool:
+            title = name[11:-4].replace("-", " ")
+            date = name[:10]
+            if q and q.lower() not in title.lower():
+                return False
+            if type and _intel_type(title) != type:
+                return False
+            if since and date < since:
+                return False
+            return True
+
+        filtered = [n for n in names if match(n)]
+        total = len(filtered)
+        start = (page - 1) * page_size
+        page_names = filtered[start:start + page_size]
+
         async with httpx.AsyncClient(timeout=20, follow_redirects=True) as hc:
-            listing = await hc.get(f"https://api.github.com/repos/{UNIT42_REPO}/contents/")
-            listing.raise_for_status()
-            files = [f for f in listing.json() if f["name"].endswith(".txt")]
-            files.sort(key=lambda x: x["name"], reverse=True)
-            top = files[:9]
-
-            async def fetch(f):
+            async def fetch(name):
                 try:
-                    resp = await hc.get(f["download_url"])
+                    resp = await hc.get(f"https://raw.githubusercontent.com/{UNIT42_REPO}/main/{name}")
                     resp.raise_for_status()
-                    return _intel_card(_parse_unit42(f["name"], resp.text))
+                    return _intel_card(_parse_unit42(name, resp.text))
                 except Exception:
-                    return _intel_card(_parse_unit42(f["name"], ""))
+                    return _intel_card(_parse_unit42(name, ""))
 
-            items = await asyncio.gather(*[fetch(f) for f in top])
-        result = {
+            items = await asyncio.gather(*[fetch(n) for n in page_names])
+
+        return {
             "source": "Palo Alto Networks · Unit42 Timely Threat Intel",
             "repo_url": f"https://github.com/{UNIT42_REPO}",
-            "updated": now.isoformat(),
+            "updated": datetime.now(timezone.utc).isoformat(),
+            "types": INTEL_TYPES,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "has_more": start + page_size < total,
             "count": len(items),
             "items": list(items),
         }
-        _intel_cache["data"] = result
-        _intel_cache["ts"] = now
-        return result
     except Exception as e:
         logger.error(f"Intel feed error: {e}")
-        if _intel_cache["data"]:
-            return _intel_cache["data"]
         raise HTTPException(status_code=502, detail="Unable to reach Unit42 intel feed")
 
 

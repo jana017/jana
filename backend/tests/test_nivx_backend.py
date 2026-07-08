@@ -251,3 +251,113 @@ def test_intel_report_valid(s):
     assert isinstance(d["notes"], list)
     assert isinstance(d["references"], list)
     assert isinstance(d["indicators"], list)
+
+
+# ---------- P2 Round: new features ----------
+
+# intel-feed pagination + filters
+def test_intel_feed_pagination(s):
+    r = s.get(f"{API}/intel-feed?page=1&page_size=9", timeout=60)
+    if r.status_code == 502:
+        pytest.skip("Unit42 upstream unavailable")
+    assert r.status_code == 200
+    d = r.json()
+    for k in ["total", "page", "page_size", "has_more", "types", "items"]:
+        assert k in d
+    assert d["page"] == 1
+    assert d["page_size"] == 9
+    assert d["total"] >= 100  # ~395
+    assert isinstance(d["types"], list) and len(d["types"]) >= 8
+    assert len(d["items"]) <= 9
+    for it in d["items"]:
+        assert "type" in it
+    # page 2 differs
+    r2 = s.get(f"{API}/intel-feed?page=2&page_size=9", timeout=60)
+    assert r2.status_code == 200
+    items2 = r2.json()["items"]
+    names1 = {i["name"] for i in d["items"]}
+    names2 = {i["name"] for i in items2}
+    assert names1 != names2
+
+
+def test_intel_feed_type_filter(s):
+    r = s.get(f"{API}/intel-feed?page=1&page_size=9&type=Ransomware", timeout=60)
+    if r.status_code == 502:
+        pytest.skip("Unit42 upstream unavailable")
+    assert r.status_code == 200
+    d = r.json()
+    for it in d["items"]:
+        assert it["type"] == "Ransomware"
+
+
+def test_intel_feed_since_and_q(s):
+    r = s.get(f"{API}/intel-feed?page=1&page_size=9&since=2024-01-01", timeout=60)
+    if r.status_code == 502:
+        pytest.skip("Unit42 upstream unavailable")
+    assert r.status_code == 200
+    for it in r.json()["items"]:
+        assert it["date"] >= "2024-01-01"
+    r2 = s.get(f"{API}/intel-feed?page=1&page_size=9&q=ransom", timeout=60)
+    assert r2.status_code == 200
+    for it in r2.json()["items"]:
+        assert "ransom" in it["title"].lower()
+
+
+# threats all have process_tree
+def test_all_threats_have_process_tree(s):
+    r = s.get(f"{API}/threats", timeout=10)
+    assert r.status_code == 200
+    items = r.json()
+    seeded = [i for i in items if i.get("source") == "NivX Threat Intel"]
+    assert len(seeded) >= 7
+    for i in seeded:
+        pt = i.get("process_tree")
+        assert pt is not None and isinstance(pt, dict) and pt.get("name")
+
+
+# leads PATCH auth + validation
+def test_leads_patch_requires_auth(s):
+    r = s.patch(f"{API}/leads/does-not-matter", json={"status": "qualified"}, timeout=10)
+    assert r.status_code == 401
+
+
+def test_leads_patch_invalid_status(s, auth_headers):
+    # need a real lead first
+    payload = {"name": "TEST_Patch", "email": "TEST_patch@example.com", "company": "TEST", "interest": "MDR"}
+    cr = s.post(f"{API}/leads", json=payload, timeout=10)
+    if cr.status_code == 429:
+        pytest.skip("rate-limited")
+    assert cr.status_code == 200
+    lid = cr.json()["id"]
+    r = s.patch(f"{API}/leads/{lid}", json={"status": "bogus"}, headers=auth_headers, timeout=10)
+    assert r.status_code == 400
+
+
+def test_leads_patch_valid_status(s, auth_headers):
+    payload = {"name": "TEST_PatchOk", "email": "TEST_patchok@example.com", "company": "TEST", "interest": "MDR"}
+    cr = s.post(f"{API}/leads", json=payload, timeout=10)
+    if cr.status_code == 429:
+        pytest.skip("rate-limited")
+    lid = cr.json()["id"]
+    r = s.patch(f"{API}/leads/{lid}", json={"status": "qualified"}, headers=auth_headers, timeout=10)
+    assert r.status_code == 200
+    assert r.json()["status"] == "qualified"
+    # verify persisted
+    r2 = s.get(f"{API}/leads", headers=auth_headers, timeout=10)
+    match = [l for l in r2.json() if l["id"] == lid]
+    assert match and match[0]["status"] == "qualified"
+
+
+# honeypot: submitting with 'website' should not persist
+def test_lead_honeypot(s, auth_headers):
+    payload = {
+        "name": "TEST_Bot", "email": "TEST_bot@spam.example.com", "company": "SpamCo",
+        "interest": "n/a", "website": "http://spam.example.com"
+    }
+    r = s.post(f"{API}/leads", json=payload, timeout=10)
+    if r.status_code == 429:
+        pytest.skip("rate-limited")
+    assert r.status_code == 200
+    # response is dummy honeypot@blocked.local; verify no real lead created
+    all_leads = s.get(f"{API}/leads", headers=auth_headers, timeout=10).json()
+    assert not any(l["email"] == payload["email"] for l in all_leads)

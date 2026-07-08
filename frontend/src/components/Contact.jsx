@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Phone, Mail, Send, CheckCircle2 } from "lucide-react";
 import { api, formatApiErrorDetail } from "@/lib/api";
 
-const EMPTY = { name: "", email: "", company: "", phone: "", company_size: "", interest: "Managed Detection & Response", message: "" };
+const EMPTY = { name: "", email: "", company: "", phone: "", company_size: "", interest: "Managed Detection & Response", message: "", website: "" };
 
 const field = "w-full bg-white border border-slate-300 focus:border-[#2E7DF5] focus:ring-2 focus:ring-blue-100 outline-none px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 rounded-md transition-shadow";
 
@@ -23,7 +23,11 @@ export default function Contact() {
       setForm(EMPTY);
       toast.success("Request received — our team will reach out shortly.");
     } catch (err) {
-      toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Something went wrong");
+      if (err.response?.status === 429) {
+        toast.error("Too many requests. Please try again in a few minutes.");
+      } else {
+        toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Something went wrong");
+      }
     } finally {
       setLoading(false);
     }
@@ -106,6 +110,15 @@ export default function Contact() {
                   </select>
                 </div>
                 <textarea data-testid="lead-message" placeholder="Tell us about your environment (optional)" value={form.message} onChange={set("message")} rows={3} className={field} />
+                <input
+                  type="text"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  aria-hidden="true"
+                  value={form.website}
+                  onChange={set("website")}
+                  style={{ position: "absolute", left: "-9999px", width: 1, height: 1, opacity: 0 }}
+                />
                 <button data-testid="lead-submit" disabled={loading} className="w-full inline-flex items-center justify-center gap-2 bg-[#F5821F] hover:bg-[#EA580C] text-white text-sm font-semibold py-3 rounded-md transition-colors disabled:opacity-60">
                   <Send className="w-4 h-4" /> {loading ? "Sending…" : "Request assessment"}
                 </button>
