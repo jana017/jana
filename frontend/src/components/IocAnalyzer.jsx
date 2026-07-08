@@ -4,6 +4,7 @@ import { Search, ExternalLink, Loader2, ShieldQuestion, MapPin, Server, AlertTri
 import { api, formatApiErrorDetail } from "@/lib/api";
 import { FAVICON, TYPE_LABEL } from "@/lib/iocUtils";
 import ReputationBadges from "./ReputationBadges";
+import KnownIocBanner from "./KnownIocBanner";
 import IocBulkTable from "./IocBulkTable";
 
 export default function IocAnalyzer() {
@@ -89,7 +90,8 @@ export default function IocAnalyzer() {
             </div>
 
             {/* Enrichment */}
-            <div className="px-5 py-4">
+            <div className="px-5 py-4 space-y-4">
+              {result.local_db && <KnownIocBanner local={result.local_db} />}
               {en?.kind === "ip" && (
                 <div className="space-y-4">
                   {en.geo && (

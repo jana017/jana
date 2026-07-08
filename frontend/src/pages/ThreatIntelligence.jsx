@@ -5,7 +5,8 @@ import Navbar from "@/components/Navbar";
 import Contact from "@/components/Contact";
 import IntelReader from "@/components/IntelReader";
 import IocAnalyzer from "@/components/IocAnalyzer";
-import { FileText, ExternalLink, ShieldAlert, BookOpen, ArrowRight, Search, Globe } from "lucide-react";
+import IocDatabase from "@/components/IocDatabase";
+import { FileText, ExternalLink, ShieldAlert, BookOpen, ArrowRight, Search, Globe, Database } from "lucide-react";
 
 const OSINT_TOOLS = [
   { name: "VirusTotal", domain: "virustotal.com", url: "https://www.virustotal.com/gui/home/search", desc: "Files, URLs, hashes & domains across 70+ engines" },
@@ -117,7 +118,7 @@ export default function ThreatIntelligence() {
             </div>
             <h2 className="font-heading text-2xl md:text-3xl font-semibold tracking-tight text-slate-900">Investigate indicators in one click</h2>
             <p className="mt-4 text-base text-slate-600 leading-relaxed">
-              Jump straight to the industry's leading OSINT platforms to enrich and validate IOCs — hashes, URLs, IPs and domains.
+              Jump straight to the industry&apos;s leading OSINT platforms to enrich and validate IOCs — hashes, URLs, IPs and domains.
             </p>
           </div>
 
@@ -147,6 +148,22 @@ export default function ThreatIntelligence() {
               </a>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Curated IOC Database */}
+      <section data-testid="ioc-database-section" className="py-16 lg:py-20 bg-slate-50 border-b border-slate-100">
+        <div className="mx-auto max-w-7xl px-6">
+          <div className="max-w-2xl mb-2">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-[#F5821F] mb-3">
+              <Database className="w-4 h-4" /> Threat Intel · IOC Database
+            </div>
+            <h2 className="font-heading text-2xl md:text-3xl font-semibold tracking-tight text-slate-900">Our curated indicator database</h2>
+            <p className="mt-4 text-base text-slate-600 leading-relaxed">
+              Newly discovered indicators are catalogued here and automatically flagged inside the analyzer above whenever a match is found.
+            </p>
+          </div>
+          <IocDatabase />
         </div>
       </section>
 

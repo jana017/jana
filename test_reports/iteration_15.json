@@ -1,0 +1,29 @@
+{
+  "summary": "Frontend-only test of IOC Database feature on /threat-intelligence. Guest gating, admin gating, admin CRUD flows (single add / bulk paste / CSV upload / bulk delete / single delete) and IOC Analyzer 'Known IOC' severity banner integration all verified working. One caveat: the ioc-db-msg element was not captured after bulk/file/single-delete operations in some cases (likely cleared on tab switch or brief render), but underlying operations succeeded (verified via row counts and totals).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "IOC Database admin — bulk-paste / CSV upload / single-delete success message", "issue": "ioc-db-msg was not visible when queried ~3–4s after the action even though the operation succeeded (row totals confirmed 7 seeded + 1 single + 2 bulk + 2 CSV = 12 rows all deletable). Single-add and bulk-delete msgs were captured fine. Likely the message is being cleared when switching add-mode tabs or has a race with the state update. Consider persisting the message across tab switches or wrapping msg render outside the tab conditional.", "affected_selectors": ["[data-testid=ioc-db-msg]"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_15.json"],
+  "action_items": [
+    "IMPORTANT: The test wiped the IOC DB (bulk-delete removed all 12 IOCs including the 7 seeded ones, since row0 checkbox was select-all). E1 should re-run seed to restore the 7 baseline IOCs (including 185.220.101.4 Cobalt Strike C2 critical) required for the analyzer banner demo/tests.",
+    "Optional: ioc-db-msg is cleared on mode-tab switch — keep the last success message visible across tab switches for better UX and easier testing.",
+    "Optional: spec mentions setting severity during bulk-paste, but no [data-testid=ioc-bulk-severity] control exists in the UI; bulk items default their severity. Consider adding a severity selector to the bulk-paste form or update the spec."
+  ],
+  "critical_code_review_comments": [
+    "Checkbox with data-testid prefix 'ioc-db-select-' matches both per-row checkboxes and the select-all header checkbox — consider distinct testid (e.g., ioc-db-select-all) to prevent selector ambiguity in tests.",
+    "One 404 was logged in console (single resource, likely favicon/image); unrelated to feature but should be tracked."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "95%"},
+  "test_credentials": "admin@nivxmachines.com / NivX@Admin2025 (verified working; token stored in localStorage 'nivx_token')",
+  "seed_data_creation": "None. Test WIPED existing seed data — E1 must re-run seed to restore baseline IOCs.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "IOC Database feature is functionally complete on the frontend. All key data-testids present. If retesting after re-seed, verify the seven baseline IOCs (esp. 185.220.101.4) come back and Known IOC banner still triggers. Consider using non-destructive test paths — do not click chks[0] because it is the select-all master. Use chks[1] and chks[2] for selecting individual rows.",
+  "rca of the issue": "N/A — no functional bugs found."
+}

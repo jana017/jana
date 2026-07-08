@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Loader2, Download, ListChecks, ShieldQuestion, ExternalLink } from "lucide-react";
 import { api, formatApiErrorDetail } from "@/lib/api";
-import { FAVICON, TYPE_LABEL, iocSummary, resultsToCSV, downloadCSV } from "@/lib/iocUtils";
+import { FAVICON, TYPE_LABEL, iocSummary, resultsToCSV, downloadCSV, severityStyle } from "@/lib/iocUtils";
 import ReputationBadges from "./ReputationBadges";
 
 const TYPE_TONE = {
@@ -92,7 +92,16 @@ export default function IocBulkTable() {
                     <td className="px-4 py-3"><code className="font-mono-data text-xs text-slate-800 break-all">{r.value}</code></td>
                     <td className="px-4 py-3"><span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-md border ${TYPE_TONE[r.type] || TYPE_TONE.unknown}`}>{TYPE_LABEL[r.type] || r.type}</span></td>
                     <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{iocSummary(r)}</td>
-                    <td className="px-4 py-3">{r.reputation ? <ReputationBadges reputation={r.reputation} /> : <span className="text-xs text-slate-300">—</span>}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-1.5">
+                        {r.local_db && (
+                          <span data-testid={`ioc-bulk-known-${i}`} title={r.local_db.threat_name || "Known IOC"} className={`inline-flex w-fit items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${severityStyle(r.local_db.severity).badge}`}>
+                            Known · {r.local_db.severity}
+                          </span>
+                        )}
+                        {r.reputation ? <ReputationBadges reputation={r.reputation} /> : (!r.local_db && <span className="text-xs text-slate-300">—</span>)}
+                      </div>
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1.5">
                         {Object.entries(r.links || {}).slice(0, 5).map(([name, url]) => (

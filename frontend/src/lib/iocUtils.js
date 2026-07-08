@@ -16,6 +16,14 @@ export const TYPE_LABEL = {
   ip: "IP Address", domain: "Domain", url: "URL", unknown: "Unrecognized",
 };
 
+export const SEVERITY_STYLE = {
+  critical: { badge: "bg-red-600 text-white", ring: "border-red-300 bg-red-50", text: "text-red-700", dot: "bg-red-600" },
+  high: { badge: "bg-orange-500 text-white", ring: "border-orange-300 bg-orange-50", text: "text-orange-700", dot: "bg-orange-500" },
+  medium: { badge: "bg-amber-400 text-amber-950", ring: "border-amber-300 bg-amber-50", text: "text-amber-700", dot: "bg-amber-400" },
+  low: { badge: "bg-slate-400 text-white", ring: "border-slate-300 bg-slate-50", text: "text-slate-600", dot: "bg-slate-400" },
+};
+export const severityStyle = (s) => SEVERITY_STYLE[(s || "medium").toLowerCase()] || SEVERITY_STYLE.medium;
+
 // Short human summary of the free-source enrichment for a result row.
 export function iocSummary(r) {
   const en = r?.enrichment;

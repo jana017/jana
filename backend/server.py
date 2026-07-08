@@ -5,7 +5,7 @@ import os
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, UploadFile, File
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import logging
@@ -14,11 +14,14 @@ from typing import List, Optional, Annotated, Any
 import uuid
 import asyncio
 import re
+import csv
+import io
 from datetime import datetime, timezone, timedelta
 import bcrypt
 import jwt
 import httpx
 from bson import ObjectId
+from openpyxl import load_workbook
 
 # ---------------------------------------------------------------------------
 # Setup
@@ -171,6 +174,56 @@ class LeadStatusUpdate(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Custom IOC database (curated indicators)
+# ---------------------------------------------------------------------------
+IOC_SEVERITIES = ["low", "medium", "high", "critical"]
+
+
+def _ioc_key(value: str) -> str:
+    """Canonical match key: defanged + lowercased."""
+    v = (value or "").strip()
+    v = v.replace("[.]", ".").replace("(.)", ".").replace("[dot]", ".").replace("{.}", ".")
+    v = v.replace("hxxps", "https").replace("hxxp", "http")
+    v = v.replace("[:]", ":")
+    return v.lower()
+
+
+class IocRecordCreate(BaseModel):
+    value: str
+    threat_name: Optional[str] = None
+    tags: List[str] = []
+    source: Optional[str] = None
+    severity: str = "medium"
+    notes: Optional[str] = None
+
+
+class IocRecord(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    value: str
+    key: str
+    type: str
+    threat_name: Optional[str] = None
+    tags: List[str] = []
+    source: Optional[str] = None
+    severity: str = "medium"
+    notes: Optional[str] = None
+    created_at: str = Field(default_factory=now_iso)
+
+
+class IocBulkCreate(BaseModel):
+    values: List[str] = []
+    threat_name: Optional[str] = None
+    tags: List[str] = []
+    source: Optional[str] = None
+    severity: str = "medium"
+
+
+class IocBulkDelete(BaseModel):
+    ids: List[str] = []
+
+
+# ---------------------------------------------------------------------------
 # Auth routes
 # ---------------------------------------------------------------------------
 @api_router.post("/auth/login")
@@ -289,6 +342,185 @@ async def update_lead_status(lead_id: str, payload: LeadStatusUpdate, user: dict
     await db.leads.update_one({"id": lead_id}, {"$set": {"status": payload.status}})
     doc["status"] = payload.status
     return Lead(**doc)
+
+
+# ---------------------------------------------------------------------------
+# Custom IOC database routes (admin-managed, public read)
+# ---------------------------------------------------------------------------
+def _severity_or_default(s: Optional[str]) -> str:
+    s = (s or "").strip().lower()
+    return s if s in IOC_SEVERITIES else "medium"
+
+
+def _parse_tags(t) -> List[str]:
+    if isinstance(t, list):
+        return [str(x).strip() for x in t if str(x).strip()]
+    if isinstance(t, str):
+        return [x.strip() for x in re.split(r"[,;|]", t) if x.strip()]
+    return []
+
+
+async def _upsert_ioc(value, threat_name=None, tags=None, source=None, severity="medium", notes=None):
+    """Insert or update an IOC by canonical key. Returns (record_dict, created_bool)."""
+    value = (value or "").strip()
+    if not value:
+        return None, False
+    key = _ioc_key(value)
+    ioc_type = _classify_ioc(value)
+    existing = await db.iocs.find_one({"key": key}, {"_id": 0})
+    now = now_iso()
+    if existing:
+        updates: dict = {"updated_at": now}
+        if threat_name:
+            updates["threat_name"] = threat_name
+        if tags:
+            updates["tags"] = tags
+        if source:
+            updates["source"] = source
+        if severity:
+            updates["severity"] = _severity_or_default(severity)
+        if notes:
+            updates["notes"] = notes
+        await db.iocs.update_one({"key": key}, {"$set": updates})
+        return {**existing, **updates}, False
+    rec = IocRecord(value=value, key=key, type=ioc_type, threat_name=threat_name, tags=tags or [], source=source, severity=_severity_or_default(severity), notes=notes)
+    await db.iocs.insert_one(rec.model_dump())
+    return rec.model_dump(), True
+
+
+@api_router.post("/iocs", response_model=IocRecord)
+async def create_ioc(payload: IocRecordCreate, user: dict = Depends(get_current_user)):
+    if not payload.value.strip():
+        raise HTTPException(status_code=400, detail="IOC value is required")
+    if _classify_ioc(payload.value) == "unknown":
+        raise HTTPException(status_code=422, detail="Value is not a recognized hash, IP, domain or URL")
+    rec, _ = await _upsert_ioc(payload.value, payload.threat_name, _parse_tags(payload.tags), payload.source, payload.severity, payload.notes)
+    return IocRecord(**rec)
+
+
+@api_router.post("/iocs/bulk")
+async def bulk_create_iocs(payload: IocBulkCreate, user: dict = Depends(get_current_user)):
+    tokens: List[str] = []
+    for entry in (payload.values or []):
+        for tok in re.split(r"[\s,;]+", (entry or "").strip()):
+            if tok.strip():
+                tokens.append(tok.strip())
+    seen = set()
+    items: List[str] = []
+    for t in tokens:
+        k = t.lower()
+        if k not in seen:
+            seen.add(k)
+            items.append(t)
+    added = updated = skipped = 0
+    tags = _parse_tags(payload.tags)
+    for v in items[:5000]:
+        if _classify_ioc(v) == "unknown":
+            skipped += 1
+            continue
+        _, created = await _upsert_ioc(v, payload.threat_name, tags, payload.source, payload.severity)
+        added += 1 if created else 0
+        updated += 0 if created else 1
+    return {"added": added, "updated": updated, "skipped": skipped, "total": len(items)}
+
+
+@api_router.post("/iocs/upload")
+async def upload_iocs(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    name = (file.filename or "").lower()
+    content = await file.read()
+    rows: List[dict] = []
+    try:
+        if name.endswith(".xlsx") or name.endswith(".xlsm"):
+            wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+            ws = wb.active
+            headers = None
+            for r in ws.iter_rows(values_only=True):
+                if headers is None:
+                    headers = [str(c).strip().lower() if c is not None else "" for c in r]
+                    continue
+                rows.append({headers[i]: (r[i] if i < len(r) else None) for i in range(len(headers))})
+        elif name.endswith(".csv") or name.endswith(".txt"):
+            text = content.decode("utf-8-sig", errors="replace")
+            reader = csv.DictReader(io.StringIO(text))
+            if reader.fieldnames and any((h or "").strip().lower() in ("value", "ioc", "indicator") for h in reader.fieldnames):
+                for row in reader:
+                    rows.append({(k or "").strip().lower(): v for k, v in row.items()})
+            else:
+                for line in text.splitlines():
+                    line = line.strip().strip('",')
+                    if line:
+                        rows.append({"value": line})
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file type. Upload .csv, .txt or .xlsx")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not parse file: {e}")
+
+    def _get(row, *keys):
+        for k in keys:
+            if k in row and row[k] not in (None, ""):
+                return str(row[k]).strip()
+        return None
+
+    added = updated = skipped = 0
+    for row in rows[:10000]:
+        value = _get(row, "value", "ioc", "indicator")
+        if not value or _classify_ioc(value) == "unknown":
+            skipped += 1
+            continue
+        _, created = await _upsert_ioc(
+            value,
+            _get(row, "threat_name", "threat", "malware", "label"),
+            _parse_tags(_get(row, "tags", "tag")),
+            _get(row, "source"),
+            _get(row, "severity") or "medium",
+            _get(row, "notes", "description", "comment"),
+        )
+        added += 1 if created else 0
+        updated += 0 if created else 1
+    return {"added": added, "updated": updated, "skipped": skipped, "total": len(rows)}
+
+
+@api_router.get("/iocs")
+async def list_iocs(q: Optional[str] = None, type: Optional[str] = None, severity: Optional[str] = None, tag: Optional[str] = None, limit: int = 100, skip: int = 0):
+    query: dict = {}
+    if type and type != "all":
+        query["type"] = {"$in": ["md5", "sha1", "sha256"]} if type == "hash" else type
+    if severity and severity != "all":
+        query["severity"] = severity
+    if tag:
+        query["tags"] = tag
+    if q:
+        rx = {"$regex": re.escape(q.strip()), "$options": "i"}
+        query["$or"] = [{"value": rx}, {"threat_name": rx}, {"tags": rx}, {"source": rx}, {"notes": rx}]
+    total = await db.iocs.count_documents(query)
+    limit = max(1, min(limit, 500))
+    docs = await db.iocs.find(query, {"_id": 0}).sort("created_at", -1).skip(max(0, skip)).limit(limit).to_list(limit)
+    return {"total": total, "items": docs, "limit": limit, "skip": skip}
+
+
+@api_router.get("/iocs/stats")
+async def ioc_stats():
+    total = await db.iocs.count_documents({})
+    by_severity = {s: await db.iocs.count_documents({"severity": s}) for s in IOC_SEVERITIES}
+    return {"total": total, "by_severity": by_severity}
+
+
+@api_router.delete("/iocs/bulk")
+async def bulk_delete_iocs(payload: IocBulkDelete, user: dict = Depends(get_current_user)):
+    if not payload.ids:
+        raise HTTPException(status_code=400, detail="No IOC ids provided")
+    res = await db.iocs.delete_many({"id": {"$in": payload.ids}})
+    return {"deleted": res.deleted_count}
+
+
+@api_router.delete("/iocs/{ioc_id}")
+async def delete_ioc(ioc_id: str, user: dict = Depends(get_current_user)):
+    res = await db.iocs.delete_one({"id": ioc_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="IOC not found")
+    return {"deleted": True}
 
 
 # ---------------------------------------------------------------------------
@@ -497,9 +729,23 @@ async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
     value = (value or "").strip()
     kind = _classify_ioc(value)
     if kind == "unknown":
-        return {"value": value, "type": "unknown", "links": {}, "enrichment": None, "reputation": None}
+        return {"value": value, "type": "unknown", "links": {}, "enrichment": None, "reputation": None, "local_db": None}
     normalized = value.replace("[.]", ".")
-    result = {"value": value, "type": kind, "links": _ioc_links(value, kind), "enrichment": None, "reputation": None}
+    result = {"value": value, "type": kind, "links": _ioc_links(value, kind), "enrichment": None, "reputation": None, "local_db": None}
+
+    try:
+        local = await db.iocs.find_one({"key": _ioc_key(value)}, {"_id": 0})
+        if local:
+            result["local_db"] = {
+                "threat_name": local.get("threat_name"),
+                "severity": local.get("severity"),
+                "tags": local.get("tags", []),
+                "source": local.get("source"),
+                "notes": local.get("notes"),
+                "created_at": local.get("created_at"),
+            }
+    except Exception:
+        pass
 
     try:
         if kind == "ip":
