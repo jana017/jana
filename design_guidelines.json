@@ -1,150 +1,110 @@
 {
-  "project_name": "NivX Machines",
-  "theme_mode": "dark",
+  "theme": "light_dominant",
+  "design_philosophy": "Pragmatic Futurism: Clean, modern, corporate enterprise-security layout. Prioritizes white/light-slate backgrounds, generous whitespace, subtle depth, and restrained typography. Moves away from the dark 'hacker' aesthetic.",
   "typography": {
-    "headings": {
-      "family": "Unbounded, sans-serif",
-      "import_url": "https://fonts.googleapis.com/css2?family=Unbounded:wght@300;400;600;800;900&display=swap",
-      "rules": "Use font-black or font-light for radical contrast. tracking-tighter for sizes > 32px. No generic sans."
+    "heading_font": "Outfit",
+    "body_font": "Inter",
+    "mono_font": "IBM Plex Mono",
+    "scales": {
+      "h1": "text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight text-slate-900",
+      "h2": "text-2xl md:text-3xl font-semibold tracking-tight text-slate-900",
+      "h3": "text-xl md:text-2xl font-medium text-slate-900",
+      "h4": "text-lg font-medium text-slate-800",
+      "body": "text-base text-slate-600 leading-relaxed",
+      "overline": "text-xs font-bold uppercase tracking-[0.2em] text-blue-600",
+      "mono_data": "font-mono text-sm text-slate-700 bg-slate-100 px-1 py-0.5 rounded"
     },
-    "body": {
-      "family": "Satoshi, sans-serif",
-      "import_url": "https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap",
-      "rules": "Clean, readable body text. leading-relaxed."
-    },
-    "mono_data": {
-      "family": "JetBrains Mono, monospace",
-      "import_url": "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap",
-      "rules": "Use exclusively for threat report data, logs, metrics, tags, and overlines. tracking-widest for labels."
-    }
+    "instructions": "Use restrained, smaller heading sizes as dictated. NO giant font-black display types. Headings should feel professional and readable. Use mono font ONLY for technical data (CVEs, IOCs) and NOT for general headings."
   },
   "colors": {
-    "background": {
-      "primary": "#050505",
-      "secondary": "#0A0A0B",
-      "tertiary": "#121214"
+    "brand": {
+      "blue": "#2E7DF5",
+      "orange": "#F5821F",
+      "navy": "#0A1220"
     },
-    "text": {
-      "primary": "#FFFFFF",
-      "secondary": "#A1A1A5",
-      "muted": "#66666E"
+    "light_mode": {
+      "background": "#FFFFFF",
+      "surface": "#F8FAFC",
+      "border": "#E2E8F0",
+      "text_primary": "#0F172A",
+      "text_secondary": "#475569"
     },
-    "accents": {
-      "primary": "#00F0FF",
-      "warning": "#FFB800",
-      "danger": "#FF0055",
-      "success": "#ccff00"
+    "dark_sections": {
+      "background": "#0A1220",
+      "surface": "#1E293B",
+      "border": "#334155",
+      "text_primary": "#F8FAFC",
+      "text_secondary": "#94A3B8"
     },
-    "surface": {
-      "glass": "rgba(255, 255, 255, 0.03)",
-      "border": "rgba(255, 255, 255, 0.08)",
-      "glow": "rgba(0, 240, 255, 0.15)"
-    }
+    "instructions": "Overall site is Light-Dominant. Use #0A1220 (Navy) for specific high-contrast sections like the Footer or a targeted Hero block, but ensure the core dashboard and main content areas are light (#FFFFFF or #F8FAFC). NEVER use pure black (#000000)."
   },
   "visual_enhancers": {
-    "glassmorphism": "Use backdrop-blur-2xl bg-white/5 border border-white/10 for headers, cards, and floating panels. Never use purely transparent headers.",
-    "textures": "Apply a subtle SVG noise/grain overlay fixed to the viewport (`pointer-events-none opacity-20 z-50 mix-blend-overlay`) to kill digital flatness.",
-    "grid_borders": "Use border-collapse techniques with border-white/10 for Threat Report tables and features sections. The 'Technical Look'.",
-    "glow_effects": "Use drop-shadow-[0_0_15px_rgba(0,240,255,0.3)] on primary CTAs and critical threat indicators."
+    "radius": "rounded-lg or rounded-xl for main cards, rounded-md for buttons. Avoid fully pill-shaped or brutally sharp corners.",
+    "shadows": "shadow-sm for default cards, shadow-md on hover. Use ambient, soft shadows to create a sleek SaaS feel.",
+    "borders": "1px solid border-slate-200 (light) or border-slate-700 (dark).",
+    "spacing": "Generous spacing. Use p-8 to p-12 for section paddings. gap-6 to gap-8 for grids. Whitespace is critical for the corporate feel."
   },
   "layouts": {
-    "spacing": "Generous spacing. Use p-8 to p-16 for containers. Avoid cramped designs.",
-    "bento_grid": "For Services and Gallery: grid-cols-1 md:grid-cols-12 gap-8. Mix col-span-4, col-span-8, row-span-2 for severe asymmetry.",
-    "hero": "100vh height minimum. Kinetic typography. Use framer-motion for line-by-line masked text reveal. DO NOT center content lazily; opt for optical alignment or dramatic left alignment.",
-    "threat_dashboard": "High-density grid (grid-cols-1 md:grid-cols-3 lg:grid-cols-4) with tight gaps (gap-4). Use glass cards. Include live stats counters.",
-    "admin_panel": "Cardless, pure structural layouts. Dense information, JetBrains Mono font for inputs."
+    "navigation": "Sticky top nav. White background (bg-white/90 backdrop-blur-md) with subtle bottom border. Include Logo, 6 tabs, and a primary CTA.",
+    "hero": "Clean split layout or focused center layout. Restrained H1. Must include Contact Info clearly (Mobile: +91 90595 65125, Email: info@nivxmachines.com) with lucide-react icons.",
+    "live_threat_dashboard": "Bento-style grid (grid-cols-1 md:grid-cols-3 lg:grid-cols-4). White cards on a slate-50 background. Live stats counters and a scrolling list of recent CVEs. Use Shadcn UI charts/cards.",
+    "threat_report": "Cards for reports + a featured brief. Featured brief must display MITRE ATT&CK tactic IDs, Process Tree visually (can use basic flowchart style with divs/borders), and IOCs.",
+    "admin_panel": "Login-gated view. Clean, centered authentication card. Once 'logged in' (mocked), show a professional, structured form (Shadcn Form/Inputs) to add/edit threat reports."
+  },
+  "components": {
+    "buttons": "Shadcn UI Button. Primary: bg-[#2E7DF5] hover:bg-[#2563EB] text-white. Accent: bg-[#F5821F] hover:bg-[#EA580C] text-white. Outline: border-slate-300 text-slate-700 hover:bg-slate-50.",
+    "cards": "Shadcn UI Card. bg-white, border-slate-200, shadow-sm. Clean and structured.",
+    "forms": "Shadcn UI Form, Input, Label. Clean white inputs with subtle focus rings (ring-[#2E7DF5]).",
+    "icons": "lucide-react. Use stroke-width 1.5 for a professional, lighter look."
   },
   "motion": {
-    "scrolling": "MUST USE '@studio-freight/react-lenis' for smooth momentum scrolling across the entire site.",
-    "reveals": "Framer Motion: <motion.div> with initial={{ y: 40, opacity: 0 }} whileInView={{ y: 0, opacity: 1 }} viewport={{ once: true }} transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}.",
-    "micro_interactions": "Hover states on cards: -translate-y-2 with glowing border. Button hovers: expand letter-spacing slightly."
-  },
-  "components_instructions": {
-    "buttons": "Sharp rectangular with 1px border. On hover, background fills with accent color (cyan) and text flips to black. Use Framer Motion for tap states.",
-    "tabs": "Custom tab navigation. Strip default Shadcn backgrounds. Use JetBrains Mono, underline active state, glowing text.",
-    "threat_card": "Includes MITRE ATT&CK chain steps in micro-tags, process tree visualization (framer-motion nodes), and severity badge.",
-    "editorial_marquee": "Use react-fast-marquee. Slow speed. Font: JetBrains Mono uppercase, wide tracking.",
-    "forms": "Admin panel and forms must use Shadcn customized inputs, but strip generic 'Vercel' looks.",
-    "file_extension": "Build all components as .jsx/.js. Do not use TypeScript (.tsx/.ts) as per environment rules."
+    "scroll": "Lenis for smooth scrolling (already installed).",
+    "animations": "framer-motion for subtle fade-ins (opacity 0 to 1, y: 10 to 0) on scroll. Micro-interactions on buttons (scale 0.98 on tap). No overly flashy kinetic typography."
   },
   "media": {
-    "hero_3d": "Use react-force-graph-3d or TSParticles for an abstract network mesh in the hero background.",
+    "logo_url": "https://customer-assets.emergentagent.com/job_threat-intel-hub-85/artifacts/jgp9w0g6_file_000000003958720bbc53ca7e9ffbcdf9.webp",
     "images": [
       {
-        "url": "https://images.unsplash.com/photo-1680992046626-418f7e910589?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxNzV8MHwxfHNlYXJjaHwxfHxkYXJrJTIwc2VydmVyJTIwcm9vbXxlbnwwfHx8fDE3ODM1MjM5NjR8MA&ixlib=rb-4.1.0&q=85",
-        "category": "gallery",
-        "description": "Server room for Gallery/About Us"
+        "url": "https://images.pexels.com/photos/5483240/pexels-photo-5483240.jpeg",
+        "description": "Laptop displaying 'Cyber Security' in a modern office. Good for Hero or About Us.",
+        "category": "hero_or_about"
       },
       {
-        "url": "https://images.unsplash.com/photo-1644088379091-d574269d422f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzZ8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMG5lb24lMjBuZXR3b3JrJTIwbm9kZXxlbnwwfHx8fDE3ODM1MjM5NjV8MA&ixlib=rb-4.1.0&q=85",
-        "category": "hero_bg",
-        "description": "Abstract neon nodes for threat report background"
+        "url": "https://images.pexels.com/photos/37730212/pexels-photo-37730212.jpeg",
+        "description": "Modern server room enterprise. Good for Services or Gallery.",
+        "category": "services_or_gallery"
       },
       {
-        "url": "https://images.unsplash.com/photo-1555066931-4365d14bab8c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA4Mzl8MHwxfHNlYXJjaHwyfHxoYWNrZXIlMjBjb2RlJTIwdGVybWluYWx8ZW58MHx8fHwxNzgzNTIzOTY1fDA&ixlib=rb-4.1.0&q=85",
-        "category": "services",
-        "description": "Hacker terminal for Cyber Security Services"
+        "url": "https://images.unsplash.com/photo-1674027444636-ce7379d51252",
+        "description": "Artificial intelligence network node. Good for AI/Tech offerings.",
+        "category": "tech_offerings"
       }
     ],
-    "icons": "Use lucide-react. Ensure to use data-testid on all icons and interactive elements."
+    "instructions": "Use these images strategically. Apply rounded corners (rounded-lg) to all images to fit the SaaS look. Never use placeholder text for images."
   },
-  "sections": [
-    {
-      "name": "Navigation",
-      "features": "Fixed top nav. Glassmorphism `backdrop-blur-2xl bg-black/60`. Logo left, Links center, Support CTA right."
-    },
-    {
-      "name": "Hero",
-      "features": "Large kinetic text 'NIVX.MACHINES', line-by-line reveal. Subtitle: 'Cybersecurity & AI Architecture'. Background: 3D/Particles abstract network."
-    },
-    {
-      "name": "Numbered Manifesto (About Us)",
-      "features": "Scroll-triggered chapter reveals (01, 02, 03) in massive Unbounded font. Content explaining AI-driven defense."
-    },
-    {
-      "name": "Marquee",
-      "features": "Slow scrolling text: 'REAL TIME THREAT LANDSCAPE — ZERO TRUST ARCHITECTURE — AI THREAT DETECTION'"
-    },
-    {
-      "name": "Live Threat Report Dashboard",
-      "features": "High-density grid. Live counters. Cards showing MITRE ATT&CK chains, Process Trees (node diagrams), and threat screenshots. Must pull from mock external live feed logic."
-    },
-    {
-      "name": "Gallery",
-      "features": "Real product/tech photography with 'spotlight' and 'clipped frame' treatments. Grayscale filters on default, color on hover."
-    },
-    {
-      "name": "Services Grid",
-      "features": "Bento box grid outlining Cyber Security, AI, Tech offerings."
-    },
-    {
-      "name": "Careers & Support",
-      "features": "Careers: Clean static list format for jobs with 'Apply via Email' links. Support: Mobile 9059565125, Email info@nivxmachines.com. Use distinct icons."
-    },
-    {
-      "name": "Admin Panel",
-      "features": "Login-gated area (mock auth). Form UI to add/edit threat reports. JetBrains Mono inputs, minimalist lines, focus on function."
-    }
-  ],
   "accessibility": {
-    "contrast": "Ensure text over images has background gradients (e.g., from-black/80 to-transparent) to maintain APCA readability.",
-    "testing": "All interactive and key informational elements MUST include a `data-testid` attribute (e.g., data-testid='hero-cta-button', data-testid='contact-email')."
+    "contrast": "Ensure APCA/WCAG AA contrast. Text on brand colors must be readable.",
+    "testing": "CRITICAL: Add data-testid attributes to all interactive and informational elements (e.g., data-testid='threat-report-card', data-testid='contact-email')."
   },
-  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
-    "You tend to converge toward generic, 'on distribution' outputs. In frontend design, this creates what users call the 'AI slop' aesthetic. Avoid this: make creative, distinctive frontends that surprise and delight.",
-    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
-    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
-    "Create depth through layered design elements with z-index hierarchy.",
-    "Use glass-morphism effects with backdrop filters (12-24px blur).",
-    "You MUST NOT apply universal transition. Eg: `transition: all`. This results in breaking transforms.",
-    "You MUST NOT center align the app container, ie do not add `.App { text-align: center; }` in the css file.",
-    "Always use modern button styles like pill-shaped, or sharp button with interaction animations & color relevant to the app style.",
-    "NEVER: use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯 etc for icons.",
-    "Every interaction needs micro-animations - hover states, transitions, parallax effects, and entrance animations. Static = dead.",
-    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
-    "Subtle grain textures, noise overlays, custom cursors, selection states, and loading animations: separates good from extraordinary.",
-    "Use sonner for toasts.",
-    "Do not use generic Inter font. Follow the typography guide exactly.",
-    "Implement using .js and .jsx files. Do not use TypeScript (.tsx/.ts)."
+  "instructions_to_main_agent": [
+    "1. FILE EXTENSION: Use .js and .jsx files exclusively. Do NOT output .tsx or .ts files.",
+    "2. COMPONENT OVERRIDES: Apply Shadcn UI but customize spacing and radiuses to match the clean corporate guidelines.",
+    "3. THEME: Apply a Light-dominant theme. Replace the old pure-black/neon 'hacker' vibe with white/slate-50 backgrounds, #2E7DF5 blue, and #F5821F orange accents.",
+    "4. TYPOGRAPHY: Enforce strict restraint on font sizes. H1 must not exceed text-5xl. Use 'Outfit' for headings, 'Inter' for body.",
+    "5. SECTIONS: Implement 6 tabs: About Us, Gallery, Threat Report, Careers, Services, Support.",
+    "6. HERO & SUPPORT: Must clearly display Mobile +91 90595 65125 and Email info@nivxmachines.com.",
+    "7. THREAT REPORTS: Implement a card layout and a detailed view showing MITRE ATT&CK chain, Process Trees, and IOCs.",
+    "8. ADMIN: Include a login-gated Admin Panel with a clean form to manage threat reports.",
+    "9. ICONS: Use lucide-react.",
+    "10. TESTING: Apply data-testid to every button, link, form, and major card/section."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "Avoid generic centered layouts and uniform styling. Create depth through layered design elements.",
+    "Never use AI assistant emoji characters for icons.",
+    "Every interaction needs micro-animations (hover states, focus rings).",
+    "Use 2-3x more spacing than typical for a premium feel (e.g. p-8 instead of p-4).",
+    "Use `sonner` for toasts if needed.",
+    "Prioritize existing Shadcn UI components from src/components/ui.",
+    "NEVER use transparent backgrounds for dropdowns or fixed headers where content scrolls underneath."
   ]
 }
