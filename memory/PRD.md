@@ -55,6 +55,13 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - Live CVE feed upgrade: GET /api/live-feed now returns the FULL CISA KEV catalog (~1,635 CVEs) instead of top 50. LiveThreatLandscape has a real-time search box (by CVE id / name / vendor / product) + clear button + "X of Y" count over a scrollable list.
 - OSINT tool grid additions: Shodan, Censys, CyberChef (session 4) + MITRE ATT&CK + MITRE D3FEND (icons + deep links). 10 tools total.
 - Tests: iteration_12 passed (CVE search/scroll + VT community hash block). MITRE cards verified visually.
+
+## Latest (2026-07-08, session 6)
+- Domain/URL enrichment made robust (was: relied only on rate-limited urlscan and often showed nothing). Now _do_lookup resolves the host via Google DNS-over-HTTPS (_resolve_host) then pulls Shodan InternetDB (_shodan_ip) + ip-api geo (_geo_ip) for the resolved IP, plus urlscan (now with URLSCAN_API_KEY in .env) + VirusTotal reputation. Frontend web block shows resolved IP, geo, open ports, known vulns, urlscan scans + VT badge.
+- Landing-page preview: urlscan() returns a representative homepage screenshot (enrichment.preview {screenshot,url,result}); frontend renders it as an image with a 'LIVE PAGE PREVIEW · urlscan.io' badge (ioc-web-preview), gracefully hidden if none/broken.
+- Bulk Summary column for domains now includes geo + ports + scans (iocUtils.iocSummary).
+- Keys added to backend/.env: URLSCAN_API_KEY (VIRUSTOTAL_API_KEY, ABUSEIPDB_API_KEY already present).
+- Tests: iteration_13 (domain/url enrichment + IP/hash regression) and iteration_14 (screenshot preview + graceful absence + bulk summary) both fully passed, zero console errors.
 - Threat Intelligence: type facets + date-range + pagination over ~395 Unit42 reports; in-app report reader (notes/refs/IOC table + copy-all).
 - OSINT section: 5 tool quick-links + SMART IOC ANALYZER (/api/ioc-lookup): classifies hash/IP/domain/URL, live no-key enrichment (Shodan InternetDB + ip-api for IPs, urlscan search for domains/URLs), prefilled deep-links (VT/AbuseIPDB/Talos/urlscan/X-Force).
 - Admin: Leads tab with status workflow (new/contacted/qualified/archived) + CSV export.
