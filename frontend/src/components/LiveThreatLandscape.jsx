@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Database, ShieldAlert, Radar, Activity, ExternalLink } from "lucide-react";
+import { Database, ShieldAlert, Radar, Activity, ExternalLink, Search, X } from "lucide-react";
 import { api } from "@/lib/api";
 
 function Counter({ value, suffix = "" }) {
@@ -24,12 +24,25 @@ function Counter({ value, suffix = "" }) {
 export default function LiveThreatLandscape() {
   const [feed, setFeed] = useState(null);
   const [err, setErr] = useState(false);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     let active = true;
     api.get("/live-feed").then(({ data }) => active && setFeed(data)).catch(() => active && setErr(true));
     return () => { active = false; };
   }, []);
+
+  const filtered = useMemo(() => {
+    const items = feed?.items || [];
+    const q = query.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((it) =>
+      (it.cve || "").toLowerCase().includes(q) ||
+      (it.name || "").toLowerCase().includes(q) ||
+      (it.vendor || "").toLowerCase().includes(q) ||
+      (it.product || "").toLowerCase().includes(q)
+    );
+  }, [feed, query]);
 
   const stats = [
     { icon: Database, label: "Exploited CVEs tracked", value: feed?.total_count, color: "blue", testid: "stat-total" },
@@ -82,14 +95,46 @@ export default function LiveThreatLandscape() {
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 bg-slate-50">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 border-b border-slate-100 bg-slate-50">
             <span className="text-sm font-semibold text-slate-800">Latest exploited vulnerabilities</span>
-            <span className="flex items-center gap-1.5 text-xs font-semibold text-green-600"><span className="w-1.5 h-1.5 rounded-full bg-green-500 pulse-dot" /> LIVE</span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-slate-500 tabular-nums" data-testid="cve-count">
+                {feed ? `${filtered.length.toLocaleString()} of ${(feed.items?.length || 0).toLocaleString()}` : "…"}
+              </span>
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-green-600"><span className="w-1.5 h-1.5 rounded-full bg-green-500 pulse-dot" /> LIVE</span>
+            </div>
           </div>
-          <div className="max-h-[380px] overflow-y-auto divide-y divide-slate-100">
+
+          <div className="px-5 py-3 border-b border-slate-100">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                data-testid="cve-search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search by CVE number or vulnerability name (e.g. CVE-2024-3400 or Chrome)"
+                className="w-full bg-white border border-slate-300 focus:border-[#2E7DF5] focus:ring-2 focus:ring-blue-100 outline-none pl-9 pr-9 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 rounded-md transition-shadow"
+              />
+              {query && (
+                <button
+                  onClick={() => setQuery("")}
+                  data-testid="cve-search-clear"
+                  aria-label="Clear search"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="max-h-[460px] overflow-y-auto divide-y divide-slate-100" data-testid="cve-feed-scroll">
             {err && <div className="p-6 text-sm text-red-500">Feed temporarily unavailable.</div>}
             {!feed && !err && <div className="p-6 text-sm text-slate-400">Loading live feed…</div>}
-            {feed?.items?.map((it, i) => (
+            {feed && filtered.length === 0 && (
+              <div className="p-6 text-sm text-slate-400" data-testid="cve-no-results">No vulnerabilities match “{query}”.</div>
+            )}
+            {filtered.map((it, i) => (
               <a
                 key={it.cve + i}
                 href={it.nvd_url}

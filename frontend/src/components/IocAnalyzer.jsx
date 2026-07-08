@@ -165,6 +165,31 @@ export default function IocAnalyzer() {
                       <span>{en.note}</span>
                     </div>
                   )}
+                  {result.reputation?.vt && !result.reputation.vt.error && result.reputation.vt.found && (
+                    <div className="pt-3 mt-1 border-t border-slate-200" data-testid="ioc-hash-vt-community">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                        <img src="https://www.google.com/s2/favicons?domain=virustotal.com&sz=32" alt="" className="w-3.5 h-3.5" /> VirusTotal Community
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm mb-2">
+                        {result.reputation.vt.threat_label && (
+                          <span className="text-slate-700">Threat label: <span className="font-mono-data text-red-700">{result.reputation.vt.threat_label}</span></span>
+                        )}
+                        {result.reputation.vt.last_analysis_date && (
+                          <span className="text-slate-500 text-xs">Last analyzed {new Date(result.reputation.vt.last_analysis_date * 1000).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}</span>
+                        )}
+                      </div>
+                      {(result.reputation.vt.threat_categories?.length > 0 || result.reputation.vt.tags?.length > 0) && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {result.reputation.vt.threat_categories?.map((c) => (
+                            <span key={`cat-${c}`} className="text-xs bg-red-50 border border-red-200 text-red-700 px-2 py-0.5 rounded-full">{c}</span>
+                          ))}
+                          {result.reputation.vt.tags?.map((t) => (
+                            <span key={`tag-${t}`} className="text-xs bg-slate-100 border border-slate-200 text-slate-600 px-2 py-0.5 rounded-full font-mono-data">{t}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="text-xs text-slate-400">Enrichment: {en.sources.join(" · ")}</div>
                 </div>
               )}

@@ -1,0 +1,32 @@
+{
+  "summary": "Frontend retest passed for CVE live-feed search/scroll and VT Community hash block. No console errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "verification_details": {
+    "landing_cve_feed": {
+      "cve_count_initial": "1,635 of 1,635",
+      "rendered_rows": 1635,
+      "scroll_container": {"scrollHeight": 99750, "clientHeight": 460, "scrollable": true},
+      "filter_chrome": "7 of 1,635",
+      "after_clear": "1,635 of 1,635",
+      "filter_CVE-2024-3400": "1 of 1,635 (feed-row-0 = CVE-2024-3400 Palo Alto PAN-OS Command Injection)",
+      "no_results_for_gibberish": true
+    },
+    "threat_intel_hash_lookup": {
+      "hash": "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f (EICAR)",
+      "ioc_result_rendered": true,
+      "ioc_hash_vt_community": "Threat label: virus.eicar/test; tags: virus, trojan, known-distributor, powershell, idle, via-tor, attachment, detect-debug-environment, direct-cpu-clock-access, long-sleeps; Last analyzed Jul 8, 2026",
+      "ioc_rep_vt": "VirusTotal 63/68"
+    },
+    "console_errors": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped)", "frontend": "100%"},
+  "seed_data_creation": "",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All requested acceptance criteria (A) CVE search/scroll and (B) VT Community hash block are working. Full 1,635 CVE rows render; filter, clear, and no-results states all functional. EICAR hash returns complete VT community metadata."
+}

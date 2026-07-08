@@ -391,6 +391,8 @@ async def _vt_lookup(hc: httpx.AsyncClient, kind: str, normalized: str) -> Optio
         harm = stats.get("harmless", 0) or 0
         undet = stats.get("undetected", 0) or 0
         total = mal + susp + harm + undet + (stats.get("timeout", 0) or 0)
+        ptc = attrs.get("popular_threat_classification") or {}
+        threat_categories = [c.get("value") for c in (ptc.get("popular_threat_category") or []) if c.get("value")]
         return {
             "found": True,
             "malicious": mal,
@@ -400,6 +402,10 @@ async def _vt_lookup(hc: httpx.AsyncClient, kind: str, normalized: str) -> Optio
             "total": total,
             "reputation": attrs.get("reputation"),
             "label": attrs.get("meaningful_name") or attrs.get("type_description"),
+            "last_analysis_date": attrs.get("last_analysis_date"),
+            "threat_label": ptc.get("suggested_threat_label"),
+            "threat_categories": threat_categories[:6],
+            "tags": (attrs.get("tags") or [])[:10],
         }
     except Exception:
         return {"error": "request_failed"}
@@ -622,7 +628,7 @@ async def live_feed():
                 "nvd_url": f"https://nvd.nist.gov/vuln/detail/{v.get('cveID')}",
                 "detail_url": f"https://www.cisa.gov/known-exploited-vulnerabilities-catalog?search_api_fulltext={v.get('cveID')}",
             }
-            for v in vulns_sorted[:50]
+            for v in vulns_sorted
         ]
         result = {
             "source": "CISA Known Exploited Vulnerabilities",
@@ -630,6 +636,7 @@ async def live_feed():
             "total_count": raw.get("count", len(vulns)),
             "ransomware_linked": sum(1 for v in vulns if v.get("knownRansomwareCampaignUse") == "Known"),
             "updated": now.isoformat(),
+            "returned": len(recent),
             "items": recent,
         }
         _feed_cache["data"] = result
