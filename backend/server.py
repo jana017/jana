@@ -1052,6 +1052,131 @@ async def _sync_malwarebazaar_recent(selector: int = 100) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Malwarebytes threat-intel blog IOC scraper — pulls the last N articles from
+# https://www.malwarebytes.com/search/iocs and extracts the "IOCs" section
+# (hashes, defanged domains, defanged IPs) into the curated IOC database.
+# No API key required (public content).
+# ---------------------------------------------------------------------------
+MWB_SEARCH_URL = "https://www.malwarebytes.com/blog/feed/"
+MWB_MAX_ARTICLES = 12        # per sync run — enough to be fresh without hammering
+MWB_MAX_IOCS_PER_TYPE = 50   # per-article cap to defend against poorly-structured pages
+
+
+def _refang(v: str) -> str:
+    """Refang defanged IOCs: `foo[.]bar` -> `foo.bar`, `hxxp[s]://` -> `http[s]://`."""
+    if not v:
+        return v
+    v = v.replace("[.]", ".").replace("(.)", ".").replace("{.}", ".")
+    v = v.replace("[:]", ":").replace("hxxps://", "https://").replace("hxxp://", "http://")
+    return v.strip().strip(",;'\"`")
+
+
+_HASH_RE = re.compile(r"\b([a-fA-F0-9]{64}|[a-fA-F0-9]{40}|[a-fA-F0-9]{32})\b")
+_IP_RE   = re.compile(r"\b(\d{1,3}(?:[\.\[\]]+\d{1,3}){3})\b")
+_DOMAIN_RE = re.compile(r"\b([a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(?:[\[\.\]]+[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?){1,4})\b")
+
+
+def _extract_iocs_from_article(md: str) -> dict:
+    """Return {hashes: [str], ips: [str], domains: [str]} from an article body.
+    Restricts extraction to the '## IOCs' / 'Indicators of Compromise' section to
+    reduce false positives (author bios, external references, changelog dates, etc.)."""
+    if not md:
+        return {"hashes": [], "ips": [], "domains": []}
+    # Find the IOC section.
+    m = re.search(r"(?is)#+\s*(iocs?|indicators of compromise)\s*\n(.*?)(\n#+\s|\Z)", md)
+    body = m.group(2) if m else md  # fall back to full body if no explicit section
+    hashes = list({h.lower() for h in _HASH_RE.findall(body)})[:MWB_MAX_IOCS_PER_TYPE]
+    ips: list[str] = []
+    for raw in _IP_RE.findall(body)[:MWB_MAX_IOCS_PER_TYPE * 3]:
+        ip = _refang(raw)
+        if _classify_ioc(ip) == "ip" and ip not in ips:
+            ips.append(ip)
+            if len(ips) >= MWB_MAX_IOCS_PER_TYPE:
+                break
+    domains: list[str] = []
+    for raw in _DOMAIN_RE.findall(body)[:MWB_MAX_IOCS_PER_TYPE * 4]:
+        # Only accept if it was defanged in-source (avoids matching URLs of the article itself, etc.).
+        if "[.]" not in raw and "[.]" not in body[max(0, body.find(raw) - 5):body.find(raw) + len(raw) + 5]:
+            continue
+        d = _refang(raw).lower().strip(".")
+        if _classify_ioc(d) == "domain" and d not in domains and d not in ("malwarebytes.com", "wp-content.com"):
+            domains.append(d)
+            if len(domains) >= MWB_MAX_IOCS_PER_TYPE:
+                break
+    return {"hashes": hashes, "ips": ips, "domains": domains}
+
+
+async def _sync_malwarebytes_iocs(max_articles: int = MWB_MAX_ARTICLES) -> dict:
+    added = updated = skipped = 0
+    articles_processed = 0
+    async with httpx.AsyncClient(timeout=25, follow_redirects=True, headers={"User-Agent": "NivX-ThreatIntel/1.0"}) as hc:
+        try:
+            r = await hc.get(MWB_SEARCH_URL)
+            if r.status_code != 200:
+                return {"error": f"Malwarebytes search HTTP {r.status_code}", "items": 0, "added": 0, "updated": 0, "skipped": 0}
+            # Extract article links from the RSS feed.
+            links = re.findall(r"<link>([^<]+)</link>", r.text)
+            seen = set()
+            article_urls: list[str] = []
+            for u in links:
+                if u in seen:
+                    continue
+                seen.add(u)
+                # Only accept full-slug article URLs (skip category / feed / home).
+                if re.search(r"/blog/[a-z\-]+/\d{4}/\d{2}/[a-z0-9\-]+", u):
+                    article_urls.append(u)
+                if len(article_urls) >= max_articles:
+                    break
+        except Exception as e:
+            return {"error": f"Malwarebytes listing error: {e}", "items": 0, "added": 0, "updated": 0, "skipped": 0}
+
+        for url in article_urls:
+            try:
+                ar = await hc.get(url)
+                if ar.status_code != 200:
+                    continue
+                articles_processed += 1
+                title_m = re.search(r"<title>([^<]+)</title>", ar.text)
+                title = (title_m.group(1) if title_m else "Malwarebytes article").split("|")[0].strip()
+                iocs = _extract_iocs_from_article(ar.text)
+                slug = url.rstrip("/").split("/")[-1][:60]
+                src = f"Malwarebytes · {slug}"
+                notes = title[:180]
+                for h in iocs["hashes"]:
+                    try:
+                        _, created = await _upsert_ioc(h, title[:80], ["malwarebytes"], src, "high", notes)
+                        added += 1 if created else 0
+                        updated += 0 if created else 1
+                    except Exception:
+                        skipped += 1
+                for ip in iocs["ips"]:
+                    try:
+                        _, created = await _upsert_ioc(ip, title[:80], ["malwarebytes", "c2"], src, "high", notes)
+                        added += 1 if created else 0
+                        updated += 0 if created else 1
+                    except Exception:
+                        skipped += 1
+                for d in iocs["domains"]:
+                    try:
+                        _, created = await _upsert_ioc(d, title[:80], ["malwarebytes", "c2"], src, "high", notes)
+                        added += 1 if created else 0
+                        updated += 0 if created else 1
+                    except Exception:
+                        skipped += 1
+            except Exception as e:
+                logger.warning(f"Malwarebytes article fetch failed for {url}: {e}")
+                continue
+
+    summary = {"items": articles_processed, "added": added, "updated": updated, "skipped": skipped, "synced_at": now_iso()}
+    try:
+        await db.sync_meta.update_one({"_id": "malwarebytes"}, {"$set": summary}, upsert=True)
+    except Exception:
+        pass
+    logger.info(f"Malwarebytes sync complete: {summary}")
+    return summary
+
+
+# ---------------------------------------------------------------------------
 # Multi-source curated-IOC sync orchestrator (One-click "Sync all sources")
 # ---------------------------------------------------------------------------
 SYNC_SOURCES = [
@@ -1060,6 +1185,7 @@ SYNC_SOURCES = [
     ("hybrid_analysis", "Hybrid Analysis",   True,  None),
     ("abuseipdb",       "AbuseIPDB",         True,  None),
     ("malwarebazaar",   "MalwareBazaar",     True,  None),
+    ("malwarebytes",    "Malwarebytes Labs", True,  None),
     ("urlscan",         "URLScan.io",        False, "Bulk 'malicious verdicts' search requires urlscan Pro"),
     ("virustotal",      "VirusTotal",        False, "Bulk hunting feed requires VT Enterprise tier"),
     ("talos",           "Cisco Talos",       False, "No public bulk IOC feed available"),
@@ -1082,6 +1208,7 @@ async def iocs_sync_status():
         "hybrid_analysis": bool(HYBRID_ANALYSIS_API_KEY),
         "abuseipdb": bool(ABUSEIPDB_API_KEY),
         "malwarebazaar": bool(MALWAREBAZAAR_API_KEY),
+        "malwarebytes": True,
         "urlscan": bool(URLSCAN_API_KEY) if 'URLSCAN_API_KEY' in globals() else False,
         "virustotal": bool(VT_API_KEY) if 'VT_API_KEY' in globals() else False,
         "talos": False,
@@ -1110,6 +1237,7 @@ async def iocs_sync_all(user: dict = Depends(get_current_user)):
         "hybrid_analysis": _sync_hybrid_analysis_feed() if HYBRID_ANALYSIS_API_KEY else None,
         "abuseipdb": _sync_abuseipdb_blacklist() if ABUSEIPDB_API_KEY else None,
         "malwarebazaar": _sync_malwarebazaar_recent() if MALWAREBAZAAR_API_KEY else None,
+        "malwarebytes": _sync_malwarebytes_iocs(),
     }
     active_keys = [k for k, v in tasks.items() if v is not None]
     results_list = await asyncio.gather(*[tasks[k] for k in active_keys], return_exceptions=True)

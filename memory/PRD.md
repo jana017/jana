@@ -169,3 +169,11 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - **Curated IOC DB sync**: added MalwareBazaar as the 4th real bulk-sync source (`_sync_malwarebazaar_recent`). One-click "Sync all sources" now pulls OTX + Hybrid Analysis + AbuseIPDB + MalwareBazaar in parallel. First run added 99 fresh malware hashes with their family/signature/tags.
 - **Verified via curl + screenshot**: MB found=True for fresh sample, MB card renders with signature/file name/tags, HA URL quick-scan block appears inline for URL inputs, extra HaAnalyzer panel confirmed gone from the page. Backend `python -c "import server"` passes; frontend `CI=true yarn build` passes.
 
+
+## Latest (2026-07-09, session 21 — Malwarebytes Labs IOC feed)
+- **New sync source: Malwarebytes Labs threat-intel blog** (no API key required — uses public RSS at `https://www.malwarebytes.com/blog/feed/`). `_sync_malwarebytes_iocs()` fetches the RSS, extracts the last 12 article URLs, downloads each, isolates the `## IOCs / Indicators of Compromise` section via regex, then extracts + refangs hashes (MD5/SHA1/SHA256), IPs (`1.2.3[.]4` → `1.2.3.4`), and domains (`foo[.]com` → `foo.com`). Each IOC is upserted with source `Malwarebytes · <slug>` and tagged `malwarebytes` (+ `c2` for network IOCs), severity `high`, notes = article title.
+- **First run**: 12 articles processed, **83 new IOCs + 86 updated** (169 total) — real ClickFix campaign IPs (`146.19.248.120`, `94.26.90.112`, `93.152.224.39` etc.) now in the curated DB attributed to the actual Malwarebytes article.
+- **Wired into sync-all orchestrator** as the 5th real bulk source. `SYNC_SOURCES` entry added; sync-status endpoint reports Malwarebytes as always-configured (no key). Frontend sync panel renders it automatically alongside OTX/HA/AbuseIPDB/MalwareBazaar.
+- **Total curated IOC DB is now 2,768 indicators** (2045 critical + 499 high + 140 medium + 84 low).
+- Backend compiles cleanly (`python -c "import server"` OK). Frontend `CI=true yarn build` passes.
+
