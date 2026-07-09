@@ -231,3 +231,19 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - Verified live: BleepingComputer returned today's article ("Police arrests 5,800 suspects...", Jul 9 2026); HN returned today's top story ("John Deere right to repair..."). Both endpoints tested via curl + Playwright screenshot.
 - Compliance: identical fair-use aggregator pattern (metadata + short snippet + cover image + prominent source attribution + outbound `target="_blank"` link). No article bodies stored/reproduced. HN feed contains only titles + "Comments…" pointers, same as HN's public RSS. No copyright concerns.
 - Lint clean; production build passes with `CI=true`.
+
+
+## Latest (2026-07-09, session 28 — Portable Admin: DB-first API-key management)
+- **New Admin panel tab: "Settings"** — makes the app fully portable. Rotate any provider key without a redeploy; migrate the app to any server (out of Emergent) and re-key everything from the UI.
+- **DB-first override pattern**: New Mongo collection `app_settings` (unique index on `key`). At runtime, `_load_settings_from_db()` reads overrides and patches the module-level globals (`VT_API_KEY`, `ABUSEIPDB_API_KEY`, `URLSCAN_API_KEY`, `OTX_API_KEY`, `HYBRID_ANALYSIS_API_KEY`, `MALWAREBAZAAR_API_KEY`, `EMERGENT_LLM_KEY`) plus keeps `_HA_HEADERS` in sync. Called on startup + after every admin write, so changes are live-effective across every subsequent request. **DB value wins over `.env`.**
+- **Managed keys (7)**: VirusTotal, AbuseIPDB, URLScan, AlienVault OTX, Hybrid Analysis (Falcon), MalwareBazaar (abuse.ch), Emergent LLM Key.
+- **New admin routes** (all JWT-protected via `get_current_user`):
+  - `GET  /api/admin/settings` → all 7 keys with **masked** values (`abcd…wxyz`), source (`db`|`env`|`missing`), audit trail (`updated_at`, `updated_by`) + community-source toggles state.
+  - `PUT  /api/admin/settings/api-key/{name}` → upsert override, reload globals.
+  - `DELETE /api/admin/settings/api-key/{name}` → clear DB override, fall back to `.env`.
+  - `POST /api/admin/settings/api-key/{name}/test` → live-probes the real provider (VT `/ip_addresses/8.8.8.8`, AbuseIPDB `/check`, URLScan `/user/quotas/`, OTX `/user/me`, Hybrid Analysis `/key/current`, MalwareBazaar `query=get_recent`, Emergent LLM = format check). Returns `{ok, message}`.
+  - `PUT  /api/admin/settings/community-sources` → save which of the 7 community sources (Talos, Unit42, DFIR, MSTHREAT, Bleeping, HN, CyberDefenders) are visible on the public Threat Intelligence page.
+  - `GET  /api/community/enabled-sources` → **public** endpoint used by ThreatIntelligence.jsx to hide disabled sources.
+- **Frontend**: new `AdminSettings.jsx` component with per-key cards (masked current value + `ACTIVE·DB / ACTIVE·ENV / MISSING` badge + password-typed input + Save + Test connection + "Reset to env" when DB-overridden + "Get your key" outbound link) and a toggle group for community sources. Threat Intelligence page filters `CYBERDEFENDERS` cards by the `enabled-sources` list (defaults to all).
+- **Verified end-to-end**: wrote a fake VT key via API → became DB-sourced; test endpoint hit the real VT API with the fake key → **401 Unauthorised** (proves live rotation actually reroutes real API calls, not just display). Deleting the override reverted to env and the test passed again with the real key. Community toggles persist and apply to the public page.
+- Lint clean (Python + ESLint); production build safe.

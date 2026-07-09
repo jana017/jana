@@ -2753,6 +2753,218 @@ async def community_feed(source: str):
     }
 
 
+# ---------------------------------------------------------------------------
+# Admin Settings — DB-backed override for API keys + community source toggles.
+# DB value wins over .env, so the app can be moved to any server and keys can
+# be rotated from the Admin panel without redeploying.
+# ---------------------------------------------------------------------------
+API_KEY_SETTINGS = [
+    {"name": "VIRUSTOTAL_API_KEY",    "label": "VirusTotal",              "get_url": "https://www.virustotal.com/gui/my-apikey",                    "desc": "Reputation for files, hashes, domains, URLs & IPs.",   "global_var": "VT_API_KEY"},
+    {"name": "ABUSEIPDB_API_KEY",     "label": "AbuseIPDB",               "get_url": "https://www.abuseipdb.com/account/api",                       "desc": "IP address abuse-confidence scoring.",                 "global_var": "ABUSEIPDB_API_KEY"},
+    {"name": "URLSCAN_API_KEY",       "label": "URLScan.io",              "get_url": "https://urlscan.io/user/profile/",                            "desc": "URL sandbox scans + verdict search.",                  "global_var": "URLSCAN_API_KEY"},
+    {"name": "OTX_API_KEY",           "label": "AlienVault OTX",          "get_url": "https://otx.alienvault.com/api",                              "desc": "Community threat intel pulses & indicators.",          "global_var": "OTX_API_KEY"},
+    {"name": "HYBRID_ANALYSIS_API_KEY","label": "Hybrid Analysis (Falcon)","get_url": "https://www.hybrid-analysis.com/my-account?tab=%23api-key-tab","desc": "Falcon Sandbox sample lookups & recent-samples feed.", "global_var": "HYBRID_ANALYSIS_API_KEY"},
+    {"name": "MALWAREBAZAAR_API_KEY", "label": "MalwareBazaar (abuse.ch)","get_url": "https://bazaar.abuse.ch/account/",                            "desc": "Hash lookup & recent-malware samples feed.",           "global_var": "MALWAREBAZAAR_API_KEY"},
+    {"name": "EMERGENT_LLM_KEY",      "label": "Emergent LLM Key (AI summaries)", "get_url": "https://app.emergent.sh/", "desc": "Powers the Gemini 3 Flash AI summaries in the IOC Analyzer. Falls back gracefully to templated summaries when absent.", "global_var": "EMERGENT_LLM_KEY"},
+]
+_API_KEY_INDEX = {k["name"]: k for k in API_KEY_SETTINGS}
+
+COMMUNITY_SOURCES = [
+    {"slug": "talos",         "label": "Cisco Talos Intelligence"},
+    {"slug": "unit42",        "label": "Palo Alto Unit 42"},
+    {"slug": "dfir",          "label": "The DFIR Report"},
+    {"slug": "msthreat",      "label": "Microsoft Threat Intelligence"},
+    {"slug": "bleeping",      "label": "BleepingComputer"},
+    {"slug": "hn",            "label": "Hacker News"},
+    {"slug": "cyberdefenders","label": "CyberDefenders (DFIR / Malware / SOC)"},
+]
+_COMMUNITY_SLUGS = [s["slug"] for s in COMMUNITY_SOURCES]
+
+
+def _mask_key(v: str) -> str:
+    if not v:
+        return ""
+    v = str(v)
+    if len(v) <= 8:
+        return "*" * len(v)
+    return v[:4] + "…" + v[-4:]
+
+
+async def _load_settings_from_db():
+    """Read overrides from Mongo (app_settings) and patch module-level globals.
+    Called at startup and after every admin write so changes take effect live."""
+    docs = await db.app_settings.find({}).to_list(100)
+    by_key = {d.get("key"): d.get("value") for d in docs}
+    for spec in API_KEY_SETTINGS:
+        override = by_key.get(spec["name"])
+        effective = override if override else os.environ.get(spec["name"])
+        globals()[spec["global_var"]] = effective
+    # Keep the Hybrid Analysis static-headers dict in sync so live rotation actually applies.
+    globals()["_HA_HEADERS"] = {"api-key": globals().get("HYBRID_ANALYSIS_API_KEY") or "", "User-Agent": "Falcon Sandbox", "Accept": "application/json"}
+
+
+async def _get_enabled_community_sources() -> list[str]:
+    doc = await db.app_settings.find_one({"key": "COMMUNITY_ENABLED_SOURCES"})
+    if not doc or not isinstance(doc.get("value"), list):
+        return list(_COMMUNITY_SLUGS)  # all enabled by default
+    return [s for s in doc["value"] if s in _COMMUNITY_SLUGS]
+
+
+async def _test_api_key(name: str, value: str) -> dict:
+    """Live-probe a provider with the given key. Returns {ok, message}."""
+    if not value:
+        return {"ok": False, "message": "Empty key"}
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True, headers={"User-Agent": "NivX-KeyTest/1.0"}) as hc:
+            if name == "VIRUSTOTAL_API_KEY":
+                r = await hc.get("https://www.virustotal.com/api/v3/ip_addresses/8.8.8.8", headers={"x-apikey": value, "accept": "application/json"})
+                if r.status_code == 200:
+                    return {"ok": True, "message": "Valid — VirusTotal responded 200."}
+                if r.status_code in (401, 403):
+                    return {"ok": False, "message": f"Invalid or unauthorised (HTTP {r.status_code})."}
+                return {"ok": False, "message": f"Unexpected HTTP {r.status_code}."}
+            if name == "ABUSEIPDB_API_KEY":
+                r = await hc.get("https://api.abuseipdb.com/api/v2/check", params={"ipAddress": "8.8.8.8"}, headers={"Key": value, "Accept": "application/json"})
+                if r.status_code == 200:
+                    return {"ok": True, "message": "Valid — AbuseIPDB responded 200."}
+                if r.status_code in (401, 403):
+                    return {"ok": False, "message": f"Invalid or unauthorised (HTTP {r.status_code})."}
+                return {"ok": False, "message": f"Unexpected HTTP {r.status_code}."}
+            if name == "URLSCAN_API_KEY":
+                r = await hc.get("https://urlscan.io/user/quotas/", headers={"API-Key": value})
+                if r.status_code == 200:
+                    return {"ok": True, "message": "Valid — URLScan responded 200."}
+                if r.status_code in (401, 403):
+                    return {"ok": False, "message": f"Invalid or unauthorised (HTTP {r.status_code})."}
+                return {"ok": False, "message": f"Unexpected HTTP {r.status_code}."}
+            if name == "OTX_API_KEY":
+                r = await hc.get("https://otx.alienvault.com/api/v1/user/me", headers={"X-OTX-API-KEY": value})
+                if r.status_code == 200:
+                    return {"ok": True, "message": "Valid — OTX responded 200."}
+                if r.status_code in (401, 403):
+                    return {"ok": False, "message": f"Invalid or unauthorised (HTTP {r.status_code})."}
+                return {"ok": False, "message": f"Unexpected HTTP {r.status_code}."}
+            if name == "HYBRID_ANALYSIS_API_KEY":
+                r = await hc.get("https://hybrid-analysis.com/api/v2/key/current", headers={"api-key": value, "User-Agent": "Falcon Sandbox", "Accept": "application/json"})
+                if r.status_code == 200:
+                    return {"ok": True, "message": "Valid — Hybrid Analysis responded 200."}
+                if r.status_code in (401, 403):
+                    return {"ok": False, "message": f"Invalid or unauthorised (HTTP {r.status_code})."}
+                return {"ok": False, "message": f"Unexpected HTTP {r.status_code}."}
+            if name == "MALWAREBAZAAR_API_KEY":
+                r = await hc.post("https://mb-api.abuse.ch/api/v1/", data={"query": "get_recent", "selector": "time"}, headers={"Auth-Key": value})
+                if r.status_code == 200:
+                    try:
+                        j = r.json()
+                        if j.get("query_status") in ("ok", "no_results"):
+                            return {"ok": True, "message": "Valid — MalwareBazaar responded ok."}
+                        if j.get("query_status") == "unauthenticated":
+                            return {"ok": False, "message": "Invalid MalwareBazaar Auth-Key (unauthenticated)."}
+                        return {"ok": False, "message": f"MalwareBazaar status: {j.get('query_status')}"}
+                    except Exception:
+                        return {"ok": False, "message": "Unexpected response body."}
+                return {"ok": False, "message": f"Unexpected HTTP {r.status_code}."}
+            if name == "EMERGENT_LLM_KEY":
+                # No cheap live probe; accept any non-empty key that looks like the Emergent format.
+                looks_ok = value.startswith("sk-") and len(value) > 20
+                return {"ok": looks_ok, "message": "Format looks valid (live probe not run to conserve quota)." if looks_ok else "Emergent LLM keys typically start with 'sk-' and are >20 chars."}
+    except httpx.TimeoutException:
+        return {"ok": False, "message": "Timed out talking to provider."}
+    except Exception as e:
+        return {"ok": False, "message": f"Probe failed: {e}"}
+    return {"ok": False, "message": "Unknown key."}
+
+
+class ApiKeyUpdate(BaseModel):
+    value: str
+
+
+class CommunitySourcesUpdate(BaseModel):
+    enabled: list[str]
+
+
+@api_router.get("/admin/settings")
+async def admin_settings_list(user: dict = Depends(get_current_user)):
+    """Return all managed settings (API keys masked, community source toggles)."""
+    docs = await db.app_settings.find({}).to_list(100)
+    by_key = {d.get("key"): d for d in docs}
+    keys_out = []
+    for spec in API_KEY_SETTINGS:
+        db_doc = by_key.get(spec["name"])
+        db_val = (db_doc or {}).get("value") if db_doc else None
+        env_val = os.environ.get(spec["name"])
+        effective = db_val or env_val
+        source = "db" if db_val else ("env" if env_val else "missing")
+        keys_out.append({
+            "name": spec["name"],
+            "label": spec["label"],
+            "desc": spec["desc"],
+            "get_url": spec["get_url"],
+            "masked": _mask_key(effective) if effective else "",
+            "source": source,
+            "updated_at": (db_doc or {}).get("updated_at"),
+            "updated_by": (db_doc or {}).get("updated_by"),
+        })
+    enabled_sources = await _get_enabled_community_sources()
+    return {
+        "api_keys": keys_out,
+        "community_sources": {"available": COMMUNITY_SOURCES, "enabled": enabled_sources},
+    }
+
+
+@api_router.put("/admin/settings/api-key/{name}")
+async def admin_settings_upsert_key(name: str, payload: ApiKeyUpdate, user: dict = Depends(get_current_user)):
+    if name not in _API_KEY_INDEX:
+        raise HTTPException(status_code=404, detail=f"Unknown key: {name}")
+    value = (payload.value or "").strip()
+    if not value:
+        raise HTTPException(status_code=400, detail="Value must not be empty. Use DELETE to clear an override.")
+    await db.app_settings.update_one(
+        {"key": name},
+        {"$set": {"key": name, "value": value, "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": user.get("email")}},
+        upsert=True,
+    )
+    await _load_settings_from_db()  # apply live
+    return {"ok": True, "masked": _mask_key(value), "source": "db"}
+
+
+@api_router.delete("/admin/settings/api-key/{name}")
+async def admin_settings_clear_key(name: str, user: dict = Depends(get_current_user)):
+    if name not in _API_KEY_INDEX:
+        raise HTTPException(status_code=404, detail=f"Unknown key: {name}")
+    await db.app_settings.delete_one({"key": name})
+    await _load_settings_from_db()  # revert to .env
+    env_val = os.environ.get(name)
+    return {"ok": True, "source": "env" if env_val else "missing", "masked": _mask_key(env_val) if env_val else ""}
+
+
+@api_router.post("/admin/settings/api-key/{name}/test")
+async def admin_settings_test_key(name: str, user: dict = Depends(get_current_user)):
+    if name not in _API_KEY_INDEX:
+        raise HTTPException(status_code=404, detail=f"Unknown key: {name}")
+    spec = _API_KEY_INDEX[name]
+    effective = globals().get(spec["global_var"])
+    result = await _test_api_key(name, effective or "")
+    return result
+
+
+@api_router.put("/admin/settings/community-sources")
+async def admin_settings_community_sources(payload: CommunitySourcesUpdate, user: dict = Depends(get_current_user)):
+    cleaned = [s for s in (payload.enabled or []) if s in _COMMUNITY_SLUGS]
+    await db.app_settings.update_one(
+        {"key": "COMMUNITY_ENABLED_SOURCES"},
+        {"$set": {"key": "COMMUNITY_ENABLED_SOURCES", "value": cleaned, "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": user.get("email")}},
+        upsert=True,
+    )
+    return {"ok": True, "enabled": cleaned}
+
+
+@api_router.get("/community/enabled-sources")
+async def public_enabled_community_sources():
+    """Public endpoint used by the Threat Intelligence page to hide disabled feeds."""
+    return {"enabled": await _get_enabled_community_sources()}
+
+
 app.include_router(api_router)
 
 app.add_middleware(
@@ -2928,6 +3140,8 @@ async def seed_threats():
 @app.on_event("startup")
 async def startup():
     await db.users.create_index("email", unique=True)
+    await db.app_settings.create_index("key", unique=True)
+    await _load_settings_from_db()  # DB-first override for API keys (survives server migration)
     await seed_admin()
     await seed_threats()
     if OTX_API_KEY:

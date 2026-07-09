@@ -25,15 +25,15 @@ const OSINT_TOOLS = [
 ];
 
 const CYBERDEFENDERS = [
-  { title: "Blue Team Labs & Threat Investigations", desc: "Curated DFIR writeups & threat investigations from the CyberDefenders community — full article previews rendered on NivX.", tag: "DFIR",    url: "/community/cd/dfir"    },
-  { title: "Malware Analysis Case Studies",          desc: "Step-by-step reverse-engineering of real-world samples with IOCs and TTP mapping, aggregated from CyberDefenders.",       tag: "Malware", url: "/community/cd/malware" },
-  { title: "SOC & Threat Hunting Playbooks",         desc: "Practical guidance on building detections, triaging alerts and hunting adversaries — CyberDefenders community feed.",     tag: "SOC",     url: "/community/cd/soc"     },
-  { title: "Cisco Talos Intelligence",               desc: "Latest APT tracking, malware research and 0-day disclosures from Cisco Talos — refreshed every 30 minutes.",              tag: "Talos",   url: "/community/talos"      },
-  { title: "Palo Alto Unit 42",                      desc: "Deep-dive threat research, incident response case studies and vulnerability write-ups from Palo Alto's Unit 42 team.",     tag: "Unit42",  url: "/community/unit42"     },
-  { title: "The DFIR Report",                        desc: "Real-world incident response breakdowns — full intrusion timelines, attacker TTPs and detection opportunities from The DFIR Report.", tag: "DFIR Report", url: "/community/dfir"       },
-  { title: "Microsoft Threat Intelligence",          desc: "Nation-state activity, emerging malware and defender guidance published by the Microsoft Threat Intelligence team.",       tag: "MSTI",    url: "/community/msthreat"   },
-  { title: "BleepingComputer",                       desc: "Breaking cybersecurity news, ransomware coverage, breach disclosures and technical explainers — updated live from BleepingComputer.",  tag: "Bleeping",  url: "/community/bleeping"   },
-  { title: "Hacker News",                            desc: "Real-time top stories from the wider tech & security community, ranked by readers on Hacker News.",                       tag: "HN",       url: "/community/hn"          },
+  { title: "Blue Team Labs & Threat Investigations", desc: "Curated DFIR writeups & threat investigations from the CyberDefenders community — full article previews rendered on NivX.", tag: "DFIR",    url: "/community/cd/dfir",    slug: "cyberdefenders" },
+  { title: "Malware Analysis Case Studies",          desc: "Step-by-step reverse-engineering of real-world samples with IOCs and TTP mapping, aggregated from CyberDefenders.",       tag: "Malware", url: "/community/cd/malware", slug: "cyberdefenders" },
+  { title: "SOC & Threat Hunting Playbooks",         desc: "Practical guidance on building detections, triaging alerts and hunting adversaries — CyberDefenders community feed.",     tag: "SOC",     url: "/community/cd/soc",     slug: "cyberdefenders" },
+  { title: "Cisco Talos Intelligence",               desc: "Latest APT tracking, malware research and 0-day disclosures from Cisco Talos — refreshed every 30 minutes.",              tag: "Talos",   url: "/community/talos",      slug: "talos"          },
+  { title: "Palo Alto Unit 42",                      desc: "Deep-dive threat research, incident response case studies and vulnerability write-ups from Palo Alto's Unit 42 team.",     tag: "Unit42",  url: "/community/unit42",     slug: "unit42"         },
+  { title: "The DFIR Report",                        desc: "Real-world incident response breakdowns — full intrusion timelines, attacker TTPs and detection opportunities from The DFIR Report.", tag: "DFIR Report", url: "/community/dfir",       slug: "dfir"           },
+  { title: "Microsoft Threat Intelligence",          desc: "Nation-state activity, emerging malware and defender guidance published by the Microsoft Threat Intelligence team.",       tag: "MSTI",    url: "/community/msthreat",   slug: "msthreat"       },
+  { title: "BleepingComputer",                       desc: "Breaking cybersecurity news, ransomware coverage, breach disclosures and technical explainers — updated live from BleepingComputer.",  tag: "Bleeping",  url: "/community/bleeping",   slug: "bleeping"       },
+  { title: "Hacker News",                            desc: "Real-time top stories from the wider tech & security community, ranked by readers on Hacker News.",                       tag: "HN",       url: "/community/hn",          slug: "hn"             },
 ];
 
 const DATE_RANGES = [
@@ -66,6 +66,15 @@ export default function ThreatIntelligence() {
   const [err, setErr] = useState(false);
   const [repoUrl, setRepoUrl] = useState("");
   const [activeName, setActiveName] = useState(null);
+  const [enabledSources, setEnabledSources] = useState(null);
+
+  useEffect(() => {
+    let live = true;
+    api.get("/community/enabled-sources")
+      .then(({ data }) => { if (live) setEnabledSources(data.enabled || null); })
+      .catch(() => { if (live) setEnabledSources(null); });
+    return () => { live = false; };
+  }, []);
 
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
@@ -312,7 +321,7 @@ export default function ThreatIntelligence() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
-            {CYBERDEFENDERS.map((b, i) => (
+            {CYBERDEFENDERS.filter((b) => enabledSources === null || enabledSources.includes(b.slug)).map((b, i) => (
               <motion.div
                 key={b.title}
                 initial={{ opacity: 0, y: 14 }}

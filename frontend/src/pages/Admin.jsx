@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import { LogOut, Plus, Pencil, Trash2, ArrowLeft, ShieldCheck, Download, LayoutDashboard } from "lucide-react";
+import { LogOut, Plus, Pencil, Trash2, ArrowLeft, ShieldCheck, Download, LayoutDashboard, Settings } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import useSeo from "@/lib/useSeo";
 import SocDashboard from "@/components/SocDashboard";
+import AdminSettings from "@/components/AdminSettings";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -223,11 +224,20 @@ function Dashboard() {
           >
             Leads <span className="text-xs font-normal">({leads.length})</span>
           </button>
+          <button
+            data-testid="tab-settings"
+            onClick={() => setView("settings")}
+            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${view === "settings" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+          >
+            <Settings className="w-4 h-4" /> Settings
+          </button>
         </div>
       </div>
 
       {view === "overview" ? (
         <SocDashboard />
+      ) : view === "settings" ? (
+        <AdminSettings />
       ) : view === "reports" ? (
       <main className="mx-auto max-w-7xl px-6 py-10 grid lg:grid-cols-[400px_1fr] gap-8">
         <form onSubmit={submit} data-testid="threat-form" className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-3.5 lg:sticky lg:top-24 self-start">
