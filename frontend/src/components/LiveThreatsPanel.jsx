@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Globe2, Loader2, RefreshCw, ExternalLink, MapPin, Users, ShieldAlert, Bug, AlertTriangle } from "lucide-react";
+import { Globe2, Loader2, RefreshCw, ExternalLink, MapPin, Users, ShieldAlert, Bug, AlertTriangle, Radar, Link2, Network } from "lucide-react";
 import { api } from "@/lib/api";
 
 const POLL_MS = 30_000;
@@ -28,21 +28,24 @@ export default function LiveThreatsPanel() {
   const [land, setLand] = useState(null);
   const [victims, setVictims] = useState([]);
   const [cves, setCves] = useState([]);
+  const [attacks, setAttacks] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
   const load = useCallback(async () => {
     setErr("");
     try {
-      const [l, a, k] = await Promise.allSettled([
+      const [l, a, k, la] = await Promise.allSettled([
         api.get("/threat-landscape/live"),
         api.get("/attack-feed"),
         api.get("/live-feed"),
+        api.get("/live-attacks"),
       ]);
       if (l.status === "fulfilled") setLand(l.value.data);
       if (a.status === "fulfilled") setVictims(a.value.data.items || []);
       if (k.status === "fulfilled") setCves(k.value.data.items || []);
-      if (l.status === "rejected" && a.status === "rejected" && k.status === "rejected") {
+      if (la.status === "fulfilled") setAttacks(la.value.data);
+      if (l.status === "rejected" && a.status === "rejected" && k.status === "rejected" && la.status === "rejected") {
         setErr("Could not load live threat feeds.");
       }
     } catch (e) {
@@ -210,6 +213,73 @@ export default function LiveThreatsPanel() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Global live attacks: DShield + URLhaus + Feodo Tracker */}
+      {attacks && (
+        <div className="mb-6 grid grid-cols-1 lg:grid-cols-3 gap-4" data-testid="live-global-attacks">
+          {/* Top attacker IPs from SANS DShield */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5" data-testid="dshield-attackers">
+            <div className="flex items-center gap-2 mb-3">
+              <Radar className="w-4 h-4 text-orange-500" />
+              <h4 className="font-semibold text-slate-900">Global attackers</h4>
+              <span className="ml-auto text-[10px] font-bold uppercase text-orange-700 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5">DShield · SANS ISC</span>
+            </div>
+            <p className="text-[11px] text-slate-500 mb-3">Top attacker IPs seen by the DShield honeypot network in the last 24h.</p>
+            <div className="space-y-1.5 max-h-[320px] overflow-y-auto">
+              {(attacks.attackers || []).slice(0, 20).map((a) => (
+                <div key={a.ip} className="flex items-center gap-2 text-xs">
+                  <span className="font-mono text-slate-400 w-6 shrink-0">#{a.rank}</span>
+                  <code className="font-mono text-slate-800 truncate flex-1">{a.ip}</code>
+                  <span className="text-slate-500 tabular-nums shrink-0">{a.reports.toLocaleString()}</span>
+                  <span className="text-[10px] text-slate-400 shrink-0">reports</span>
+                </div>
+              ))}
+              {(!attacks.attackers || attacks.attackers.length === 0) && <div className="text-xs text-slate-400">No DShield data available.</div>}
+            </div>
+          </div>
+
+          {/* URLhaus live malware URLs */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5" data-testid="urlhaus-live">
+            <div className="flex items-center gap-2 mb-3">
+              <Link2 className="w-4 h-4 text-purple-500" />
+              <h4 className="font-semibold text-slate-900">Live malware URLs</h4>
+              <span className="ml-auto text-[10px] font-bold uppercase text-purple-700 bg-purple-50 border border-purple-200 rounded px-1.5 py-0.5">URLhaus · abuse.ch</span>
+            </div>
+            <p className="text-[11px] text-slate-500 mb-3">Malware distribution URLs seen in the last hour — click to see the URLhaus report.</p>
+            <div className="space-y-1.5 max-h-[320px] overflow-y-auto">
+              {(attacks.malicious_urls || []).slice(0, 20).map((u, i) => (
+                <a key={i} href={u.urlhaus_link || u.url} target="_blank" rel="noopener noreferrer" data-testid={`urlhaus-row-${i}`} className="block group">
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="inline-flex text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 shrink-0">{u.threat.replace("_", " ")}</span>
+                    <code className="font-mono text-slate-700 group-hover:text-[#2E7DF5] truncate flex-1" title={u.url}>{u.url}</code>
+                    <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-[#2E7DF5] shrink-0" />
+                  </div>
+                </a>
+              ))}
+              {(!attacks.malicious_urls || attacks.malicious_urls.length === 0) && <div className="text-xs text-slate-400">No URLhaus data available.</div>}
+            </div>
+          </div>
+
+          {/* Feodo Tracker botnet C2s */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5" data-testid="feodo-c2s">
+            <div className="flex items-center gap-2 mb-3">
+              <Network className="w-4 h-4 text-rose-500" />
+              <h4 className="font-semibold text-slate-900">Active botnet C2s</h4>
+              <span className="ml-auto text-[10px] font-bold uppercase text-rose-700 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5">Feodo · abuse.ch</span>
+            </div>
+            <p className="text-[11px] text-slate-500 mb-3">Active banking-trojan command-and-control IPs (Emotet, Dridex, TrickBot family).</p>
+            <div className="space-y-1.5 max-h-[320px] overflow-y-auto">
+              {(attacks.botnet_c2s || []).slice(0, 30).map((c, i) => (
+                <div key={i} className="flex items-center gap-2 text-xs">
+                  <span className="inline-flex text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 shrink-0">C2</span>
+                  <code className="font-mono text-slate-800 truncate flex-1">{c.ip}</code>
+                </div>
+              ))}
+              {(!attacks.botnet_c2s || attacks.botnet_c2s.length === 0) && <div className="text-xs text-slate-400">No Feodo Tracker data available.</div>}
+            </div>
           </div>
         </div>
       )}

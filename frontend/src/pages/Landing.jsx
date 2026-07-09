@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import About from "@/components/Manifesto";
 import StatsBand from "@/components/EditorialMarquee";
 import LiveThreatLandscape from "@/components/LiveThreatLandscape";
+import LiveGlobalAttacks from "@/components/LiveGlobalAttacks";
 import AttackFeed from "@/components/AttackFeed";
 import Services from "@/components/Services";
 import Gallery from "@/components/Gallery";
@@ -32,6 +33,7 @@ export default function Landing() {
       <About />
       <StatsBand />
       <LiveThreatLandscape />
+      <LiveGlobalAttacks />
       <AttackFeed />
       <Services />
       <Gallery />

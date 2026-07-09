@@ -272,3 +272,34 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
   - Per-key **"Sync IOCs now"** button appears next to `Test connection` on the 5 syncable providers (VT, OTX, HA, AbuseIPDB, MalwareBazaar). Emerald styling to distinguish from Test. Shows per-key sync result panel with items scanned + added + updated + skipped-reason.
   - Updated copy: "Saving a key **auto-triggers** the matching IOC feed sync so fresh data flows in immediately."
 - **Verified end-to-end**: Talos-community feeds now pull **652 IPs (+635 new) on first sync**; VT gracefully skips on free-tier; Save-key auto-fires the sync; Sync all IOC sources button works; Playwright confirms all 5 per-key sync buttons + master button render correctly. Lint clean (Python + ESLint); production build safe.
+
+
+## Latest (2026-07-09, session 31 — Live Global Attack Telemetry + Live Threat Map in admin)
+
+### Landing page: new "Who's attacking the internet right now" section
+Three columns of live global attack telemetry, injected between the "Threat landscape, right now" section and the ransomware "Attack feed". Aggregates three industry-standard **public** feeds — no proprietary vendor data, no ToS concerns, no rate-limit worries:
+- **Top attacker IPs** — SANS DShield honeypot network top-50, sourced from `https://isc.sans.edu/api/topips/records/50/?json`. Shows rank, IP, report count.
+- **Live malware URLs** — URLhaus recent malware distribution URLs from `https://urlhaus.abuse.ch/downloads/json_recent/`. Each entry links back to the URLhaus source page.
+- **Active botnet C2s** — Feodo Tracker banking-trojan aggressive C2 list from `https://feodotracker.abuse.ch/downloads/ipblocklist_aggressive.txt`.
+Auto-refresh every 60s; source-attributed with outbound links.
+
+### Backend: new `/api/live-attacks` endpoint (cached 5 min, no keys required)
+`_live_attacks_cache` returns unified payload `{attackers[], malicious_urls[], botnet_c2s[], sources[], counts, errors}` — one call powers both the landing page section and the admin dashboard.
+
+### Admin SOC Dashboard: full "Live Cyber Threat Map" section
+`LiveThreatsPanel.jsx` now renders (auto-refreshing 30s):
+- **4 KPI cards** — victims 24h, tracked attacks, exploited CVEs, ransomware-linked CVEs.
+- **Attacks by country** + **Top ransomware actors** — grouped from ransomware.live victims.
+- **Recent ransomware victims table** — 60 rows: victim, actor, country, sector, timestamp, source URL.
+- **Recently added exploited CVEs table** — 60 rows: CVE ID, vendor/product, vulnerability, ransomware-known flag, dateAdded, NVD link.
+- **Global attacks 3-column grid** — same live data as the landing (DShield / URLhaus / Feodo).
+
+### Landing page bug fixes shipped in this session
+- Fixed `_parse_victim_dt()` — ransomware.live changed to ISO 8601; parser now tries `datetime.fromisoformat()` first (previously all dates fell through → `victims_24h` was always 0).
+- Removed 40-item hard cap in `attack_feed()` (raised to 200); ransomware.live actually returns ~100 items.
+- Landing "Threat monitoring" card now shows dynamic **"X new victims · last 24h"** instead of the static **"40 active signals"** slice size.
+
+### Deliberately NOT integrated (transparency)
+FortiGuard / Check Point ThreatMap / Radware LiveThreatMap: all three run on proprietary customer sensor telemetry with **no public APIs** and ToS that block redistribution. We use the industry-standard public equivalents instead (DShield + URLhaus + Feodo + Talos-community + AlienVault OTX) — same class of data, zero legal / operational risk.
+
+Lint clean; production build passes with `CI=true`.

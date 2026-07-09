@@ -2442,6 +2442,107 @@ async def attack_feed():
 
 
 # ---------------------------------------------------------------------------
+# Live global attacks aggregate — merges public honeypot + malware-distribution
+# feeds (SANS DShield top attackers, URLhaus recent malware URLs, Feodo Tracker
+# botnet C2s) into a single "who's attacking the internet right now" payload.
+# All feeds are public / free / no key required. Cached 5 min.
+# ---------------------------------------------------------------------------
+_live_attacks_cache: dict[str, Any] = {"ts": None, "data": None}
+
+
+@api_router.get("/live-attacks")
+async def live_attacks():
+    """Real-time global attack telemetry from public honeypot + malware feeds:
+    SANS DShield (top attacker IPs), URLhaus (live malware URLs), Feodo Tracker
+    (botnet C2s). Cached 5 min, source-attributed, no proprietary data."""
+    now = datetime.now(timezone.utc)
+    if _live_attacks_cache["data"] and _live_attacks_cache["ts"] and (now - _live_attacks_cache["ts"]) < timedelta(minutes=5):
+        return _live_attacks_cache["data"]
+
+    attackers: list[dict] = []
+    malicious_urls: list[dict] = []
+    botnet_c2s: list[dict] = []
+    errors: list[str] = []
+
+    async with httpx.AsyncClient(timeout=15, follow_redirects=True, headers={"User-Agent": "NivX-ThreatMap/1.0"}) as hc:
+        # 1) SANS DShield top attacker IPs (last 24h)
+        try:
+            r = await hc.get("https://isc.sans.edu/api/topips/records/50/?json")
+            if r.status_code == 200:
+                for it in (r.json() or [])[:50]:
+                    if not it.get("source"):
+                        continue
+                    attackers.append({
+                        "rank": it.get("rank"),
+                        "ip": it.get("source"),
+                        "reports": int(it.get("reports") or 0),
+                        "targets": int(it.get("targets") or 0),
+                        "source_name": "SANS Internet Storm Center · DShield",
+                    })
+            else:
+                errors.append(f"DShield HTTP {r.status_code}")
+        except Exception as e:
+            errors.append(f"DShield: {e}")
+
+        # 2) URLhaus recent malware distribution URLs
+        try:
+            r = await hc.get("https://urlhaus.abuse.ch/downloads/json_recent/")
+            if r.status_code == 200:
+                raw = r.json() or {}
+                iterable = raw.values() if isinstance(raw, dict) else raw
+                for entry in list(iterable)[:80]:
+                    e = entry[0] if isinstance(entry, list) else entry
+                    if not e or not e.get("url"):
+                        continue
+                    malicious_urls.append({
+                        "url": e.get("url"),
+                        "threat": e.get("threat") or "malware_download",
+                        "status": e.get("url_status") or "online",
+                        "tags": (e.get("tags") or [])[:5],
+                        "reporter": e.get("reporter") or "urlhaus",
+                        "first_seen": e.get("dateadded"),
+                        "urlhaus_link": e.get("urlhaus_link"),
+                        "source_name": "URLhaus (abuse.ch)",
+                    })
+            else:
+                errors.append(f"URLhaus HTTP {r.status_code}")
+        except Exception as e:
+            errors.append(f"URLhaus: {e}")
+
+        # 3) Feodo Tracker aggressive botnet C2 IPs
+        try:
+            r = await hc.get("https://feodotracker.abuse.ch/downloads/ipblocklist_aggressive.txt")
+            if r.status_code == 200:
+                for line in r.text.splitlines()[:100]:
+                    s = line.strip()
+                    if not s or s.startswith("#"):
+                        continue
+                    if _classify_ioc(s) == "ip":
+                        botnet_c2s.append({"ip": s, "source_name": "Feodo Tracker (abuse.ch)"})
+            else:
+                errors.append(f"Feodo HTTP {r.status_code}")
+        except Exception as e:
+            errors.append(f"Feodo: {e}")
+
+    result = {
+        "updated_at": now.isoformat(),
+        "sources": [
+            {"name": "SANS DShield", "url": "https://isc.sans.edu/", "count": len(attackers)},
+            {"name": "URLhaus (abuse.ch)", "url": "https://urlhaus.abuse.ch/", "count": len(malicious_urls)},
+            {"name": "Feodo Tracker (abuse.ch)", "url": "https://feodotracker.abuse.ch/", "count": len(botnet_c2s)},
+        ],
+        "attackers": attackers,
+        "malicious_urls": malicious_urls,
+        "botnet_c2s": botnet_c2s[:50],
+        "counts": {"attackers": len(attackers), "malicious_urls": len(malicious_urls), "botnet_c2s": len(botnet_c2s)},
+        "errors": errors,
+    }
+    _live_attacks_cache["data"] = result
+    _live_attacks_cache["ts"] = now
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Real-time Threat Landscape aggregate — powers the "Threat landscape, right now"
 # dashboard on the marketing landing. Aggregates fresh CISA KEV + ransomware.live
 # + the curated IOC DB + last-sync timestamps into a single payload that the
