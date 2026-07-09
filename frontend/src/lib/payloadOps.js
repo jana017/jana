@@ -397,3 +397,122 @@ export async function runRecipe(input, recipe) {
   }
   return { output: cur, trace };
 }
+
+/* ---------- Auto Decode — recursive multi-encoding chain search ---------- */
+/* Which ops the auto-decoder is allowed to chain. Kept lean so the search
+ * stays fast and results stay meaningful. */
+const AUTO_OP_IDS = [
+  "base64-decode",
+  "base64-decode-utf16",
+  "hex-decode",
+  "url-decode",
+  "html-entity-decode",
+  "unicode-escape-decode",
+  "gzip-decompress-b64",
+  "zlib-decompress-b64",
+  "rot13",
+  "refang",
+  "charcode-to-string",
+];
+
+/* Score a candidate: 0.0 (binary/gibberish) → 1.0 (clean human-readable text).
+ * Rewards printable ASCII + spaces; penalises replacement chars, nulls,
+ * and pure-hex/pure-base64 outputs (that just means we haven't decoded yet). */
+function scoreText(s) {
+  if (!s || s.length < 3) return 0;
+  let printable = 0, letters = 0, digits = 0, punct = 0, spaces = 0, replacement = 0;
+  for (let i = 0; i < Math.min(s.length, 4000); i++) {
+    const c = s.charCodeAt(i);
+    if (c === 0xfffd) replacement++;
+    else if (c === 9 || c === 10 || c === 13 || c === 32) spaces++;
+    else if (c >= 65 && c <= 90) { letters++; printable++; }
+    else if (c >= 97 && c <= 122) { letters++; printable++; }
+    else if (c >= 48 && c <= 57) { digits++; printable++; }
+    else if (c >= 33 && c < 127) { punct++; printable++; }
+    else if (c >= 160 && c < 65533) printable++;
+  }
+  const n = Math.min(s.length, 4000);
+  const printableRatio = printable / n;
+  const spaceRatio = spaces / n;
+  const replPenalty = replacement / n;
+  // Bonus for having real words (letters + spaces present in balance)
+  const wordBonus = (letters > n * 0.3 && spaceRatio > 0.02 && spaceRatio < 0.35) ? 0.1 : 0;
+  // Penalty if output is pure hex or pure base64 (means we haven't finished decoding)
+  const looksHex = /^[0-9a-fA-F\s]+$/.test(s.slice(0, 200)) && letters === 0;
+  const looksB64 = /^[A-Za-z0-9+/=_-]+$/.test(s.slice(0, 200).replace(/\s+/g, "")) && punct === 0;
+  const purePenalty = (looksHex || looksB64) ? 0.4 : 0;
+  return Math.max(0, Math.min(1, printableRatio - replPenalty * 2 + wordBonus - purePenalty));
+}
+
+/* Recursive best-first search over decode chains up to max-depth.
+ * Returns { output, chain, score, trace } for the best candidate found,
+ * or null if the input already scores high enough (nothing to decode). */
+export async function autoDecode(input, { maxDepth = 4, minGain = 0.05 } = {}) {
+  const baseScore = scoreText(input);
+  let best = { output: input, chain: [], score: baseScore, note: "already looks like plain text" };
+
+  const seen = new Set([input]);
+  const queue = [{ cur: input, chain: [], depth: 0 }];
+
+  // Special seed: if the input contains a big Base64-looking substring, try
+  // decoding just that first. This covers mixed inputs like "Program Files\... /SESSION:<blob>".
+  // For mixed inputs the base score is artificially high (plain text prefix inflates it),
+  // so we override the beat-the-base rule when a seed decode scores decently on its own.
+  const EMBED_ACCEPT = 0.5;  // any candidate above this from an embedded blob is worth showing
+  const b64Match = String(input).match(/[A-Za-z0-9+/=_-]{40,}/g);
+  if (b64Match) {
+    const longest = b64Match.reduce((a, b) => (b.length > a.length ? b : a));
+    for (const opId of ["base64-decode", "base64-decode-utf16", "gzip-decompress-b64"]) {
+      try {
+        const out = await ops[opId].run(longest);
+        if (out && !seen.has(out)) {
+          seen.add(out);
+          const s = scoreText(out);
+          // Force-adopt embedded-blob decodes above EMBED_ACCEPT even if base looks textual.
+          if (s >= EMBED_ACCEPT && (s > best.score || best.chain.length === 0)) {
+            best = { output: out, chain: [opId], score: s, embedded: true };
+          } else if (s > best.score + minGain) {
+            best = { output: out, chain: [opId], score: s };
+          }
+          queue.push({ cur: out, chain: [opId], depth: 1 });
+        }
+      } catch { /* ignore */ }
+    }
+  }
+
+  while (queue.length) {
+    const node = queue.shift();
+    if (node.depth >= maxDepth) continue;
+    for (const opId of AUTO_OP_IDS) {
+      const op = ops[opId];
+      let next;
+      try { next = await op.run(node.cur); }
+      catch { continue; }
+      if (!next || typeof next !== "string") continue;
+      if (next.length < 3 || next.length > 200_000) continue;
+      if (seen.has(next)) continue;
+      // Skip obvious junk (very high replacement-char ratio)
+      if ((next.match(/\ufffd/g) || []).length / next.length > 0.15) continue;
+      seen.add(next);
+      const s = scoreText(next);
+      const chain = [...node.chain, opId];
+      if (s > best.score + minGain) {
+        best = { output: next, chain, score: s };
+      }
+      // Only continue expanding if this step improved things (or barely broke even)
+      if (s + 0.05 >= scoreText(node.cur)) {
+        queue.push({ cur: next, chain, depth: node.depth + 1 });
+      }
+    }
+  }
+
+  return {
+    output: best.output,
+    chain: best.chain,
+    score: best.score,
+    baseScore,
+    improved: best.chain.length > 0 && (best.embedded || best.score > baseScore + minGain),
+    embedded: !!best.embedded,
+    steps: best.chain.map((id) => ({ id, name: ops[id].name })),
+  };
+}

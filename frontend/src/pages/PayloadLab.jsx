@@ -3,9 +3,9 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import {
   Beaker, Search, X, GripVertical, ChevronUp, ChevronDown, Copy, Trash2,
-  Download, Upload, Sparkles, ShieldAlert, ArrowRightLeft, ShieldCheck, RefreshCw,
+  Download, Upload, Sparkles, ShieldAlert, ArrowRightLeft, ShieldCheck, RefreshCw, Wand2,
 } from "lucide-react";
-import { OPS, OP_CATEGORIES, runRecipe } from "@/lib/payloadOps";
+import { OPS, OP_CATEGORIES, runRecipe, autoDecode } from "@/lib/payloadOps";
 import Navbar from "@/components/Navbar";
 import Contact from "@/components/Contact";
 import useSeo from "@/lib/useSeo";
@@ -41,6 +41,8 @@ export default function PayloadLab() {
   const [output, setOutput] = useState("");
   const [trace, setTrace] = useState([]);
   const [running, setRunning] = useState(false);
+  const [autoBusy, setAutoBusy] = useState(false);
+  const [autoResult, setAutoResult] = useState(null);
 
   const filteredOps = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -91,7 +93,31 @@ export default function PayloadLab() {
     reader.onload = (ev) => setInput(String(ev.target?.result || ""));
     reader.readAsText(file);
   };
-  const loadExample = (ex) => { setInput(ex.input); setRecipe(ex.recipe); toast.success(`Loaded: ${ex.label}`); };
+  const loadExample = (ex) => { setInput(ex.input); setRecipe(ex.recipe); setAutoResult(null); toast.success(`Loaded: ${ex.label}`); };
+
+  // The killer feature: Auto Decode. Runs a recursive best-first chain search
+  // over base64 (UTF-8 + UTF-16LE), hex, URL, gzip, HTML entities, unicode
+  // escapes, ROT13 and refang — picks the chain that yields the most-readable
+  // text, and auto-loads it into the recipe.
+  const runAutoDecode = useCallback(async () => {
+    if (!input.trim()) { toast.error("Paste something to decode first"); return; }
+    setAutoBusy(true);
+    setAutoResult(null);
+    try {
+      const res = await autoDecode(input);
+      setAutoResult(res);
+      if (res.improved && res.chain.length > 0) {
+        setRecipe(res.chain.map((id) => ({ id, params: OPS[id].params ? { ...OPS[id].params } : undefined })));
+        toast.success(`Auto Decode: ${res.chain.length} step${res.chain.length === 1 ? "" : "s"} · ${res.steps.map((s) => s.name).join(" → ")}`);
+      } else {
+        toast.info("Input already looks like plain text — no decoding needed.");
+      }
+    } catch (e) {
+      toast.error(`Auto Decode failed: ${e.message}`);
+    } finally {
+      setAutoBusy(false);
+    }
+  }, [input]);
 
   // Send extracted IOCs to the Smart IOC Analyzer.
   const sendToAnalyzer = () => {
@@ -240,18 +266,40 @@ export default function PayloadLab() {
           {/* -------- Column 3: Input & Output -------- */}
           <div className="lg:col-span-5 space-y-4">
             <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
                 <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Input</div>
-                <span className="text-[10px] text-slate-400 ml-auto">{input.length.toLocaleString()} chars</span>
+                <span className="text-[10px] text-slate-400">{input.length.toLocaleString()} chars</span>
+                <button
+                  data-testid="auto-decode-btn"
+                  onClick={runAutoDecode}
+                  disabled={autoBusy || !input.trim()}
+                  className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-gradient-to-r from-fuchsia-500 to-purple-600 hover:from-fuchsia-600 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1.5 shadow-sm"
+                  title="Recursively try Base64/Hex/URL/Gzip/UTF-16 chains and load the best one into the recipe"
+                >
+                  {autoBusy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                  Auto Decode
+                </button>
               </div>
               <textarea
                 data-testid="lab-input"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Paste a payload here — Base64, hex, URL-encoded, obfuscated, whatever."
+                placeholder="Paste a payload here — Base64, hex, URL-encoded, obfuscated, whatever. Then click Auto Decode."
                 className="w-full h-40 md:h-44 font-mono text-xs text-slate-800 border border-slate-200 focus:border-[#2E7DF5] focus:ring-2 focus:ring-blue-100 outline-none rounded-md p-3 bg-slate-50"
                 spellCheck={false}
               />
+              {autoResult && (
+                <div data-testid="auto-decode-result" className={`mt-2 rounded-md border px-3 py-2 text-xs ${autoResult.improved ? "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-900" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
+                  {autoResult.improved ? (
+                    <>
+                      <div className="font-semibold mb-1 inline-flex items-center gap-1"><Sparkles className="w-3.5 h-3.5" /> Auto-decoded via {autoResult.chain.length}-step chain (score {autoResult.score.toFixed(2)}):</div>
+                      <div className="font-mono text-[11px]">{autoResult.steps.map((s) => s.name).join("  →  ")}</div>
+                    </>
+                  ) : (
+                    <span>Input already looks like plain text — no chain gave a better result.</span>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-white p-4">
