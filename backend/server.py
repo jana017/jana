@@ -2663,13 +2663,15 @@ async def root():
 # Card clicks on the frontend open the source article in a new tab.
 # ---------------------------------------------------------------------------
 _RSS_CACHE: dict = {}
-_RSS_TTL = timedelta(hours=6)
+_RSS_TTL = timedelta(minutes=30)
 
 RSS_SOURCES = {
-    "talos":    {"name": "Cisco Talos Intelligence", "url": "https://blog.talosintelligence.com/rss/",   "site": "https://blog.talosintelligence.com"},
-    "unit42":   {"name": "Palo Alto Unit 42",         "url": "https://unit42.paloaltonetworks.com/feed/", "site": "https://unit42.paloaltonetworks.com"},
-    "dfir":     {"name": "The DFIR Report",           "url": "https://thedfirreport.com/feed/",           "site": "https://thedfirreport.com"},
-    "msthreat": {"name": "Microsoft Threat Intelligence", "url": "https://www.microsoft.com/en-us/security/blog/topic/threat-intelligence/feed/", "site": "https://www.microsoft.com/en-us/security/blog/topic/threat-intelligence/"},
+    "talos":    {"name": "Cisco Talos Intelligence",         "url": "https://blog.talosintelligence.com/rss/",   "site": "https://blog.talosintelligence.com"},
+    "unit42":   {"name": "Palo Alto Unit 42",                 "url": "https://unit42.paloaltonetworks.com/feed/", "site": "https://unit42.paloaltonetworks.com"},
+    "dfir":     {"name": "The DFIR Report",                   "url": "https://thedfirreport.com/feed/",           "site": "https://thedfirreport.com"},
+    "msthreat": {"name": "Microsoft Threat Intelligence",     "url": "https://www.microsoft.com/en-us/security/blog/topic/threat-intelligence/feed/", "site": "https://www.microsoft.com/en-us/security/blog/topic/threat-intelligence/"},
+    "bleeping": {"name": "BleepingComputer",                  "url": "https://www.bleepingcomputer.com/feed/",    "site": "https://www.bleepingcomputer.com"},
+    "hn":       {"name": "Hacker News",                       "url": "https://news.ycombinator.com/rss",          "site": "https://news.ycombinator.com"},
 }
 
 

@@ -28,10 +28,12 @@ const CYBERDEFENDERS = [
   { title: "Blue Team Labs & Threat Investigations", desc: "Curated DFIR writeups & threat investigations from the CyberDefenders community — full article previews rendered on NivX.", tag: "DFIR",    url: "/community/cd/dfir"    },
   { title: "Malware Analysis Case Studies",          desc: "Step-by-step reverse-engineering of real-world samples with IOCs and TTP mapping, aggregated from CyberDefenders.",       tag: "Malware", url: "/community/cd/malware" },
   { title: "SOC & Threat Hunting Playbooks",         desc: "Practical guidance on building detections, triaging alerts and hunting adversaries — CyberDefenders community feed.",     tag: "SOC",     url: "/community/cd/soc"     },
-  { title: "Cisco Talos Intelligence",               desc: "Latest APT tracking, malware research and 0-day disclosures from Cisco Talos — refreshed hourly.",                        tag: "Talos",   url: "/community/talos"      },
+  { title: "Cisco Talos Intelligence",               desc: "Latest APT tracking, malware research and 0-day disclosures from Cisco Talos — refreshed every 30 minutes.",              tag: "Talos",   url: "/community/talos"      },
   { title: "Palo Alto Unit 42",                      desc: "Deep-dive threat research, incident response case studies and vulnerability write-ups from Palo Alto's Unit 42 team.",     tag: "Unit42",  url: "/community/unit42"     },
   { title: "The DFIR Report",                        desc: "Real-world incident response breakdowns — full intrusion timelines, attacker TTPs and detection opportunities from The DFIR Report.", tag: "DFIR Report", url: "/community/dfir"       },
   { title: "Microsoft Threat Intelligence",          desc: "Nation-state activity, emerging malware and defender guidance published by the Microsoft Threat Intelligence team.",       tag: "MSTI",    url: "/community/msthreat"   },
+  { title: "BleepingComputer",                       desc: "Breaking cybersecurity news, ransomware coverage, breach disclosures and technical explainers — updated live from BleepingComputer.",  tag: "Bleeping",  url: "/community/bleeping"   },
+  { title: "Hacker News",                            desc: "Real-time top stories from the wider tech & security community, ranked by readers on Hacker News.",                       tag: "HN",       url: "/community/hn"          },
 ];
 
 const DATE_RANGES = [
@@ -305,11 +307,11 @@ export default function ThreatIntelligence() {
             </div>
             <h2 className="font-heading text-2xl md:text-3xl font-semibold tracking-tight text-slate-900">Threat intel blog & writeups</h2>
             <p className="mt-4 text-base text-slate-600 leading-relaxed">
-              DFIR, malware analysis and SOC playbook writeups curated from CyberDefenders, The DFIR Report, Cisco Talos, Palo Alto Unit 42 and Microsoft Threat Intelligence — browse the feed inside NivX, then click through to read the full article on the source.
+              DFIR, malware analysis, SOC playbooks and breaking security news curated live from CyberDefenders, The DFIR Report, Cisco Talos, Palo Alto Unit 42, Microsoft Threat Intelligence, BleepingComputer and Hacker News — refreshed every 30 minutes, click through to read the full article on the source.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
             {CYBERDEFENDERS.map((b, i) => (
               <motion.div
                 key={b.title}

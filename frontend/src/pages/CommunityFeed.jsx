@@ -8,13 +8,15 @@ import { api } from "@/lib/api";
 import useSeo from "@/lib/useSeo";
 
 const SOURCE_META = {
-  talos:    { label: "Cisco Talos Intelligence",   tag: "Talos",     tone: "text-red-400",    gradient: "from-red-500/10 to-transparent",    chip: "bg-red-50 text-red-700" },
-  unit42:   { label: "Palo Alto Unit 42",           tag: "Unit42",    tone: "text-blue-400",   gradient: "from-blue-500/10 to-transparent",   chip: "bg-blue-50 text-blue-700" },
-  dfir:     { label: "The DFIR Report",             tag: "DFIR",      tone: "text-amber-400",  gradient: "from-amber-500/10 to-transparent",  chip: "bg-amber-50 text-amber-700" },
-  msthreat: { label: "Microsoft Threat Intelligence", tag: "MSTI",    tone: "text-emerald-400",gradient: "from-emerald-500/10 to-transparent",chip: "bg-emerald-50 text-emerald-700" },
+  talos:    { label: "Cisco Talos Intelligence",     tag: "Talos",     tone: "text-red-400",     gradient: "from-red-500/10 to-transparent",     chip: "bg-red-50 text-red-700" },
+  unit42:   { label: "Palo Alto Unit 42",             tag: "Unit42",    tone: "text-blue-400",    gradient: "from-blue-500/10 to-transparent",    chip: "bg-blue-50 text-blue-700" },
+  dfir:     { label: "The DFIR Report",               tag: "DFIR",      tone: "text-amber-400",   gradient: "from-amber-500/10 to-transparent",   chip: "bg-amber-50 text-amber-700" },
+  msthreat: { label: "Microsoft Threat Intelligence", tag: "MSTI",      tone: "text-emerald-400", gradient: "from-emerald-500/10 to-transparent", chip: "bg-emerald-50 text-emerald-700" },
+  bleeping: { label: "BleepingComputer",              tag: "Bleeping",  tone: "text-orange-400",  gradient: "from-orange-500/10 to-transparent",  chip: "bg-orange-50 text-orange-700" },
+  hn:       { label: "Hacker News",                   tag: "HN",        tone: "text-[#F5821F]",   gradient: "from-orange-500/10 to-transparent",  chip: "bg-orange-50 text-orange-700" },
 };
 
-const ORDER = ["talos", "unit42", "dfir", "msthreat"];
+const ORDER = ["talos", "unit42", "dfir", "msthreat", "bleeping", "hn"];
 
 export default function CommunityFeed() {
   const { source = "talos" } = useParams();

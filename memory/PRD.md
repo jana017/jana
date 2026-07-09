@@ -221,3 +221,13 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - **Threat Intelligence "From the Community" section**: 2 new cards added (7 total). Grid changed from `xl:grid-cols-5` → `xl:grid-cols-4` for a balanced 4+3 layout. Section subhead updated to name all 5 upstream sources.
 - Compliance: identical fair-use aggregator pattern (metadata + short snippet + cover image + prominent source attribution + outbound `target="_blank"` link to origin). No article bodies stored or reproduced.
 - Verified end-to-end via screenshot + curl. Lint clean (0 warnings). Production build should pass with `CI=true`.
+
+
+## Latest (2026-07-09, session 27 — BleepingComputer + Hacker News live feeds, TTL 30 min)
+- **Added 2 more RSS sources** for real-time news coverage: **BleepingComputer** (`https://www.bleepingcomputer.com/feed/`) and **Hacker News** (`https://news.ycombinator.com/rss`). Both return 15 items per fetch.
+- **Reduced RSS cache TTL from 6h → 30 min** (`_RSS_TTL = timedelta(minutes=30)`) so news feeds behave near real-time as requested. Applies globally to all 7 RSS sources (Talos, Unit42, DFIR, MSTHREAT, Bleeping, HN + BleepingComputer). Still respectful of source servers.
+- **Frontend `CommunityFeed.jsx`**: `SOURCE_META` extended with `bleeping` (orange) and `hn` (orange HN badge) entries; `ORDER` array grew to 6 keys so the footer switcher chips dynamically render all siblings.
+- **Threat Intelligence "From the Community" section**: 2 new cards added (9 total). Grid changed from `xl:grid-cols-4` → `xl:grid-cols-3` for a symmetrical 3-per-row layout across all breakpoints. Subhead updated to name all upstream sources.
+- Verified live: BleepingComputer returned today's article ("Police arrests 5,800 suspects...", Jul 9 2026); HN returned today's top story ("John Deere right to repair..."). Both endpoints tested via curl + Playwright screenshot.
+- Compliance: identical fair-use aggregator pattern (metadata + short snippet + cover image + prominent source attribution + outbound `target="_blank"` link). No article bodies stored/reproduced. HN feed contains only titles + "Comments…" pointers, same as HN's public RSS. No copyright concerns.
+- Lint clean; production build passes with `CI=true`.
