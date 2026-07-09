@@ -39,6 +39,7 @@ from . import exports
 from . import ai_analysis
 from . import sysmon
 from . import og_image
+from . import risk_reasons as risk_reasons_mod
 from .plugins import all_plugins
 from .plugins.decoders import _to_best_text
 from .models import (
@@ -129,7 +130,14 @@ async def auto_decode(req: AutoDecodeRequest, session_id: Optional[str] = None):
             "duration_ms": round((time.perf_counter() - t0) * 1000, 2),
         }
         if req.include_analysis:
-            result["analysis"] = await _analyze(_to_best_text(final_bytes), final_bytes, session_id)
+            text = _to_best_text(final_bytes)
+            # Combine original + decoded so MITRE/IOC matches survive
+            combined = req.input if req.input == text else f"{req.input}\n{text}"
+            analysis = await _analyze(combined, combined.encode("utf-8", errors="replace"), session_id)
+            analysis["risk_reasons"] = risk_reasons_mod.detect_risk_reasons(
+                combined, analysis.get("iocs", [])
+            )
+            result["analysis"] = analysis
         return result
     except Exception as e:
         logger.exception("auto_decode failed")
@@ -147,6 +155,7 @@ async def analyze(req: AnalyzeRequest, session_id: Optional[str] = None):
             trace = []
         text = _to_best_text(final_bytes)
         analysis_dict = await _analyze(text, final_bytes, session_id)
+        reasons = risk_reasons_mod.detect_risk_reasons(text, analysis_dict.get("iocs", []))
         return AnalysisReport(
             input_size=len(req.input.encode("utf-8", errors="replace")),
             final_output=text,
@@ -157,6 +166,7 @@ async def analyze(req: AnalyzeRequest, session_id: Optional[str] = None):
             risk_score=analysis_dict["risk_score"],
             verdict=analysis_dict["verdict"],
             summary=analysis_dict["summary"],
+            risk_reasons=reasons,
             duration_ms=round((time.perf_counter() - t0) * 1000, 2),
         )
     except Exception as e:
@@ -355,6 +365,18 @@ async def auto_investigate(req: AutoInvestigateRequest, session_id: Optional[str
                 "iocs": iocs, "mitre": mitre_list, "rules": [],
                 "risk_score": score, "verdict": verdict, "summary": summary,
             }
+            # Build a text blob for risk-reason detection from forensic events
+            _reason_blob_parts: List[str] = []
+            for e in forensic[:80]:
+                if e.get("command_line"):
+                    _reason_blob_parts.append(e["command_line"])
+                if e.get("registry_key"):
+                    _reason_blob_parts.append(f"{e['registry_key']} = {e.get('registry_value','')}")
+                if e.get("url"):
+                    _reason_blob_parts.append(e["url"])
+            analysis["risk_reasons"] = risk_reasons_mod.detect_risk_reasons(
+                "\n".join(_reason_blob_parts), iocs
+            )
             _stage("analyze", "ok", (time.perf_counter() - t0) * 1000,
                    {"mitre": len(mitre_list), "iocs": len(iocs), "risk_score": score})
             result.update({
@@ -391,6 +413,10 @@ async def auto_investigate(req: AutoInvestigateRequest, session_id: Optional[str
             combined_text = "\n".join(x for x in (raw, text if text != raw else "", embedded) if x)
             combined_bytes = combined_text.encode("utf-8", errors="replace")
             analysis = await _analyze(combined_text, combined_bytes, session_id)
+            # Enrich analysis with a structured risk-reasons list (for the UI)
+            analysis["risk_reasons"] = risk_reasons_mod.detect_risk_reasons(
+                combined_text, analysis.get("iocs", [])
+            )
             _stage("analyze", "ok", (time.perf_counter() - t0) * 1000,
                    {"mitre": len(analysis["mitre"]),
                     "rules": len(analysis["rules"]),

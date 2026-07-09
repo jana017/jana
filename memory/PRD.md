@@ -603,7 +603,35 @@ Wired into `ForensicEventsPanel.jsx` as a **Table | Timeline** toggle above the 
 - MODIFIED  /app/frontend/src/components/cyberlab/AiPanel.jsx (6-tab hunt-query view)
 - INSTALLED python-evtx==0.8.1 (+ hexdump)
 
+## 2026-07-09 — Auto Investigation Mode + Risk Reasons UX
+### Auto Investigation Mode (P0 delivered)
+- New backend endpoints `POST /api/cyberlab/detect-format` and `POST /api/cyberlab/auto-investigate` — one-shot orchestrator (detect → decode/parse → analyze → optional AI). Response shape: `{kind, format, stages[], output, trace[], forensic_events[], tree{}, analysis{}, ai{}, duration_ms}`.
+- New helper `_extract_and_decode_embedded_b64` recovers URLs/IOCs hidden inside VBA macros, cert blobs, and PowerShell here-strings (UTF-16LE preferred, UTF-8 fallback, null-byte guard).
+- Frontend `runAutoInvestigate` orchestrator (CyberLab.jsx) runs sequential API calls and drives a live **AutoInvestigateProgress** panel with 5 stage cards (`detect`, `auto-decode|parse-log` swap, `analyze`, `ai`, `render`) — every card exposes `data-testid` + `data-status` for testing.
+- Auto Investigate is now the **primary gradient CTA**; existing `Auto Decode` and `Run Recipe` remain as secondary buttons (coexist mode).
+- ProcessTreeViewer accepts `initialTree` / `initialText` props so the log-input path renders the parsed tree without a second click.
+- Pytest samples fixture `/app/backend/tests/samples/malware_samples.py` — 8 real-world payloads (PS -EncodedCommand, mshta, certutil, rundll32-HTA, Office macro Auto_Open with nested b64, ransomware note, nested b64→gzip, Sysmon XML). Regression tests: `/app/backend/tests/test_auto_investigate.py` (12 tests).
+
+### Risk Score Visualization (user-requested UX polish)
+- Backend `cyberlab.risk_reasons` module — pattern-driven detector returning `[{label, severity, category, evidence}]` across 9 categories (encoding, execution, lolbin, network, persistence, impact, credential, recon, forensic). Wired into `/analyze`, `/auto-decode?include_analysis=true`, and `/auto-investigate` (both payload + log paths). `AnalysisReport` model extended with `risk_reasons: List[RiskReason]`.
+- Frontend `VerdictBanner.jsx` — full-width gradient progress bar (segmented ticks 0/25/50/75/100), verdict icon + label, risk-score with severity bucket (Minimal → Critical), indicator count + high/med/low chips, and a category-grouped "Why this score" list with checkmark bullets.
+- Regression: `/app/backend/tests/test_risk_reasons.py` (7 tests).
+
+### Files touched
+- ADDED     /app/backend/cyberlab/risk_reasons.py
+- ADDED     /app/backend/tests/test_auto_investigate.py (12 tests)
+- ADDED     /app/backend/tests/test_risk_reasons.py (7 tests)
+- ADDED     /app/backend/tests/samples/malware_samples.py + __init__.py
+- ADDED     /app/frontend/src/components/cyberlab/AutoInvestigateProgress.jsx
+- ADDED     /app/frontend/src/components/cyberlab/VerdictBanner.jsx
+- MODIFIED  /app/backend/cyberlab/router.py (+ detect-format, + auto-investigate, risk_reasons integration)
+- MODIFIED  /app/backend/cyberlab/models.py (+ RiskReason, AnalysisReport.risk_reasons)
+- MODIFIED  /app/frontend/src/pages/CyberLab.jsx (Auto Investigate CTA + orchestrator + new banner)
+- MODIFIED  /app/frontend/src/components/cyberlab/ProcessTreeViewer.jsx (accepts initialTree)
+- MODIFIED  /app/frontend/src/lib/cyberlabApi.js (detectFormat, autoInvestigate, processTree)
+
 ## Backlog remaining
 - **P2** — Wire real WhatsApp/Twitter/LinkedIn hrefs in Landing Hero (carry-over).
+- **P2** — Direct EDR/SIEM webhooks to push generated Sigma/YARA rules to SIEM.
 - **P3** — Refactor `server.py` (3,812 lines) into modular routes/services folders.
 - **P3** — Direct PCAP binary parsing (currently requires tshark `-T ek` preprocessing).

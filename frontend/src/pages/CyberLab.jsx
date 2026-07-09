@@ -15,6 +15,7 @@ import AiPanel from "@/components/cyberlab/AiPanel";
 import ShareModal from "@/components/cyberlab/ShareModal";
 import CustomRuleModal from "@/components/cyberlab/CustomRuleModal";
 import AutoInvestigateProgress from "@/components/cyberlab/AutoInvestigateProgress";
+import VerdictBanner from "@/components/cyberlab/VerdictBanner";
 
 const CATEGORY_STYLE = {
   Encoding:      { chip: "bg-blue-500/10 text-blue-300 border-blue-500/30",         dot: "bg-blue-400" },
@@ -443,23 +444,14 @@ export default function CyberLab() {
           </div>
         </div>
 
-        {/* Verdict banner */}
-        {V && (
-          <div className={`mb-6 rounded-lg border ${V.bg} p-4 flex items-center justify-between gap-4`} data-testid="verdict-banner">
-            <div className="flex items-center gap-3">
-              <V.icon className={`w-6 h-6 ${V.text}`} />
-              <div>
-                <div className={`text-xs font-bold uppercase tracking-widest ${V.text}`}>Verdict · {V.label}</div>
-                <div className="text-sm text-slate-200 mt-0.5">{analysis.summary}</div>
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Risk Score</div>
-              <div className={`text-3xl font-bold tabular-nums ${RISK_TEXT(analysis.risk_score)}`} data-testid="risk-score">
-                {analysis.risk_score}<span className="text-sm text-slate-500">/100</span>
-              </div>
-            </div>
-          </div>
+        {/* Verdict banner with risk-score bar + reason breakdown */}
+        {analysis && (
+          <VerdictBanner
+            verdict={analysis.verdict || "clean"}
+            riskScore={analysis.risk_score || 0}
+            reasons={analysis.risk_reasons || []}
+            summary={analysis.summary}
+          />
         )}
 
         {/* Auto Investigation progress panel */}

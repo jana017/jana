@@ -70,6 +70,14 @@ class YaraLikeMatch(BaseModel):
     matched: List[str] = Field(default_factory=list)
 
 
+class RiskReason(BaseModel):
+    """A structured indicator explaining part of the computed risk score."""
+    label: str
+    severity: str = "medium"  # high | medium | low
+    category: str = "forensic"  # encoding, execution, lolbin, network, persistence, impact, credential, recon, forensic
+    evidence: str = ""
+
+
 class AnalysisReport(BaseModel):
     """Full analysis report."""
     input_size: int
@@ -81,6 +89,7 @@ class AnalysisReport(BaseModel):
     risk_score: int = 0  # 0-100
     verdict: str = "clean"  # clean, suspicious, malicious
     summary: str = ""
+    risk_reasons: List[RiskReason] = Field(default_factory=list)
     duration_ms: float = 0.0
 
 
