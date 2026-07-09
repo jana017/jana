@@ -8,7 +8,7 @@ import {
 import Navbar from "@/components/Navbar";
 import Contact from "@/components/Contact";
 import useSeo from "@/lib/useSeo";
-import { listPlugins, autoDecode, runRecipe, analyze, detectFormat, processTree, runAiAnalysis } from "@/lib/cyberlabApi";
+import { listPlugins, autoDecode, runRecipe, analyze, detectFormat, processTree, runAiAnalysis, enrichIocs, downloadReport } from "@/lib/cyberlabApi";
 import AttackChainViewer from "@/components/cyberlab/AttackChainViewer";
 import ProcessTreeViewer from "@/components/cyberlab/ProcessTreeViewer";
 import AiPanel from "@/components/cyberlab/AiPanel";
@@ -16,6 +16,7 @@ import ShareModal from "@/components/cyberlab/ShareModal";
 import CustomRuleModal from "@/components/cyberlab/CustomRuleModal";
 import AutoInvestigateProgress from "@/components/cyberlab/AutoInvestigateProgress";
 import VerdictBanner from "@/components/cyberlab/VerdictBanner";
+import EnrichedIocsPanel from "@/components/cyberlab/EnrichedIocsPanel";
 
 const CATEGORY_STYLE = {
   Encoding:      { chip: "bg-blue-500/10 text-blue-300 border-blue-500/30",         dot: "bg-blue-400" },
@@ -89,6 +90,13 @@ export default function CyberLab() {
   const [result, setResult] = useState(null);
   const [processTreeData, setProcessTreeData] = useState(null); // {nodes,edges,stats,forensic_events}
   const [ai, setAi] = useState(null); // { summary, sigma_rule, yara_rule } — set when AI generates
+  const [enrichedIocs, setEnrichedIocs] = useState(null); // enriched list from /enrich-iocs
+  const [enrichMeta, setEnrichMeta] = useState(null); // {count, flagged, duration_ms, iocs_per_sec, cache_hit_rate, depth}
+  const [enrichEnabled, setEnrichEnabled] = useState(true);
+  const [enrichDepth, setEnrichDepth] = useState("comprehensive"); // free | comprehensive | ai
+  const [enrichBusy, setEnrichBusy] = useState(false);
+  const [downloadOpen, setDownloadOpen] = useState(false);
+  const [downloading, setDownloading] = useState(null); // format label while download in flight
   const [tab, setTab] = useState("mitre");
   const [shareOpen, setShareOpen] = useState(false);
   const [ruleModalOpen, setRuleModalOpen] = useState(false);
@@ -160,9 +168,12 @@ export default function CyberLab() {
       { name: "auto-decode",  status: "pending" },
       { name: "analyze",      status: "pending" },
       { name: "ai",           status: "pending" },
+      ...(enrichEnabled ? [{ name: "enrich", status: "pending" }] : []),
       { name: "render",       status: "pending" },
     ];
     setInvestigateStages(initial);
+    setEnrichedIocs(null);
+    setEnrichMeta(null);
 
     const markStage = (name, patch) =>
       setInvestigateStages((prev) => prev.map((s) => (s.name === name ? { ...s, ...patch } : s)));
@@ -284,6 +295,43 @@ export default function CyberLab() {
         markStage("ai", { status: "failed", duration_ms: performance.now() - t3, meta: { error: e.message } });
       }
 
+      // Stage 4.5 — OSINT Enrichment on extracted IOCs (opt-in, default on).
+      // Fails soft — enrichment failure does not abort the investigation.
+      if (enrichEnabled) {
+        const iocValues = (analysis.iocs || [])
+          .map((i) => i.value)
+          .filter((v) => v && v.length < 512);
+        if (iocValues.length > 0) {
+          markStage("enrich", { status: "running" });
+          const t4 = performance.now();
+          try {
+            const enrichRes = await enrichIocs(iocValues.slice(0, 20), enrichDepth);
+            setEnrichedIocs(enrichRes.results || []);
+            setEnrichMeta({
+              count: enrichRes.count,
+              flagged: enrichRes.flagged,
+              duration_ms: enrichRes.duration_ms,
+              iocs_per_sec: enrichRes.iocs_per_sec,
+              cache_hit_rate: enrichRes.cache_hit_rate,
+              depth: enrichRes.depth,
+            });
+            markStage("enrich", {
+              status: "ok",
+              duration_ms: performance.now() - t4,
+              meta: {
+                count: enrichRes.count,
+                flagged: enrichRes.flagged,
+                cache_pct: Math.round((enrichRes.cache_hit_rate || 0) * 100),
+              },
+            });
+          } catch (e) {
+            markStage("enrich", { status: "failed", duration_ms: performance.now() - t4, meta: { error: e.message } });
+          }
+        } else {
+          markStage("enrich", { status: "ok", duration_ms: 0, meta: { count: 0, note: "no IOCs to enrich" } });
+        }
+      }
+
       // Stage 5 — Render (client-side, essentially instant)
       markStage("render", { status: "ok", duration_ms: 0, meta: {} });
       // Switch to graph tab so the analyst sees the flow immediately.
@@ -302,7 +350,7 @@ export default function CyberLab() {
     } finally {
       setInvestigateBusy(false);
     }
-  }, [input]);
+  }, [input, enrichEnabled, enrichDepth]);
 
   // -- Run current recipe manually --
   const runManual = useCallback(async () => {
@@ -432,8 +480,64 @@ export default function CyberLab() {
               disabled={!result}
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-300 hover:text-cyan-400 border border-slate-700 hover:border-cyan-500/50 rounded-md px-3 py-2 disabled:opacity-40 transition-colors"
             >
-              <Share2 className="w-3.5 h-3.5" /> Share / Export
+              <Share2 className="w-3.5 h-3.5" /> Share
             </button>
+
+            {/* Download Report split-button — CSV / PDF / JSON / Markdown */}
+            <div className="relative">
+              <button
+                data-testid="download-report-btn"
+                onClick={() => setDownloadOpen((v) => !v)}
+                disabled={!result || !!downloading}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-cyan-300 border border-cyan-500/40 hover:border-cyan-400/60 bg-cyan-500/10 hover:bg-cyan-500/15 rounded-md px-3 py-2 disabled:opacity-40 transition-colors"
+              >
+                {downloading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                {downloading ? `Generating ${downloading.toUpperCase()}…` : "Download Report"}
+                <ChevronDown className="w-3 h-3" />
+              </button>
+              {downloadOpen && !downloading && (
+                <div
+                  data-testid="download-report-menu"
+                  className="absolute right-0 mt-1 w-52 rounded-lg border border-slate-700 bg-slate-950 shadow-xl z-30 p-1"
+                  onMouseLeave={() => setDownloadOpen(false)}
+                >
+                  {[
+                    { fmt: "pdf",      label: "PDF · Threat Card",   sub: "Branded, full context" },
+                    { fmt: "csv",      label: "CSV · IOC + OSINT",   sub: "Spreadsheet-friendly" },
+                    { fmt: "json",     label: "JSON · Machine",      sub: "For SOAR/pipelines" },
+                    { fmt: "markdown", label: "Markdown · Jira/Doc", sub: "Copy-paste ready" },
+                  ].map((opt) => (
+                    <button
+                      key={opt.fmt}
+                      data-testid={`download-${opt.fmt}`}
+                      onClick={async () => {
+                        setDownloadOpen(false);
+                        setDownloading(opt.fmt);
+                        try {
+                          await downloadReport(opt.fmt, {
+                            input,
+                            output: result?.output || "",
+                            trace: result?.trace || [],
+                            analysis: analysis || {},
+                            ai: ai || null,
+                            enriched_iocs: enrichedIocs || [],
+                            enrichment_meta: enrichMeta || null,
+                          });
+                          toast.success(`${opt.fmt.toUpperCase()} report downloaded`);
+                        } catch (e) {
+                          toast.error(`${opt.fmt.toUpperCase()} export failed: ${e.message}`);
+                        } finally { setDownloading(null); }
+                      }}
+                      className="w-full text-left px-3 py-2 rounded hover:bg-slate-800 transition-colors"
+                    >
+                      <div className="text-xs font-semibold text-white">{opt.label}</div>
+                      <div className="text-[10px] text-slate-500">{opt.sub}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <label
               data-testid="upload-btn"
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-300 hover:text-cyan-400 border border-slate-700 hover:border-cyan-500/50 rounded-md px-3 py-2 cursor-pointer transition-colors"
@@ -441,6 +545,42 @@ export default function CyberLab() {
               <Upload className="w-3.5 h-3.5" /> Upload
               <input type="file" accept=".txt,.log,.b64,.hex,.json,.js,.ps1,.eml,.bin" className="hidden" onChange={uploadFile} />
             </label>
+          </div>
+        </div>
+
+        {/* OSINT enrichment controls — toggle + depth selector (compact) */}
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-400" data-testid="enrich-controls">
+          <label className="inline-flex items-center gap-1.5 cursor-pointer select-none" title="Automatically enrich extracted IOCs against VirusTotal, AbuseIPDB, Shodan, urlscan, CIRCL, Hybrid Analysis & MalwareBazaar after Auto Investigate.">
+            <input
+              type="checkbox"
+              data-testid="enrich-toggle"
+              checked={enrichEnabled}
+              onChange={(e) => setEnrichEnabled(e.target.checked)}
+              className="w-3.5 h-3.5 rounded border-slate-600 bg-slate-800 accent-cyan-500"
+            />
+            <span>Auto-enrich IOCs</span>
+          </label>
+          <div className="inline-flex items-center gap-1 rounded-md border border-slate-800 bg-slate-950 p-0.5" data-testid="enrich-depth">
+            {[
+              { v: "free",          l: "Free",          h: "Shodan · geo · DNS · urlscan · CIRCL (fastest)" },
+              { v: "comprehensive", l: "Comprehensive", h: "Free + VT · AbuseIPDB · HA · MalwareBazaar" },
+              { v: "ai",            l: "+ AI Verdict",  h: "Comprehensive + Claude/Gemini per-IOC summary" },
+            ].map((d) => (
+              <button
+                key={d.v}
+                data-testid={`enrich-depth-${d.v}`}
+                disabled={!enrichEnabled}
+                title={d.h}
+                onClick={() => setEnrichDepth(d.v)}
+                className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-widest transition-colors ${
+                  enrichDepth === d.v
+                    ? "bg-cyan-500/20 text-cyan-300"
+                    : "text-slate-500 hover:text-slate-300"
+                } disabled:opacity-40`}
+              >
+                {d.l}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -457,6 +597,11 @@ export default function CyberLab() {
         {/* Auto Investigation progress panel */}
         {investigateStages.length > 0 && (
           <AutoInvestigateProgress stages={investigateStages} summary={investigateSummary} />
+        )}
+
+        {/* OSINT enrichment results panel */}
+        {enrichedIocs && enrichedIocs.length > 0 && (
+          <EnrichedIocsPanel iocs={enrichedIocs} meta={enrichMeta || {}} />
         )}
 
         {/* Example chips */}

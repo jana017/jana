@@ -1,6 +1,8 @@
-"""PDF (ReportLab) + Markdown export for CyberLab analysis reports."""
+"""PDF (ReportLab) + Markdown + CSV + JSON export for CyberLab reports."""
 from __future__ import annotations
 import io
+import csv
+import json as _json
 from datetime import datetime
 from typing import Dict, Any, List
 
@@ -142,6 +144,70 @@ def render_pdf(report: Dict[str, Any]) -> bytes:
             rows.append([i["type"].upper(), i["value"][:80]])
         story.append(_tbl(rows, [30, 140]))
 
+    # OSINT-enriched IOCs (from CyberLab in-page enrichment)
+    enriched = report.get("enriched_iocs") or []
+    if enriched:
+        story.append(PageBreak())
+        story.append(Paragraph("OSINT Enrichment Report", styles["h2"]))
+        story.append(Paragraph(
+            f"{len(enriched)} indicator{'s' if len(enriched) != 1 else ''} enriched via VirusTotal, "
+            "AbuseIPDB, Shodan, urlscan.io, CIRCL hashlookup, Hybrid Analysis & MalwareBazaar.",
+            styles["small"],
+        ))
+        story.append(Spacer(1, 4))
+        rows = [["IOC", "Type", "VT", "Abuse", "Geo/Host", "Verdict"]]
+        for r in enriched[:80]:
+            rep = r.get("reputation") or {}
+            vt = rep.get("vt") or {}
+            ab = rep.get("abuseipdb") or {}
+            en = r.get("enrichment") or {}
+            vt_txt = "—"
+            if vt and not vt.get("error"):
+                if vt.get("found") is False:
+                    vt_txt = "0/0"
+                else:
+                    vt_txt = f"{vt.get('malicious', 0) or 0}/{vt.get('total', 0) or 0}"
+            ab_txt = "—"
+            if ab and not ab.get("error") and ab.get("score") is not None:
+                ab_txt = f"{ab.get('score')}%"
+            geo_txt = ""
+            if en.get("kind") == "ip":
+                g = en.get("geo") or {}
+                geo_txt = f"{g.get('country', '')} · {g.get('isp', '')}"[:32]
+            elif en.get("kind") == "web":
+                geo_txt = f"{en.get('resolved_ip', '') or ''}"[:32]
+            elif en.get("kind") == "hash":
+                geo_txt = "known-file DB" if en.get("found") else "unknown"
+            # Verdict inference
+            vt_hits = (vt.get("malicious", 0) or 0) + (vt.get("suspicious", 0) or 0) if not vt.get("error") else 0
+            ab_score = (ab.get("score", 0) or 0) if not ab.get("error") else 0
+            if vt.get("malicious", 0) >= 5 or ab_score >= 75:
+                verdict = "CRITICAL"
+            elif vt_hits > 0 or ab_score >= 50:
+                verdict = "HIGH"
+            elif vt_hits > 0 or ab_score > 0:
+                verdict = "SUSPECT"
+            else:
+                verdict = "CLEAN"
+            rows.append([
+                r.get("value", "")[:36],
+                (r.get("type", "unknown") or "unknown").upper(),
+                vt_txt, ab_txt, geo_txt, verdict,
+            ])
+        story.append(_tbl(rows, [55, 18, 18, 18, 42, 20]))
+
+        # Per-IOC AI verdicts (if the depth included AI)
+        with_ai = [r for r in enriched if (r.get("ai_summary") or "").strip()]
+        if with_ai:
+            story.append(Paragraph("AI Verdicts (per IOC)", styles["h2"]))
+            for r in with_ai[:20]:
+                block = KeepTogether([
+                    Paragraph(f"<b>{_escape(r.get('value', ''))}</b>", styles["body"]),
+                    Paragraph(_escape((r.get("ai_summary") or "")[:600]), styles["small"]),
+                    Spacer(1, 4),
+                ])
+                story.append(block)
+
     # Draft rules from AI
     if ai.get("sigma_rule"):
         story.append(PageBreak())
@@ -262,6 +328,54 @@ def render_markdown(report: Dict[str, Any]) -> str:
             lines.append(f"| `{i['type']}` | `{v}` |")
         lines.append("")
 
+    enriched = report.get("enriched_iocs") or []
+    if enriched:
+        lines.append("## OSINT Enrichment Report")
+        lines.append(f"_{len(enriched)} IOC(s) enriched via VirusTotal, AbuseIPDB, Shodan, urlscan.io, "
+                     "CIRCL hashlookup, Hybrid Analysis & MalwareBazaar._")
+        lines.append("")
+        lines.append("| IOC | Type | VT (mal/total) | Abuse | Geo/Host | Verdict |")
+        lines.append("|-----|------|----------------|-------|----------|---------|")
+        for r in enriched[:100]:
+            rep = r.get("reputation") or {}
+            vt = rep.get("vt") or {}
+            ab = rep.get("abuseipdb") or {}
+            en = r.get("enrichment") or {}
+            vt_txt = "—"
+            if vt and not vt.get("error"):
+                vt_txt = "0/0" if vt.get("found") is False else f"{vt.get('malicious', 0) or 0}/{vt.get('total', 0) or 0}"
+            ab_txt = "—"
+            if ab and not ab.get("error") and ab.get("score") is not None:
+                ab_txt = f"{ab.get('score')}%"
+            geo_txt = ""
+            if en.get("kind") == "ip":
+                g = en.get("geo") or {}
+                geo_txt = f"{g.get('country', '')} · {g.get('isp', '')}"
+            elif en.get("kind") == "web":
+                geo_txt = f"{en.get('resolved_ip', '') or ''}"
+            elif en.get("kind") == "hash":
+                geo_txt = "known-file DB" if en.get("found") else "unknown"
+            vt_hits = (vt.get("malicious", 0) or 0) + (vt.get("suspicious", 0) or 0) if not vt.get("error") else 0
+            ab_score = (ab.get("score", 0) or 0) if not ab.get("error") else 0
+            if vt.get("malicious", 0) >= 5 or ab_score >= 75:
+                verdict = "CRITICAL"
+            elif vt_hits > 0 or ab_score >= 50:
+                verdict = "HIGH"
+            elif vt_hits > 0 or ab_score > 0:
+                verdict = "SUSPECT"
+            else:
+                verdict = "CLEAN"
+            val = (r.get("value", "") or "").replace("|", "\\|")
+            lines.append(f"| `{val}` | {(r.get('type', 'unknown') or 'unknown').upper()} | {vt_txt} | {ab_txt} | {geo_txt} | **{verdict}** |")
+        lines.append("")
+
+        with_ai = [r for r in enriched if (r.get("ai_summary") or "").strip()]
+        if with_ai:
+            lines.append("### AI Verdicts (per IOC)")
+            for r in with_ai[:30]:
+                lines.append(f"- **`{r.get('value','')}`** — {r.get('ai_summary','').strip()}")
+            lines.append("")
+
     if ai.get("sigma_rule"):
         lines.append("## Draft Sigma Rule")
         lines.append("```yaml")
@@ -278,3 +392,135 @@ def render_markdown(report: Dict[str, Any]) -> str:
     lines.append("---")
     lines.append("_Machine-assisted triage report — always human-review before production deployment._")
     return "\n".join(lines)
+
+
+# --------------------------- CSV export ---------------------------
+
+def render_csv(report: Dict[str, Any]) -> str:
+    """Return the CyberLab report as a CSV document.
+
+    Sections are separated by blank rows. Includes verdict, MITRE, IOCs and
+    (when present) full OSINT-enriched IOC data with reputation columns.
+    """
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    analysis = report.get("analysis") or {}
+    ai = report.get("ai") or {}
+
+    # Summary header
+    w.writerow(["NivX CyberLab Report"])
+    w.writerow(["Generated (UTC)", datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")])
+    w.writerow(["Verdict", (analysis.get("verdict") or "").upper()])
+    w.writerow(["Risk score", f"{analysis.get('risk_score', 0)}/100"])
+    if analysis.get("summary"):
+        w.writerow(["Summary", analysis["summary"]])
+    if ai.get("summary"):
+        w.writerow(["AI Summary", ai["summary"]])
+    w.writerow([])
+
+    # Decode chain
+    trace = report.get("trace") or []
+    if trace:
+        w.writerow(["--- DECODE CHAIN ---"])
+        w.writerow(["#", "Operation", "Category", "Confidence", "Duration (ms)"])
+        for i, s in enumerate(trace, 1):
+            w.writerow([i, s.get("name", ""), s.get("category", ""),
+                        s.get("confidence") or "", s.get("duration_ms", 0)])
+        w.writerow([])
+
+    # MITRE
+    mitre = analysis.get("mitre") or []
+    if mitre:
+        w.writerow(["--- MITRE ATT&CK ---"])
+        w.writerow(["ID", "Name", "Tactic", "Evidence"])
+        for m in mitre:
+            w.writerow([m.get("id"), m.get("name"), m.get("tactic"),
+                        " | ".join((m.get("evidence") or [])[:3])])
+        w.writerow([])
+
+    # Plain IOCs
+    iocs = analysis.get("iocs") or []
+    if iocs:
+        w.writerow(["--- INDICATORS OF COMPROMISE ---"])
+        w.writerow(["Type", "Value"])
+        for i in iocs:
+            w.writerow([i.get("type"), i.get("value")])
+        w.writerow([])
+
+    # OSINT-enriched IOCs — richest section
+    enriched = report.get("enriched_iocs") or []
+    if enriched:
+        w.writerow(["--- OSINT ENRICHMENT ---"])
+        w.writerow([
+            "IOC", "Type", "Verdict",
+            "VT malicious", "VT suspicious", "VT total", "VT threat_label",
+            "AbuseIPDB score", "AbuseIPDB reports",
+            "Geo country", "Geo city", "ISP",
+            "Resolved IP", "Open ports", "urlscan scans",
+            "Hybrid Analysis verdict", "MalwareBazaar signature",
+            "In known-file DB", "Known malicious", "Filename",
+            "AI verdict",
+        ])
+        for r in enriched:
+            rep = r.get("reputation") or {}
+            vt = rep.get("vt") or {}
+            ab = rep.get("abuseipdb") or {}
+            ha = rep.get("hybrid_analysis") or {}
+            mb = rep.get("malwarebazaar") or {}
+            en = r.get("enrichment") or {}
+            g = en.get("geo") or {}
+            vt_hits = (vt.get("malicious", 0) or 0) + (vt.get("suspicious", 0) or 0) if not vt.get("error") else 0
+            ab_score = (ab.get("score", 0) or 0) if not ab.get("error") else 0
+            if (vt.get("malicious", 0) or 0) >= 5 or ab_score >= 75:
+                verdict = "CRITICAL"
+            elif vt_hits > 0 or ab_score >= 50:
+                verdict = "HIGH"
+            elif vt_hits > 0 or ab_score > 0:
+                verdict = "SUSPECT"
+            else:
+                verdict = "CLEAN"
+            w.writerow([
+                r.get("value", ""),
+                (r.get("type", "unknown") or "unknown").upper(),
+                verdict,
+                vt.get("malicious", "") if not vt.get("error") else "",
+                vt.get("suspicious", "") if not vt.get("error") else "",
+                vt.get("total", "") if not vt.get("error") else "",
+                vt.get("threat_label", "") if not vt.get("error") else "",
+                ab.get("score", "") if not ab.get("error") else "",
+                ab.get("reports", "") if not ab.get("error") else "",
+                g.get("country", ""),
+                g.get("city", ""),
+                g.get("isp", ""),
+                en.get("resolved_ip", "") if en.get("kind") == "web" else "",
+                ",".join(str(p) for p in (en.get("open_ports") or [])[:8]),
+                en.get("scan_count", "") if en.get("kind") == "web" else "",
+                (ha.get("verdict", "") if isinstance(ha, dict) else "") or "",
+                (mb.get("signature", "") if isinstance(mb, dict) else "") or "",
+                en.get("found") if en.get("kind") == "hash" else "",
+                en.get("known_malicious") if en.get("kind") == "hash" else "",
+                en.get("filename", "") if en.get("kind") == "hash" else "",
+                (r.get("ai_summary") or "").strip(),
+            ])
+    return buf.getvalue()
+
+
+# --------------------------- JSON export ---------------------------
+
+def render_json(report: Dict[str, Any]) -> str:
+    """Return a machine-readable JSON dump of the report (pretty-printed)."""
+    out = {
+        "generated_utc": datetime.utcnow().isoformat() + "Z",
+        "source": "NivX Machines CyberLab",
+        "verdict": (report.get("analysis") or {}).get("verdict"),
+        "risk_score": (report.get("analysis") or {}).get("risk_score"),
+        "summary": (report.get("analysis") or {}).get("summary"),
+        "input": report.get("input"),
+        "decoded_output": report.get("output"),
+        "trace": report.get("trace") or [],
+        "analysis": report.get("analysis") or {},
+        "ai": report.get("ai") or {},
+        "enriched_iocs": report.get("enriched_iocs") or [],
+        "enrichment_meta": report.get("enrichment_meta") or {},
+    }
+    return _json.dumps(out, indent=2, default=str, ensure_ascii=False)

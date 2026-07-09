@@ -104,6 +104,40 @@ export const exportMarkdown = async (payload) => {
   return res.text();
 };
 
+// CyberLab in-page OSINT enrichment (bulk) — 20 IOC cap, depth = free|comprehensive|ai.
+export const enrichIocs = (values, depth = "comprehensive") =>
+  req("/enrich-iocs", { method: "POST", body: JSON.stringify({ values, depth }) });
+
+// One-click report download in any format. Server generates the file; we save
+// it to disk via a blob-URL anchor click.
+export const downloadReport = async (format, payload) => {
+  const paths = {
+    pdf: "/export/pdf",
+    csv: "/export/csv",
+    json: "/export/json",
+    markdown: "/export/markdown",
+  };
+  const path = paths[format];
+  if (!path) throw new Error(`Unsupported format: ${format}`);
+  const res = await fetch(`${API}/api/cyberlab${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`${format.toUpperCase()} export failed: ${res.status}`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const ext = format === "markdown" ? "md" : format;
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `nivx-cyberlab-report-${ts}.${ext}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
 export const listSessionRules = () => {
   const sid = getSessionId();
   return req(`/session-rules?session_id=${sid}`);

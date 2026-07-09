@@ -534,6 +534,10 @@ class ShareRequest(BaseModel):
     trace: List[dict] = Field(default_factory=list)
     analysis: dict = Field(default_factory=dict)
     ai: Optional[dict] = None
+    # Optional — populated when CyberLab has just run OSINT enrichment on the
+    # extracted IOCs. Included in every report format (CSV/JSON/MD/PDF).
+    enriched_iocs: List[dict] = Field(default_factory=list)
+    enrichment_meta: Optional[dict] = None
 
 
 @router.post("/share")
@@ -589,6 +593,26 @@ async def export_markdown(req: ShareRequest):
         content=md,
         media_type="text/markdown",
         headers={"Content-Disposition": f'attachment; filename="cyberlab-report-{int(time.time())}.md"'},
+    )
+
+
+@router.post("/export/csv")
+async def export_csv(req: ShareRequest):
+    csv_text = exports.render_csv(req.model_dump())
+    return Response(
+        content=csv_text,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="cyberlab-report-{int(time.time())}.csv"'},
+    )
+
+
+@router.post("/export/json")
+async def export_json(req: ShareRequest):
+    js = exports.render_json(req.model_dump())
+    return Response(
+        content=js,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="cyberlab-report-{int(time.time())}.json"'},
     )
 
 

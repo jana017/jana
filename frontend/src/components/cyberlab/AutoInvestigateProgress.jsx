@@ -16,6 +16,7 @@ const STAGE_META = {
   "parse-log":   { label: "Parse Log",        icon: Network,   hint: "Normalize forensic events + build process tree" },
   analyze:       { label: "Threat Analysis",  icon: Radar,     hint: "MITRE ATT&CK · YARA-lite · IOCs · risk" },
   ai:            { label: "AI Analyst",       icon: Brain,     hint: "Claude Sonnet 4.5 · SIEM queries" },
+  enrich:        { label: "OSINT Enrich",     icon: FileSearch,hint: "VT · AbuseIPDB · Shodan · urlscan · CIRCL" },
   render:        { label: "Render",           icon: Radar,     hint: "Attack chain + investigation timeline" },
 };
 

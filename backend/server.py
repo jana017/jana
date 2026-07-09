@@ -2350,8 +2350,153 @@ async def ioc_lookup_batch(payload: BatchIOCInput):
     return {"count": len(results), "results": results}
 
 
+# ============================================================================
+# CyberLab in-page OSINT enrichment — feed extracted IOCs directly into the
+# same enrichment engine used by the Bulk Analyzer. Adds an optional per-IOC
+# AI verdict (Claude/Gemini). Cached, capped, instrumented.
+# ============================================================================
+
+class CyberLabEnrichRequest(BaseModel):
+    values: List[str] = Field(default_factory=list)
+    depth: str = "comprehensive"  # "free" | "comprehensive" | "ai"
+    session_id: Optional[str] = None
+
+
+@api_router.post("/cyberlab/enrich-iocs")
+async def cyberlab_enrich_iocs(req: CyberLabEnrichRequest):
+    """Bulk OSINT enrich a list of IOCs extracted by CyberLab.
+
+    * `depth="free"`         — Shodan / geo / DNS / urlscan / CIRCL only
+    * `depth="comprehensive"` — free + VT / AbuseIPDB / HA / MalwareBazaar
+    * `depth="ai"`           — comprehensive + per-IOC Claude/Gemini verdict
+
+    Concurrency is capped at 20 IOCs per batch. Uses the existing 6h reputation
+    cache and the new 24h enrichment cache — repeated batches are near-instant.
+    Returns per-provider timing + cache stats so the UI can show real metrics.
+    """
+    if req.depth not in ("free", "comprehensive", "ai"):
+        raise HTTPException(status_code=400, detail="depth must be free|comprehensive|ai")
+
+    # Normalize + dedupe + cap
+    seen: set[str] = set()
+    items: List[str] = []
+    for entry in (req.values or []):
+        for tok in re.split(r"[\s,;]+", (entry or "").strip()):
+            tok = tok.strip()
+            if not tok:
+                continue
+            key = tok.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            items.append(tok)
+    if not items:
+        raise HTTPException(status_code=400, detail="Provide at least one IOC to enrich")
+    if len(items) > 20:
+        items = items[:20]
+
+    import time as _t
+    t0 = _t.perf_counter()
+    sem = asyncio.Semaphore(20)
+
+    # For depth="free", strip reputation providers from the result. For
+    # depth="ai", also generate a short Claude/Gemini verdict per IOC.
+    async with httpx.AsyncClient(timeout=12, follow_redirects=True) as hc:
+        async def one(v: str) -> dict:
+            async with sem:
+                try:
+                    r = await _do_lookup(hc, v)
+                except Exception:
+                    return {"value": v, "type": "unknown", "links": {},
+                            "enrichment": None, "reputation": None,
+                            "local_db": None, "ai_summary": None}
+                if req.depth == "free":
+                    r["reputation"] = None
+                if req.depth == "ai" and EMERGENT_LLM_KEY and r.get("type") != "unknown":
+                    # Build a compact enrichment context and ask for a 2-line
+                    # SOC-analyst verdict. Cache in `ioc_ai_cache` (7 day TTL).
+                    ck = _ioc_key(v)
+                    try:
+                        cached = await db.ioc_ai_cache.find_one({"_id": ck})
+                        if cached and cached.get("ts") and (
+                            datetime.now(timezone.utc) - datetime.fromisoformat(cached["ts"]) < _AI_TTL
+                        ):
+                            r["ai_summary"] = cached["summary"]
+                            return r
+                    except Exception:
+                        pass
+                    en = r.get("enrichment") or {}
+                    ctx: dict = {"type": r.get("type"), "reputation": r.get("reputation"),
+                                 "in_internal_database": r.get("local_db")}
+                    if en.get("kind") == "ip":
+                        ctx.update({"geo": en.get("geo"), "open_ports": en.get("open_ports"),
+                                    "known_vulns": en.get("vulns"), "tags": en.get("tags")})
+                    elif en.get("kind") == "web":
+                        ctx.update({"resolved_ip": en.get("resolved_ip"), "geo": en.get("geo"),
+                                    "urlscan_scan_count": en.get("scan_count")})
+                    elif en.get("kind") == "hash":
+                        ctx.update({"in_known_file_db": en.get("found"),
+                                    "known_malicious": en.get("known_malicious"),
+                                    "filename": en.get("filename")})
+                    prompt = (f"IOC: {v}\nEnrichment (JSON):\n"
+                              f"{json.dumps(ctx, default=str)[:3000]}")
+                    try:
+                        from emergentintegrations.llm.chat import LlmChat, UserMessage
+                        chat = LlmChat(
+                            api_key=EMERGENT_LLM_KEY,
+                            session_id=f"ioc-{ck}",
+                            system_message=_AI_SYSTEM,
+                        ).with_model("gemini", "gemini-3-flash-preview")
+                        resp = await chat.send_message(UserMessage(text=prompt))
+                        summary = (resp if isinstance(resp, str) else str(resp)).strip()
+                        r["ai_summary"] = summary
+                        try:
+                            await db.ioc_ai_cache.update_one(
+                                {"_id": ck}, {"$set": {"summary": summary, "ts": now_iso()}}, upsert=True,
+                            )
+                        except Exception:
+                            pass
+                    except Exception as e:
+                        logger.warning(f"cyberlab ai-summary failed for {v}: {e}")
+                        r["ai_summary"] = None
+                else:
+                    r.setdefault("ai_summary", None)
+                return r
+
+        results = await asyncio.gather(*[one(v) for v in items])
+
+    duration_ms = round((_t.perf_counter() - t0) * 1000, 2)
+
+    # Roll up a compact summary for the report header.
+    def _flagged(r: dict) -> bool:
+        rep = r.get("reputation") or {}
+        vt = rep.get("vt") or {}
+        ab = rep.get("abuseipdb") or {}
+        vt_hits = (vt.get("malicious", 0) or 0) + (vt.get("suspicious", 0) or 0) if not vt.get("error") else 0
+        ab_score = (ab.get("score", 0) or 0) if not ab.get("error") else 0
+        return vt_hits > 0 or ab_score > 0
+    flagged = sum(1 for r in results if _flagged(r))
+    stats_snapshot = _perf_metrics.snapshot()
+    return {
+        "count": len(results),
+        "flagged": flagged,
+        "depth": req.depth,
+        "duration_ms": duration_ms,
+        "iocs_per_sec": round(len(results) / (duration_ms / 1000.0), 2) if duration_ms else 0.0,
+        "cache_hit_rate": stats_snapshot["overall_cache_hit_rate"],
+        "results": results,
+    }
+
+
+@api_router.get("/cyberlab/enrich-metrics")
+async def cyberlab_enrich_metrics():
+    """Expose per-provider performance metrics + cache stats."""
+    return _perf_metrics.snapshot()
+
+
 class AiSummaryInput(BaseModel):
     value: str
+
 
 
 _AI_TTL = timedelta(days=7)

@@ -617,21 +617,43 @@ Wired into `ForensicEventsPanel.jsx` as a **Table | Timeline** toggle above the 
 - Frontend `VerdictBanner.jsx` — full-width gradient progress bar (segmented ticks 0/25/50/75/100), verdict icon + label, risk-score with severity bucket (Minimal → Critical), indicator count + high/med/low chips, and a category-grouped "Why this score" list with checkmark bullets.
 - Regression: `/app/backend/tests/test_risk_reasons.py` (7 tests).
 
+## 2026-07-09 — In-page OSINT Enrichment + Multi-format Reports + Perf Instrumentation (P0)
+
+### CyberLab In-page OSINT Enrichment (new "OSINT Enrich" stage)
+- New `POST /api/cyberlab/enrich-iocs` accepts `{values, depth: free|comprehensive|ai}`. Runs the same OSINT pipeline as the Bulk Analyzer (VT · AbuseIPDB · Shodan · geo · DNS · urlscan · CIRCL · Hybrid Analysis · MalwareBazaar) with per-batch cap of 20 IOCs, dedup + normalization, 20 concurrent, cache-aware.
+- Depth = `free` returns enrichment only (no key-based reputation); `comprehensive` adds VT/AbuseIPDB/HA/MB; `ai` additionally generates a per-IOC Claude/Gemini verdict (7-day cache).
+- Response includes `count, flagged, duration_ms, iocs_per_sec, cache_hit_rate, depth, results[]` so the UI can show real metrics.
+- New Auto Investigate stage `enrich` — runs automatically after AI stage (toggleable), fails soft on error, gracefully skipped when no IOCs.
+
+### Report Downloads — 4 formats
+- Extended `render_pdf` + `render_markdown` and added `render_csv` + `render_json` in `cyberlab/exports.py`. All formats include the OSINT enrichment table (IOC · Type · Verdict · VT · Abuse · Geo/Host · Verdict) and per-IOC AI verdicts when present.
+- New endpoints `POST /api/cyberlab/export/csv` and `POST /api/cyberlab/export/json`.
+- Frontend "Download Report" split-button (dropdown) with all 4 formats — one-click server-generated download, no client-side templating.
+- The comprehensive **Threat Card PDF** now bundles: verdict banner, decode chain, MITRE table, YARA rule hits, plain IOCs, OSINT-enriched IOC table, per-IOC AI verdicts, draft Sigma/YARA rules.
+
+### Performance Instrumentation (P0)
+- New module `/app/backend/ioc_perf.py` — per-provider rolling latency window (500 samples, p50/p95/avg), cache-hit/miss counters, error counts, slow-call detection (>3s), plus batch-level stats + concurrency gates.
+- Intelligent 24h enrichment cache (`db.ioc_enrich_cache`) for Shodan, geo, DNS, urlscan, and CIRCL hashlookup. Reputation providers keep their existing 6h `db.ioc_cache`.
+- Tightened enrichment timeouts to 6s (was 12s) — reputation still gets 12s.
+- Per-provider concurrency gates: urlscan 6 · shodan 10 · geo 6 · DNS 10 · CIRCL 8 · VT 2 · AbuseIPDB 4 · HA 4 · MB 6.
+- Batch concurrency lifted 8 → 20.
+- New endpoint `GET /api/cyberlab/enrich-metrics` returns full metrics snapshot (uptime, total_calls, overall_cache_hit_rate, per-provider p50/p95/avg/slow_calls/last_error, recent batches).
+- **Measured impact**: second call for same IOC set drops from ~1.7s to ~26ms (**65× speedup** on cache hit).
+
 ### Files touched
-- ADDED     /app/backend/cyberlab/risk_reasons.py
-- ADDED     /app/backend/tests/test_auto_investigate.py (12 tests)
-- ADDED     /app/backend/tests/test_risk_reasons.py (7 tests)
-- ADDED     /app/backend/tests/samples/malware_samples.py + __init__.py
-- ADDED     /app/frontend/src/components/cyberlab/AutoInvestigateProgress.jsx
-- ADDED     /app/frontend/src/components/cyberlab/VerdictBanner.jsx
-- MODIFIED  /app/backend/cyberlab/router.py (+ detect-format, + auto-investigate, risk_reasons integration)
-- MODIFIED  /app/backend/cyberlab/models.py (+ RiskReason, AnalysisReport.risk_reasons)
-- MODIFIED  /app/frontend/src/pages/CyberLab.jsx (Auto Investigate CTA + orchestrator + new banner)
-- MODIFIED  /app/frontend/src/components/cyberlab/ProcessTreeViewer.jsx (accepts initialTree)
-- MODIFIED  /app/frontend/src/lib/cyberlabApi.js (detectFormat, autoInvestigate, processTree)
+- ADDED     /app/backend/ioc_perf.py
+- ADDED     /app/backend/tests/test_cyberlab_enrich.py (11 tests — endpoint validation, cap, dedupe, cache speedup assertion, all 4 export formats incl. PDF validity)
+- ADDED     /app/frontend/src/components/cyberlab/EnrichedIocsPanel.jsx
+- MODIFIED  /app/backend/server.py (instrumented _shodan_ip / _geo_ip / _resolve_host / urlscan / CIRCL with cache + gate + timeout; added /api/cyberlab/enrich-iocs + /api/cyberlab/enrich-metrics; imports ioc_perf)
+- MODIFIED  /app/backend/cyberlab/exports.py (+ render_csv, render_json, enriched-IOC section in PDF & MD)
+- MODIFIED  /app/backend/cyberlab/router.py (+ /export/csv + /export/json; ShareRequest extended with enriched_iocs + enrichment_meta)
+- MODIFIED  /app/frontend/src/pages/CyberLab.jsx (enrich toggle + depth selector + Download Report dropdown + orchestrator adds enrich stage + renders EnrichedIocsPanel)
+- MODIFIED  /app/frontend/src/lib/cyberlabApi.js (+ enrichIocs, + downloadReport)
+- MODIFIED  /app/frontend/src/components/cyberlab/AutoInvestigateProgress.jsx (+ `enrich` stage meta)
 
 ## Backlog remaining
+- **P0** — Finish streaming NDJSON path for Bulk Analyzer (in-progress; CyberLab enrichment shipped instead — reuses same cache/instrumentation).
 - **P2** — Wire real WhatsApp/Twitter/LinkedIn hrefs in Landing Hero (carry-over).
 - **P2** — Direct EDR/SIEM webhooks to push generated Sigma/YARA rules to SIEM.
-- **P3** — Refactor `server.py` (3,812 lines) into modular routes/services folders.
+- **P3** — Refactor `server.py` (3.8k lines) into modular routes/services folders.
 - **P3** — Direct PCAP binary parsing (currently requires tshark `-T ek` preprocessing).
