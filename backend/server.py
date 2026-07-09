@@ -849,6 +849,33 @@ async def _otx_sync_loop():
         await asyncio.sleep(OTX_SYNC_INTERVAL_SEC)
 
 
+BULK_IOC_SYNC_INTERVAL_SEC = 2 * 60 * 60  # 2 hours — refreshes the whole IOC DB on a rolling window
+
+
+async def _bulk_ioc_sync_loop():
+    """Refreshes every bulk-IOC source (Hybrid Analysis, AbuseIPDB, MalwareBazaar,
+    Malwarebytes, VT Enterprise if a key is present, and the Talos community
+    blocklists) on a fixed cadence so the curated IOC DB and dashboard numbers
+    stay fresh without any manual click."""
+    await asyncio.sleep(45)  # let OTX go first + app fully warm
+    while True:
+        try:
+            tasks = [
+                _sync_hybrid_analysis_feed() if HYBRID_ANALYSIS_API_KEY else None,
+                _sync_abuseipdb_blacklist()   if ABUSEIPDB_API_KEY       else None,
+                _sync_malwarebazaar_recent()  if MALWAREBAZAAR_API_KEY   else None,
+                _sync_malwarebytes_iocs(),
+                _sync_virustotal_intel()      if VT_API_KEY              else None,
+                _sync_talos_blocklist(),
+            ]
+            active = [t for t in tasks if t is not None]
+            await asyncio.gather(*active, return_exceptions=True)
+            logger.info("Bulk-IOC scheduled sync loop iteration complete")
+        except Exception as e:
+            logger.error(f"Bulk-IOC loop error: {e}")
+        await asyncio.sleep(BULK_IOC_SYNC_INTERVAL_SEC)
+
+
 # ---------------------------------------------------------------------------
 # Hybrid Analysis "latest feed" sync — pulls last 250 sandbox submissions
 # and upserts their SHA256 hashes into the curated IOC database.
@@ -1177,6 +1204,166 @@ async def _sync_malwarebytes_iocs(max_articles: int = MWB_MAX_ARTICLES) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# VirusTotal Enterprise sync — pulls Livehunt-matched files (YARA hits) and
+# the unified IOC Stream (files/urls/domains/ips) into the curated IOC DB.
+# Requires an ENTERPRISE key; free-tier keys will 401 and we log-and-skip
+# so nothing else breaks.
+# ---------------------------------------------------------------------------
+VT_INTEL_LIVEHUNT_URL   = "https://www.virustotal.com/api/v3/intelligence/hunting_notification_files"
+VT_INTEL_IOC_STREAM_URL = "https://www.virustotal.com/api/v3/intelligence/ioc_stream_notifications"
+VT_INTEL_MAX_ITEMS = 200
+
+
+def _vt_severity(stats: dict) -> str:
+    mal = int((stats or {}).get("malicious") or 0)
+    susp = int((stats or {}).get("suspicious") or 0)
+    if mal >= 20:
+        return "critical"
+    if mal >= 5:
+        return "high"
+    if mal >= 1 or susp >= 3:
+        return "medium"
+    return "low"
+
+
+async def _sync_virustotal_intel(max_items: int = VT_INTEL_MAX_ITEMS) -> dict:
+    """VT Enterprise: pull Livehunt file matches + IOC Stream notifications and
+    upsert them into the `iocs` collection. Non-enterprise keys yield a friendly
+    'not_enterprise' skip, not an error."""
+    if not VT_API_KEY:
+        return {"error": "VIRUSTOTAL_API_KEY not configured", "items": 0, "added": 0, "updated": 0, "skipped": 0}
+    added = updated = skipped = items_seen = 0
+    headers = {"x-apikey": VT_API_KEY, "accept": "application/json"}
+    async with httpx.AsyncClient(timeout=25, follow_redirects=True) as hc:
+        # 1) Livehunt file matches
+        try:
+            r = await hc.get(VT_INTEL_LIVEHUNT_URL, headers=headers, params={"limit": min(40, max_items)})
+            if r.status_code in (401, 403):
+                return {"skipped": True, "reason": "VT Enterprise tier required (free-tier key detected)", "items": 0, "added": 0, "updated": 0}
+            if r.status_code == 200:
+                payload = r.json() or {}
+                for it in (payload.get("data") or [])[:max_items]:
+                    items_seen += 1
+                    attrs = it.get("attributes") or {}
+                    ctx = it.get("context_attributes") or {}
+                    sha256 = attrs.get("sha256") or it.get("id")
+                    if not sha256:
+                        skipped += 1
+                        continue
+                    stats = attrs.get("last_analysis_stats") or {}
+                    name = attrs.get("meaningful_name") or (ctx.get("rule_name") and f"Livehunt: {ctx['rule_name']}") or "VT Livehunt match"
+                    tags = ["virustotal", "livehunt"]
+                    if ctx.get("rule_name"):
+                        tags.append(f"rule:{ctx['rule_name']}")
+                    for t in (ctx.get("tags") or [])[:6]:
+                        if t:
+                            tags.append(str(t))
+                    notes = f"vt_stats={stats.get('malicious',0)}m/{stats.get('suspicious',0)}s · {attrs.get('type_description') or ''}".strip(" ·")
+                    try:
+                        _, created = await _upsert_ioc(sha256, name[:80], tags, f"VirusTotal Livehunt · {sha256[:8]}", _vt_severity(stats), notes[:180])
+                        added += 1 if created else 0
+                        updated += 0 if created else 1
+                    except Exception:
+                        skipped += 1
+        except Exception as e:
+            logger.warning(f"VT Livehunt fetch failed: {e}")
+
+        # 2) IOC Stream — unified files/urls/domains/ips notifications
+        try:
+            r = await hc.get(VT_INTEL_IOC_STREAM_URL, headers=headers, params={"limit": min(40, max_items)})
+            if r.status_code == 200:
+                payload = r.json() or {}
+                for it in (payload.get("data") or [])[:max_items]:
+                    items_seen += 1
+                    ent = (it.get("context_attributes") or {}).get("notification_source_key") or ""
+                    ent_type = it.get("type", "")
+                    # IOC Stream returns nested "attributes" per object type.
+                    attrs = it.get("attributes") or {}
+                    value = None
+                    if ent_type in ("file", "hunting_notification"):
+                        value = attrs.get("sha256") or it.get("id")
+                    elif ent_type in ("domain", "domain_notification"):
+                        value = attrs.get("id") or it.get("id")
+                    elif ent_type in ("url", "url_notification"):
+                        value = attrs.get("url") or attrs.get("id")
+                    elif ent_type in ("ip_address", "ip_notification"):
+                        value = attrs.get("id") or it.get("id")
+                    else:
+                        value = it.get("id")
+                    if not value or _classify_ioc(str(value)) == "unknown":
+                        skipped += 1
+                        continue
+                    stats = attrs.get("last_analysis_stats") or {}
+                    tags = ["virustotal", "ioc-stream"]
+                    if ent:
+                        tags.append(f"stream:{ent}")
+                    try:
+                        _, created = await _upsert_ioc(str(value), "VT IOC Stream match", tags, "VirusTotal IOC Stream", _vt_severity(stats), None)
+                        added += 1 if created else 0
+                        updated += 0 if created else 1
+                    except Exception:
+                        skipped += 1
+        except Exception as e:
+            logger.warning(f"VT IOC Stream fetch failed: {e}")
+
+    summary = {"items": items_seen, "added": added, "updated": updated, "skipped": skipped, "synced_at": now_iso()}
+    try:
+        await db.sync_meta.update_one({"_id": "virustotal"}, {"$set": summary}, upsert=True)
+    except Exception:
+        pass
+    logger.info(f"VirusTotal Enterprise sync complete: {summary}")
+    return summary
+
+
+# ---------------------------------------------------------------------------
+# Community-blocklist sync — Cisco Talos gates bulk downloads behind login/CF,
+# so we source from the industry-standard public feeds that also power Talos'
+# community lists: Emerging Threats compromised-IPs + Abuse.ch Feodo Tracker.
+# Both refresh hourly, no key required.
+# ---------------------------------------------------------------------------
+TALOS_COMMUNITY_FEEDS = [
+    ("Emerging Threats compromised-ips", "https://rules.emergingthreats.net/blockrules/compromised-ips.txt", ["talos", "et-community", "blocklist"]),
+    ("Feodo Tracker (abuse.ch)",         "https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.txt", ["talos", "feodo-tracker", "botnet-c2"]),
+]
+
+
+async def _sync_talos_blocklist() -> dict:
+    added = updated = skipped = total_ips = 0
+    async with httpx.AsyncClient(timeout=20, follow_redirects=True, headers={"User-Agent": "NivX-ThreatIntel/1.0"}) as hc:
+        for label, url, tags in TALOS_COMMUNITY_FEEDS:
+            try:
+                r = await hc.get(url)
+                if r.status_code != 200:
+                    logger.warning(f"{label} HTTP {r.status_code}")
+                    continue
+                for line in r.text.splitlines():
+                    s = line.strip()
+                    if not s or s.startswith("#"):
+                        continue
+                    if _classify_ioc(s) != "ip":
+                        continue
+                    total_ips += 1
+                    if total_ips > 4000:  # global cap across all feeds
+                        break
+                    try:
+                        _, created = await _upsert_ioc(s, f"{label} entry", tags, label, "high", "Community IP blocklist")
+                        added += 1 if created else 0
+                        updated += 0 if created else 1
+                    except Exception:
+                        skipped += 1
+            except Exception as e:
+                logger.warning(f"{label} fetch error: {e}")
+                continue
+    summary = {"items": total_ips, "added": added, "updated": updated, "skipped": skipped, "synced_at": now_iso()}
+    try:
+        await db.sync_meta.update_one({"_id": "talos"}, {"$set": summary}, upsert=True)
+    except Exception:
+        pass
+    logger.info(f"Talos-community blocklist sync complete: {summary}")
+    return summary
+
+
+# ---------------------------------------------------------------------------
 # Multi-source curated-IOC sync orchestrator (One-click "Sync all sources")
 # ---------------------------------------------------------------------------
 SYNC_SOURCES = [
@@ -1186,9 +1373,9 @@ SYNC_SOURCES = [
     ("abuseipdb",       "AbuseIPDB",         True,  None),
     ("malwarebazaar",   "MalwareBazaar",     True,  None),
     ("malwarebytes",    "Malwarebytes Labs", True,  None),
+    ("virustotal",      "VirusTotal (Enterprise)", True, None),
+    ("talos",           "Talos-Community Blocklists (ET + Feodo)", True,  None),
     ("urlscan",         "URLScan.io",        False, "Bulk 'malicious verdicts' search requires urlscan Pro"),
-    ("virustotal",      "VirusTotal",        False, "Bulk hunting feed requires VT Enterprise tier"),
-    ("talos",           "Cisco Talos",       False, "No public bulk IOC feed available"),
     ("shodan",          "Shodan",            False, "Not a curated IOC feed (internet scan engine)"),
 ]
 
@@ -1211,7 +1398,7 @@ async def iocs_sync_status():
         "malwarebytes": True,
         "urlscan": bool(URLSCAN_API_KEY) if 'URLSCAN_API_KEY' in globals() else False,
         "virustotal": bool(VT_API_KEY) if 'VT_API_KEY' in globals() else False,
-        "talos": False,
+        "talos": True,
         "shodan": False,
     }
     sources = []
@@ -1230,14 +1417,17 @@ async def iocs_sync_status():
 @api_router.post("/iocs/sync-all")
 async def iocs_sync_all(user: dict = Depends(get_current_user)):
     """One-click sync across every source that provides a bulk IOC feed.
-    Runs OTX + Hybrid Analysis + AbuseIPDB + MalwareBazaar in parallel. Sources
-    without a public bulk feed (VT / URLScan / Talos / Shodan) are reported as skipped."""
+    Runs OTX + Hybrid Analysis + AbuseIPDB + MalwareBazaar + Malwarebytes +
+    VT Enterprise + Cisco Talos in parallel. Sources without a public bulk
+    feed (URLScan / Shodan) are reported as skipped."""
     tasks = {
         "otx": _sync_otx_pulses() if OTX_API_KEY else None,
         "hybrid_analysis": _sync_hybrid_analysis_feed() if HYBRID_ANALYSIS_API_KEY else None,
         "abuseipdb": _sync_abuseipdb_blacklist() if ABUSEIPDB_API_KEY else None,
         "malwarebazaar": _sync_malwarebazaar_recent() if MALWAREBAZAAR_API_KEY else None,
         "malwarebytes": _sync_malwarebytes_iocs(),
+        "virustotal": _sync_virustotal_intel() if VT_API_KEY else None,
+        "talos": _sync_talos_blocklist(),
     }
     active_keys = [k for k, v in tasks.items() if v is not None]
     results_list = await asyncio.gather(*[tasks[k] for k in active_keys], return_exceptions=True)
@@ -2769,6 +2959,34 @@ API_KEY_SETTINGS = [
 ]
 _API_KEY_INDEX = {k["name"]: k for k in API_KEY_SETTINGS}
 
+# When an admin saves one of these API keys, we auto-fire the matching bulk-IOC
+# sync in the background so fresh data flows in immediately (no manual click).
+_KEY_SYNC_MAP = {
+    "VIRUSTOTAL_API_KEY":      ("virustotal",      "_sync_virustotal_intel"),
+    "OTX_API_KEY":             ("otx",             "_sync_otx_pulses"),
+    "HYBRID_ANALYSIS_API_KEY": ("hybrid_analysis", "_sync_hybrid_analysis_feed"),
+    "ABUSEIPDB_API_KEY":       ("abuseipdb",       "_sync_abuseipdb_blacklist"),
+    "MALWAREBAZAAR_API_KEY":   ("malwarebazaar",   "_sync_malwarebazaar_recent"),
+}
+
+
+def _fire_sync_for_key(key_name: str) -> bool:
+    """Kick off the matching sync in the background. Returns True if fired."""
+    m = _KEY_SYNC_MAP.get(key_name)
+    if not m:
+        return False
+    _label, fn_name = m
+    fn = globals().get(fn_name)
+    if not fn:
+        return False
+    try:
+        asyncio.create_task(fn())
+        logger.info(f"Auto-sync fired for {key_name} → {fn_name}")
+        return True
+    except Exception as e:
+        logger.warning(f"Auto-sync trigger failed for {key_name}: {e}")
+        return False
+
 COMMUNITY_SOURCES = [
     {"slug": "talos",         "label": "Cisco Talos Intelligence"},
     {"slug": "unit42",        "label": "Palo Alto Unit 42"},
@@ -2919,10 +3137,10 @@ async def admin_settings_upsert_key(name: str, payload: ApiKeyUpdate, user: dict
     value = (payload.value or "").strip()
     if not value:
         raise HTTPException(status_code=400, detail="Value must not be empty. Use DELETE to clear an override.")
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso_ts = datetime.now(timezone.utc).isoformat()
     await db.app_settings.update_one(
         {"key": name},
-        {"$set": {"key": name, "value": value, "updated_at": now_iso, "updated_by": user.get("email")}},
+        {"$set": {"key": name, "value": value, "updated_at": now_iso_ts, "updated_by": user.get("email")}},
         upsert=True,
     )
     # Append to history (dedupe if identical to the most recent entry to keep the log tidy).
@@ -2931,11 +3149,14 @@ async def admin_settings_upsert_key(name: str, payload: ApiKeyUpdate, user: dict
         await db.api_key_history.insert_one({
             "key_name": name,
             "value": value,
-            "applied_at": now_iso,
+            "applied_at": now_iso_ts,
             "applied_by": user.get("email"),
         })
     await _load_settings_from_db()  # apply live
-    return {"ok": True, "masked": _mask_key(value), "source": "db"}
+    # Auto-fire the matching bulk-IOC sync in the background so the new key
+    # immediately pulls fresh data without the admin having to click "Sync".
+    _fire_sync_for_key(name)
+    return {"ok": True, "masked": _mask_key(value), "source": "db", "sync_triggered": name in _KEY_SYNC_MAP}
 
 
 @api_router.get("/admin/settings/api-key/{name}/history")
@@ -2972,22 +3193,44 @@ async def admin_settings_apply_history(name: str, history_id: str, user: dict = 
     if not doc:
         raise HTTPException(status_code=404, detail="History entry not found")
     value = doc.get("value") or ""
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso_ts = datetime.now(timezone.utc).isoformat()
     await db.app_settings.update_one(
         {"key": name},
-        {"$set": {"key": name, "value": value, "updated_at": now_iso, "updated_by": user.get("email")}},
+        {"$set": {"key": name, "value": value, "updated_at": now_iso_ts, "updated_by": user.get("email")}},
         upsert=True,
     )
     # Log the re-apply as a new history entry so the timeline stays accurate.
     await db.api_key_history.insert_one({
         "key_name": name,
         "value": value,
-        "applied_at": now_iso,
+        "applied_at": now_iso_ts,
         "applied_by": user.get("email"),
         "note": f"re-applied from {doc.get('applied_at')}",
     })
     await _load_settings_from_db()
-    return {"ok": True, "masked": _mask_key(value), "source": "db"}
+    _fire_sync_for_key(name)
+    return {"ok": True, "masked": _mask_key(value), "source": "db", "sync_triggered": name in _KEY_SYNC_MAP}
+
+
+@api_router.post("/admin/settings/api-key/{name}/sync")
+async def admin_settings_manual_sync(name: str, user: dict = Depends(get_current_user)):
+    """Manually trigger the bulk-IOC sync tied to a specific provider key.
+    Runs inline so the admin gets the summary back in the response."""
+    if name not in _API_KEY_INDEX:
+        raise HTTPException(status_code=404, detail=f"Unknown key: {name}")
+    m = _KEY_SYNC_MAP.get(name)
+    if not m:
+        return {"ok": False, "reason": "no_sync_available", "message": f"{name} has no bulk IOC feed to sync (used only for on-demand lookups)."}
+    label, fn_name = m
+    fn = globals().get(fn_name)
+    if not fn:
+        return {"ok": False, "reason": "sync_fn_missing", "message": f"Sync function {fn_name} not available."}
+    try:
+        result = await fn()
+        return {"ok": True, "source": label, "result": result}
+    except Exception as e:
+        logger.error(f"Manual sync failed for {name}: {e}")
+        raise HTTPException(status_code=502, detail=f"Sync failed: {e}")
 
 
 @api_router.delete("/admin/settings/api-key/{name}")
@@ -3209,6 +3452,9 @@ async def startup():
     if OTX_API_KEY:
         asyncio.create_task(_otx_sync_loop())
         logger.info("AlienVault OTX sync loop scheduled (startup + daily)")
+    # Bulk-IOC sources (HA/AbuseIPDB/MalwareBazaar/Malwarebytes/VT/Talos) refresh every 2h
+    asyncio.create_task(_bulk_ioc_sync_loop())
+    logger.info(f"Bulk-IOC sync loop scheduled every {BULK_IOC_SYNC_INTERVAL_SEC//3600}h")
 
 
 @app.on_event("shutdown")

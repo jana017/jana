@@ -1,7 +1,15 @@
 import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
-import { CheckCircle2, XCircle, Loader2, ExternalLink, KeyRound, Radio, RefreshCw, Save, Trash2, Server, History, ChevronDown, ChevronUp, Rewind } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, ExternalLink, KeyRound, Radio, RefreshCw, Save, Trash2, Server, History, ChevronDown, ChevronUp, Rewind, Database, Zap } from "lucide-react";
 import { api } from "@/lib/api";
+
+const SYNCABLE_KEYS = new Set([
+  "VIRUSTOTAL_API_KEY",
+  "OTX_API_KEY",
+  "HYBRID_ANALYSIS_API_KEY",
+  "ABUSEIPDB_API_KEY",
+  "MALWAREBAZAAR_API_KEY",
+]);
 
 const SOURCE_BADGE = {
   db:      { text: "Active · DB",  cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
@@ -9,17 +17,20 @@ const SOURCE_BADGE = {
   missing: { text: "Missing",       cls: "bg-red-50 text-red-700 border-red-200" },
 };
 
-function ApiKeyCard({ item, onSave, onClear, onTest, onLoadHistory, onApplyHistory }) {
+function ApiKeyCard({ item, onSave, onClear, onTest, onLoadHistory, onApplyHistory, onSync }) {
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [syncResult, setSyncResult] = useState(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [applyingId, setApplyingId] = useState(null);
   const badge = SOURCE_BADGE[item.source] || SOURCE_BADGE.missing;
+  const canSync = SYNCABLE_KEYS.has(item.name);
 
   const refreshHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -70,6 +81,22 @@ function ApiKeyCard({ item, onSave, onClear, onTest, onLoadHistory, onApplyHisto
     finally { setTesting(false); }
   };
 
+  const doSync = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await onSync(item.name);
+      setSyncResult(res);
+      const r = res?.result || {};
+      if (res?.ok) {
+        if (r.skipped) toast.info(`${item.label} sync skipped: ${r.reason || "provider unavailable"}`);
+        else toast.success(`${item.label} sync: +${r.added || 0} new, ${r.updated || 0} updated, ${r.items || 0} scanned`);
+      }
+    }
+    catch (e) { setSyncResult({ ok: false, message: e?.response?.data?.detail || "Sync failed" }); toast.error(e?.response?.data?.detail || "Sync failed"); }
+    finally { setSyncing(false); }
+  };
+
   return (
     <div data-testid={`api-key-card-${item.name}`} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
       <div className="flex items-start justify-between gap-3">
@@ -118,6 +145,16 @@ function ApiKeyCard({ item, onSave, onClear, onTest, onLoadHistory, onApplyHisto
         >
           {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Test connection
         </button>
+        {canSync && (
+          <button
+            data-testid={`api-key-sync-${item.name}`}
+            onClick={doSync}
+            disabled={syncing}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-800 border border-emerald-200 hover:border-emerald-400 bg-emerald-50 rounded-md px-3 py-1.5"
+          >
+            {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />} Sync IOCs now
+          </button>
+        )}
         <a
           href={item.get_url}
           target="_blank"
@@ -144,6 +181,21 @@ function ApiKeyCard({ item, onSave, onClear, onTest, onLoadHistory, onApplyHisto
           >
             {testResult.ok ? <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" /> : <XCircle className="w-4 h-4 mt-0.5 shrink-0" />}
             <span>{testResult.message}</span>
+          </div>
+        )}
+        {syncResult && (
+          <div
+            data-testid={`api-key-sync-result-${item.name}`}
+            className={`w-full mt-2 flex items-start gap-2 text-xs rounded-md border px-3 py-2 ${syncResult.ok && !(syncResult.result?.skipped) ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-amber-50 border-amber-200 text-amber-800"}`}
+          >
+            <Database className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>
+              {syncResult.result?.skipped
+                ? `Skipped — ${syncResult.result.reason || "provider unavailable"}`
+                : syncResult.result
+                  ? `Sync complete · +${syncResult.result.added || 0} new · ${syncResult.result.updated || 0} updated · ${syncResult.result.items || 0} scanned`
+                  : syncResult.message || "Sync ran"}
+            </span>
           </div>
         )}
       </div>
@@ -234,6 +286,8 @@ function CommunitySources({ available, enabled, onUpdate }) {
 export default function AdminSettings() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
+  const [syncingAll, setSyncingAll] = useState(false);
+  const [syncAllResult, setSyncAllResult] = useState(null);
 
   const load = useCallback(async () => {
     try { const { data } = await api.get("/admin/settings"); setData(data); }
@@ -247,7 +301,23 @@ export default function AdminSettings() {
   const testKey = async (name) => { const { data } = await api.post(`/admin/settings/api-key/${name}/test`); return data; };
   const loadHistory = async (name) => { const { data } = await api.get(`/admin/settings/api-key/${name}/history`); return data.history || []; };
   const applyHistory = async (name, id) => { await api.post(`/admin/settings/api-key/${name}/apply-history/${id}`); await load(); };
+  const syncKey = async (name) => { const { data } = await api.post(`/admin/settings/api-key/${name}/sync`); return data; };
   const updateSources = async (enabled) => { await api.put("/admin/settings/community-sources", { enabled }); await load(); };
+
+  const doSyncAll = async () => {
+    setSyncingAll(true);
+    setSyncAllResult(null);
+    try {
+      const { data } = await api.post("/iocs/sync-all");
+      setSyncAllResult(data);
+      const t = data?.totals || {};
+      toast.success(`All sources synced · +${t.added || 0} new · ${t.updated || 0} updated`);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Sync-all failed");
+    } finally {
+      setSyncingAll(false);
+    }
+  };
 
   if (err) return <div className="mx-auto max-w-7xl px-6 py-10 text-sm text-red-600" data-testid="settings-error">{err}</div>;
   if (!data) return <div className="mx-auto max-w-7xl px-6 py-10 flex items-center gap-2 text-slate-500 text-sm" data-testid="settings-loading"><Loader2 className="w-4 h-4 animate-spin" /> Loading settings…</div>;
@@ -260,13 +330,28 @@ export default function AdminSettings() {
           <h2 className="font-heading text-xl font-semibold text-slate-900">OSINT API Keys</h2>
         </div>
         <p className="text-sm text-slate-500 max-w-3xl">
-          Rotate or replace provider keys live — no redeploy required. Values saved here are stored in your MongoDB and take priority over any <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">.env</code> value. This makes the app fully portable: move it to any server and you can rekey everything from this panel.
+          Rotate or replace provider keys live — no redeploy required. Saving a key <strong>auto-triggers</strong> the matching IOC feed sync so fresh data flows in immediately. Values are stored in your MongoDB and take priority over any <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">.env</code> value. This makes the app fully portable — move it to any server and re-key everything from this panel.
         </p>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            data-testid="sync-all-btn"
+            onClick={doSyncAll}
+            disabled={syncingAll}
+            className="inline-flex items-center gap-2 rounded-md bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-sm font-semibold px-4 py-2.5"
+          >
+            {syncingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />} Sync all IOC sources now
+          </button>
+          {syncAllResult && (
+            <div data-testid="sync-all-result" className="text-xs text-slate-600">
+              <strong>+{syncAllResult.totals?.added || 0} new</strong> · {syncAllResult.totals?.updated || 0} updated across {Object.keys(syncAllResult.results || {}).length} sources
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5" data-testid="settings-api-keys">
         {data.api_keys.map((k) => (
-          <ApiKeyCard key={k.name} item={k} onSave={saveKey} onClear={clearKey} onTest={testKey} onLoadHistory={loadHistory} onApplyHistory={applyHistory} />
+          <ApiKeyCard key={k.name} item={k} onSave={saveKey} onClear={clearKey} onTest={testKey} onLoadHistory={loadHistory} onApplyHistory={applyHistory} onSync={syncKey} />
         ))}
       </div>
 
