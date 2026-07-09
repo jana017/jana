@@ -23,6 +23,8 @@ function Counter({ value, suffix = "" }) {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
+    // n is intentionally the animation source, not a dep — otherwise every frame retriggers the effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
   return <>{n.toLocaleString()}{suffix}</>;
 }

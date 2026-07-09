@@ -109,6 +109,8 @@ export default function LiveThreatMap() {
     const onVis = () => { if (document.visibilityState === "visible") loadOnce(); };
     document.addEventListener("visibilitychange", onVis);
     return () => { clearInterval(iv); document.removeEventListener("visibilitychange", onVis); };
+    // loadOnce is stable for our purposes (closure over refs/state setters, no stale-closure risk).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Live 1-Hz clock for the "refreshed Ns ago" chip.
