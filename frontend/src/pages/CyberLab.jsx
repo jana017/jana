@@ -3,12 +3,16 @@ import { toast } from "sonner";
 import {
   Search, X, ChevronUp, ChevronDown, Copy, Trash2, Download, Upload, Sparkles,
   ShieldAlert, ShieldCheck, Zap, Play, Beaker, Bug, Fingerprint, Network,
-  FileWarning, RefreshCw, Layers, Radar, Target, Cpu,
+  FileWarning, RefreshCw, Layers, Radar, Target, Cpu, Share2, Plus,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Contact from "@/components/Contact";
 import useSeo from "@/lib/useSeo";
 import { listPlugins, autoDecode, runRecipe, analyze } from "@/lib/cyberlabApi";
+import AttackChainViewer from "@/components/cyberlab/AttackChainViewer";
+import AiPanel from "@/components/cyberlab/AiPanel";
+import ShareModal from "@/components/cyberlab/ShareModal";
+import CustomRuleModal from "@/components/cyberlab/CustomRuleModal";
 
 const CATEGORY_STYLE = {
   Encoding:      { chip: "bg-blue-500/10 text-blue-300 border-blue-500/30",         dot: "bg-blue-400" },
@@ -77,7 +81,10 @@ export default function CyberLab() {
   const [running, setRunning] = useState(false);
   const [autoBusy, setAutoBusy] = useState(false);
   const [result, setResult] = useState(null);
+  const [ai, setAi] = useState(null); // { summary, sigma_rule, yara_rule } — set when AI generates
   const [tab, setTab] = useState("mitre");
+  const [shareOpen, setShareOpen] = useState(false);
+  const [ruleModalOpen, setRuleModalOpen] = useState(false);
 
   useEffect(() => {
     listPlugins().then(setPlugins).catch((e) => toast.error(`Load plugins: ${e.message}`));
@@ -112,6 +119,7 @@ export default function CyberLab() {
     if (!input.trim()) { toast.error("Paste a payload first"); return; }
     setAutoBusy(true);
     setResult(null);
+    setAi(null);
     try {
       const res = await autoDecode(input, { include_analysis: true, max_depth: 10 });
       setResult(res);
@@ -130,6 +138,7 @@ export default function CyberLab() {
   const runManual = useCallback(async () => {
     if (!input.trim()) { toast.error("Paste a payload first"); return; }
     setRunning(true);
+    setAi(null);
     try {
       const res = await runRecipe(input, recipe);
       // For a manual run, also fetch full analysis of the resulting output
@@ -237,6 +246,14 @@ export default function CyberLab() {
             >
               {running ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
               Run Recipe
+            </button>
+            <button
+              data-testid="share-export-btn"
+              onClick={() => setShareOpen(true)}
+              disabled={!result}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-300 hover:text-cyan-400 border border-slate-700 hover:border-cyan-500/50 rounded-md px-3 py-2 disabled:opacity-40 transition-colors"
+            >
+              <Share2 className="w-3.5 h-3.5" /> Share / Export
             </button>
             <label
               data-testid="upload-btn"
@@ -447,6 +464,7 @@ export default function CyberLab() {
                 { id: "rules",  label: "Rules",   icon: Bug,         count: analysis?.rules?.length ?? 0 },
                 { id: "iocs",   label: "IOCs",    icon: Fingerprint, count: analysis?.iocs?.length ?? 0 },
                 { id: "trace",  label: "Chain",   icon: Network,     count: result?.trace?.length ?? 0 },
+                { id: "graph",  label: "Graph",   icon: Radar,       count: result?.trace?.length ?? 0 },
               ].map((t) => (
                 <button
                   key={t.id}
@@ -566,16 +584,73 @@ export default function CyberLab() {
                   })}
                 </div>
               ) : <div className="text-xs text-slate-500 italic px-2 py-4">No pipeline steps yet.</div>)}
+
+              {tab === "graph" && (
+                <AttackChainViewer
+                  input={input}
+                  output={result?.output || ""}
+                  trace={result?.trace || []}
+                  mitre={analysis?.mitre || []}
+                />
+              )}
             </div>
           </aside>
+        </div>
+
+        {/* AI Analyst panel — spans full width under the 3-column area */}
+        {result && (
+          <div className="mt-4">
+            <AiPanel
+              input={input}
+              output={result.output}
+              analysis={result.analysis || {}}
+              onGenerated={setAi}
+              key={result.output?.slice(0, 40)}
+            />
+          </div>
+        )}
+
+        {/* Custom rule + session rule management link */}
+        <div className="mt-4 flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/40 px-4 py-3">
+          <div className="flex items-center gap-2 text-xs text-slate-400">
+            <Bug className="w-3.5 h-3.5 text-fuchsia-400" />
+            <span>Custom detection rules — add your own regex/hex/string patterns scoped to this browser (30-day retention).</span>
+          </div>
+          <button
+            data-testid="add-session-rule-btn"
+            onClick={() => setRuleModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-fuchsia-500/10 text-fuchsia-300 border border-fuchsia-500/30 hover:bg-fuchsia-500/20 text-xs font-semibold transition-colors"
+          >
+            <Plus className="w-3 h-3" /> Add session rule
+          </button>
         </div>
 
         {/* Footer note */}
         <div className="mt-8 text-center text-[11px] text-slate-500">
           <ShieldCheck className="w-3 h-3 inline mr-1 text-emerald-400" />
-          Server-side analysis is scoped to this session — payloads are not stored.
+          Server-side analysis is scoped to this session — payloads are not stored unless you use the Share button.
         </div>
       </main>
+
+      {/* Modals */}
+      <ShareModal
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        report={{
+          input,
+          output: result?.output || "",
+          trace: result?.trace || [],
+          analysis: analysis || {},
+          ai,
+        }}
+      />
+      <CustomRuleModal
+        open={ruleModalOpen}
+        onClose={() => setRuleModalOpen(false)}
+        onSaved={() => {
+          toast.info("Session rule active — re-run analysis to see it match.");
+        }}
+      />
 
       <div className="bg-white text-slate-900">
         <Contact />

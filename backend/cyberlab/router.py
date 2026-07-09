@@ -1,13 +1,42 @@
-"""FastAPI router for CyberLab endpoints. Mounted at /api/cyberlab/*."""
+"""FastAPI router for CyberLab endpoints. Mounted at /api/cyberlab/*.
+
+Endpoints (public):
+    GET  /api/cyberlab/plugins
+    GET  /api/cyberlab/rules
+    POST /api/cyberlab/run
+    POST /api/cyberlab/auto-decode
+    POST /api/cyberlab/analyze
+    POST /api/cyberlab/extract-iocs
+
+Phase 4 additions:
+    POST /api/cyberlab/ai-analysis           (Claude Sonnet 4.5 report + rule gen)
+    POST /api/cyberlab/share                 (persist analysis, return share_id)
+    GET  /api/cyberlab/share/{share_id}      (fetch persisted analysis)
+    POST /api/cyberlab/export/pdf            (branded ReportLab PDF)
+    POST /api/cyberlab/export/markdown       (Markdown text)
+
+    GET  /api/cyberlab/session-rules         (list rules for a session_id)
+    POST /api/cyberlab/session-rules         (add a rule scoped to a session_id)
+    DEL  /api/cyberlab/session-rules/{id}    (remove)
+
+    GET  /api/admin/cyberlab/rules           (admin: list all custom rules)
+    POST /api/admin/cyberlab/rules           (admin: add rule to global list)
+    DEL  /api/admin/cyberlab/rules/{id}      (admin: remove)
+"""
 from __future__ import annotations
 import time
 import logging
-from fastapi import APIRouter, HTTPException
+from typing import Optional, List
+from fastapi import APIRouter, HTTPException, Depends, Request, Response
+from pydantic import BaseModel, Field
 
 from . import engine
 from . import ioc_extract
 from . import mitre
 from . import rule_scanner
+from . import persistence
+from . import exports
+from . import ai_analysis
 from .plugins import all_plugins
 from .plugins.decoders import _to_best_text
 from .models import (
@@ -17,11 +46,15 @@ from .models import (
 
 logger = logging.getLogger("cyberlab")
 router = APIRouter(prefix="/api/cyberlab", tags=["cyberlab"])
+admin_router = APIRouter(prefix="/api/admin/cyberlab", tags=["cyberlab-admin"])
 
+
+# ============================================================================
+# Public endpoints
+# ============================================================================
 
 @router.get("/plugins", response_model=list[PluginInfo])
 async def list_plugins():
-    """List all available plugins (decoders, transformers, analyzers)."""
     return [
         PluginInfo(
             id=p.id, name=p.name, category=p.category,
@@ -32,23 +65,39 @@ async def list_plugins():
 
 
 @router.get("/rules")
-async def list_rules():
-    """List all bundled YARA-like rules."""
-    return [
+async def list_rules(session_id: Optional[str] = None):
+    """Return builtin rules + any session-scoped custom rules if session_id given."""
+    builtin = [
         {
-            "name": r["name"],
-            "tags": r.get("tags", []),
+            "name": r["name"], "tags": r.get("tags", []),
             "severity": r.get("severity", "medium"),
             "description": r.get("description", ""),
             "string_count": len(r.get("strings", [])),
+            "scope": "builtin",
         }
         for r in rule_scanner.BUILTIN_RULES
     ]
+    admin_rules = await persistence.list_rules("admin")
+    session_rules = await persistence.list_rules("session", session_id) if session_id else []
+    return {
+        "builtin": builtin,
+        "admin": [_rule_summary(r) for r in admin_rules],
+        "session": [_rule_summary(r) for r in session_rules],
+    }
+
+
+def _rule_summary(r):
+    return {
+        "id": r.get("id"), "name": r["name"], "tags": r.get("tags", []),
+        "severity": r.get("severity", "medium"),
+        "description": r.get("description", ""),
+        "string_count": len(r.get("strings", [])),
+        "scope": r.get("scope"),
+    }
 
 
 @router.post("/run")
 async def run_recipe(req: RunRecipeRequest):
-    """Execute a manual recipe. Returns final output + step trace."""
     try:
         t0 = time.perf_counter()
         final_bytes, trace = engine.run_recipe(req.input, req.recipe)
@@ -66,8 +115,7 @@ async def run_recipe(req: RunRecipeRequest):
 
 
 @router.post("/auto-decode")
-async def auto_decode(req: AutoDecodeRequest):
-    """Recursively auto-decode a payload. Returns final output + trace."""
+async def auto_decode(req: AutoDecodeRequest, session_id: Optional[str] = None):
     try:
         t0 = time.perf_counter()
         final_bytes, trace = engine.auto_decode(req.input, max_depth=req.max_depth)
@@ -79,22 +127,7 @@ async def auto_decode(req: AutoDecodeRequest):
             "duration_ms": round((time.perf_counter() - t0) * 1000, 2),
         }
         if req.include_analysis:
-            text = _to_best_text(final_bytes)
-            refanged = _refang_text(text)
-            iocs = ioc_extract.extract(refanged)
-            techniques = mitre.map_techniques(text)
-            rules = rule_scanner.scan(text, final_bytes)
-            score, verdict, summary = engine.compute_risk(
-                len(techniques), rules, len(iocs)
-            )
-            result["analysis"] = {
-                "iocs": [i.model_dump() for i in iocs],
-                "mitre": [t.model_dump() for t in techniques],
-                "rules": [r.model_dump() for r in rules],
-                "risk_score": score,
-                "verdict": verdict,
-                "summary": summary,
-            }
+            result["analysis"] = await _analyze(_to_best_text(final_bytes), final_bytes, session_id)
         return result
     except Exception as e:
         logger.exception("auto_decode failed")
@@ -102,8 +135,7 @@ async def auto_decode(req: AutoDecodeRequest):
 
 
 @router.post("/analyze", response_model=AnalysisReport)
-async def analyze(req: AnalyzeRequest):
-    """Full analysis pipeline: (optional) auto-decode + IOC + MITRE + YARA-lite + risk score."""
+async def analyze(req: AnalyzeRequest, session_id: Optional[str] = None):
     try:
         t0 = time.perf_counter()
         if req.auto_decode:
@@ -112,24 +144,17 @@ async def analyze(req: AnalyzeRequest):
             final_bytes = req.input.encode("utf-8", errors="replace")
             trace = []
         text = _to_best_text(final_bytes)
-        # Refang for IOC extraction (doesn't mutate the displayed output)
-        refanged = _refang_text(text)
-        iocs = ioc_extract.extract(refanged)
-        techniques = mitre.map_techniques(text)
-        rules = rule_scanner.scan(text, final_bytes)
-        score, verdict, summary = engine.compute_risk(
-            len(techniques), rules, len(iocs)
-        )
+        analysis_dict = await _analyze(text, final_bytes, session_id)
         return AnalysisReport(
             input_size=len(req.input.encode("utf-8", errors="replace")),
             final_output=text,
             trace=trace,
-            iocs=iocs,
-            mitre=techniques,
-            rules=rules,
-            risk_score=score,
-            verdict=verdict,
-            summary=summary,
+            iocs=analysis_dict["iocs"],
+            mitre=analysis_dict["mitre"],
+            rules=analysis_dict["rules"],
+            risk_score=analysis_dict["risk_score"],
+            verdict=analysis_dict["verdict"],
+            summary=analysis_dict["summary"],
             duration_ms=round((time.perf_counter() - t0) * 1000, 2),
         )
     except Exception as e:
@@ -139,7 +164,6 @@ async def analyze(req: AnalyzeRequest):
 
 @router.post("/extract-iocs")
 async def extract_iocs(payload: dict):
-    """Fast IOC-only extraction endpoint."""
     text = payload.get("input", "")
     text = _refang_text(text)
     iocs = ioc_extract.extract(text)
@@ -150,8 +174,169 @@ async def extract_iocs(payload: dict):
     }
 
 
+# ============================================================================
+# Phase 4: AI Analysis (Claude Sonnet 4.5)
+# ============================================================================
+
+class AiRequest(BaseModel):
+    input: str
+    output: str
+    analysis: dict
+
+
+@router.post("/ai-analysis")
+async def ai_endpoint(req: AiRequest):
+    """Generate an AI triage summary + draft Sigma & YARA rules for the payload."""
+    try:
+        analysis = req.analysis or {}
+        result = await ai_analysis.generate_ai_analysis(
+            decoded_output=req.output or req.input,
+            mitre=analysis.get("mitre", []),
+            rules=analysis.get("rules", []),
+            iocs=analysis.get("iocs", []),
+            verdict=analysis.get("verdict", "clean"),
+            risk=analysis.get("risk_score", 0),
+        )
+        return result
+    except Exception as e:
+        logger.exception("ai-analysis failed")
+        raise HTTPException(status_code=500, detail=f"AI analysis failed: {e}")
+
+
+# ============================================================================
+# Phase 4: Sharing (30-day TTL) + Exports
+# ============================================================================
+
+class ShareRequest(BaseModel):
+    input: str
+    output: str
+    trace: List[dict] = Field(default_factory=list)
+    analysis: dict = Field(default_factory=dict)
+    ai: Optional[dict] = None
+
+
+@router.post("/share")
+async def create_share(req: ShareRequest):
+    payload = req.model_dump()
+    result = await persistence.save_share(payload)
+    return result
+
+
+@router.get("/share/{share_id}")
+async def get_share(share_id: str):
+    doc = await persistence.get_share(share_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Share not found or expired")
+    return doc
+
+
+@router.post("/export/pdf")
+async def export_pdf(req: ShareRequest):
+    pdf_bytes = exports.render_pdf(req.model_dump())
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="cyberlab-report-{int(time.time())}.pdf"'},
+    )
+
+
+@router.post("/export/markdown")
+async def export_markdown(req: ShareRequest):
+    md = exports.render_markdown(req.model_dump())
+    return Response(
+        content=md,
+        media_type="text/markdown",
+        headers={"Content-Disposition": f'attachment; filename="cyberlab-report-{int(time.time())}.md"'},
+    )
+
+
+# ============================================================================
+# Phase 4: Session-scoped custom rules (anon users)
+# ============================================================================
+
+class RulePayload(BaseModel):
+    name: str
+    severity: str = "medium"
+    description: str = ""
+    tags: List[str] = Field(default_factory=list)
+    strings: List[dict]
+
+
+@router.get("/session-rules")
+async def session_list(session_id: str):
+    rules = await persistence.list_rules("session", session_id)
+    return {"rules": rules}
+
+
+@router.post("/session-rules")
+async def session_add(rule: RulePayload, session_id: str):
+    _validate_rule(rule)
+    return await persistence.add_rule(rule.model_dump(), "session", session_id, author="session")
+
+
+@router.delete("/session-rules/{rule_id}")
+async def session_remove(rule_id: str, session_id: str):
+    ok = await persistence.delete_rule(rule_id, "session", session_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    return {"deleted": True}
+
+
+# ============================================================================
+# Phase 4: Admin custom rules (global)
+# ============================================================================
+
+async def _require_admin(request: Request):
+    """Reuse the existing JWT cookie/bearer admin auth from server.py."""
+    from server import get_current_user  # deferred to avoid import cycle
+    return await get_current_user(request)
+
+
+@admin_router.get("/rules")
+async def admin_list_rules(user=Depends(_require_admin)):
+    rules = await persistence.list_rules("admin")
+    return {"rules": rules}
+
+
+@admin_router.post("/rules")
+async def admin_add_rule(rule: RulePayload, user=Depends(_require_admin)):
+    _validate_rule(rule)
+    return await persistence.add_rule(rule.model_dump(), "admin", None, author=user.get("email", "admin"))
+
+
+@admin_router.delete("/rules/{rule_id}")
+async def admin_remove_rule(rule_id: str, user=Depends(_require_admin)):
+    ok = await persistence.delete_rule(rule_id, "admin")
+    if not ok:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    return {"deleted": True}
+
+
+# ============================================================================
+# Helpers
+# ============================================================================
+
+async def _analyze(text: str, raw: bytes, session_id: Optional[str] = None) -> dict:
+    """Full non-decoding analysis pipeline. Loads admin + session rules dynamically."""
+    refanged = _refang_text(text)
+    iocs = ioc_extract.extract(refanged)
+    techniques = mitre.map_techniques(text)
+    extra_rules = await persistence.list_rules("admin")
+    if session_id:
+        extra_rules += await persistence.list_rules("session", session_id)
+    rules = rule_scanner.scan(text, raw, extra_rules=extra_rules)
+    score, verdict, summary = engine.compute_risk(len(techniques), rules, len(iocs))
+    return {
+        "iocs": [i.model_dump() for i in iocs],
+        "mitre": [t.model_dump() for t in techniques],
+        "rules": [r.model_dump() for r in rules],
+        "risk_score": score,
+        "verdict": verdict,
+        "summary": summary,
+    }
+
+
 def _refang_text(text: str) -> str:
-    """Convert defanged IOCs back to their live form for extraction only."""
     import re as _re
     text = text.replace("[.]", ".").replace("(.)", ".").replace("{.}", ".")
     text = _re.sub(r"\[?\bhxxp(s?)\b\]?://", r"http\1://", text, flags=_re.IGNORECASE)
@@ -159,3 +344,17 @@ def _refang_text(text: str) -> str:
     text = text.replace("[at]", "@").replace("(at)", "@").replace("[@]", "@")
     text = text.replace("[://]", "://")
     return text
+
+
+def _validate_rule(rule: RulePayload) -> None:
+    if not rule.name.strip():
+        raise HTTPException(status_code=400, detail="Rule name is required")
+    if not rule.strings:
+        raise HTTPException(status_code=400, detail="At least one string/pattern is required")
+    for s in rule.strings:
+        if s.get("type") not in ("string", "regex", "hex"):
+            raise HTTPException(status_code=400, detail=f"Unknown string type: {s.get('type')}")
+        if not s.get("pattern"):
+            raise HTTPException(status_code=400, detail="Each string must have a pattern")
+    if rule.severity not in ("info", "low", "medium", "high", "critical"):
+        raise HTTPException(status_code=400, detail=f"Invalid severity: {rule.severity}")

@@ -30,7 +30,9 @@ def test_list_plugins(client):
 def test_list_rules(client):
     r = client.get("/api/cyberlab/rules")
     assert r.status_code == 200
-    rules = r.json()
+    data = r.json()
+    # Phase 4: response is {builtin, admin, session}; earlier was a flat list.
+    rules = data["builtin"] if isinstance(data, dict) else data
     assert len(rules) >= 10
     names = {rule["name"] for rule in rules}
     assert "Ransomware_Note_Keywords" in names

@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import useSeo from "@/lib/useSeo";
 import SocDashboard from "@/components/SocDashboard";
 import AdminSettings from "@/components/AdminSettings";
+import AdminCyberLabRules from "@/components/AdminCyberLabRules";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -231,6 +232,13 @@ function Dashboard() {
           >
             <Settings className="w-4 h-4" /> Settings
           </button>
+          <button
+            data-testid="tab-cyberlab-rules"
+            onClick={() => setView("cyberlab-rules")}
+            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${view === "cyberlab-rules" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+          >
+            CyberLab Rules
+          </button>
         </div>
       </div>
 
@@ -238,6 +246,10 @@ function Dashboard() {
         <SocDashboard />
       ) : view === "settings" ? (
         <AdminSettings />
+      ) : view === "cyberlab-rules" ? (
+        <main className="mx-auto max-w-7xl px-6 py-10">
+          <AdminCyberLabRules />
+        </main>
       ) : view === "reports" ? (
       <main className="mx-auto max-w-7xl px-6 py-10 grid lg:grid-cols-[400px_1fr] gap-8">
         <form onSubmit={submit} data-testid="threat-form" className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-3.5 lg:sticky lg:top-24 self-start">

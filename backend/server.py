@@ -3606,7 +3606,20 @@ app.include_router(api_router)
 
 # CyberLab Decoder & Threat Analysis Platform (modular sub-app)
 from cyberlab import router as cyberlab_router  # noqa: E402
+from cyberlab.router import admin_router as cyberlab_admin_router  # noqa: E402
+from cyberlab import persistence as cyberlab_persistence  # noqa: E402
 app.include_router(cyberlab_router)
+app.include_router(cyberlab_admin_router)
+
+
+@app.on_event("startup")
+async def _cyberlab_ensure_indexes():
+    try:
+        await cyberlab_persistence.ensure_indexes()
+        logger.info("cyberlab: mongo indexes ensured")
+    except Exception as e:
+        logger.warning("cyberlab index setup failed: %s", e)
+
 
 app.add_middleware(
     CORSMiddleware,
