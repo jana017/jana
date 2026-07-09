@@ -2666,8 +2666,10 @@ _RSS_CACHE: dict = {}
 _RSS_TTL = timedelta(hours=6)
 
 RSS_SOURCES = {
-    "talos":  {"name": "Cisco Talos Intelligence", "url": "https://blog.talosintelligence.com/rss/",   "site": "https://blog.talosintelligence.com"},
-    "unit42": {"name": "Palo Alto Unit 42",         "url": "https://unit42.paloaltonetworks.com/feed/", "site": "https://unit42.paloaltonetworks.com"},
+    "talos":    {"name": "Cisco Talos Intelligence", "url": "https://blog.talosintelligence.com/rss/",   "site": "https://blog.talosintelligence.com"},
+    "unit42":   {"name": "Palo Alto Unit 42",         "url": "https://unit42.paloaltonetworks.com/feed/", "site": "https://unit42.paloaltonetworks.com"},
+    "dfir":     {"name": "The DFIR Report",           "url": "https://thedfirreport.com/feed/",           "site": "https://thedfirreport.com"},
+    "msthreat": {"name": "Microsoft Threat Intelligence", "url": "https://www.microsoft.com/en-us/security/blog/topic/threat-intelligence/feed/", "site": "https://www.microsoft.com/en-us/security/blog/topic/threat-intelligence/"},
 }
 
 

@@ -8,11 +8,13 @@ import { api } from "@/lib/api";
 import useSeo from "@/lib/useSeo";
 
 const SOURCE_META = {
-  talos:  { label: "Cisco Talos Intelligence", tag: "Talos",  tone: "text-red-400",  gradient: "from-red-500/10 to-transparent" },
-  unit42: { label: "Palo Alto Unit 42",         tag: "Unit42", tone: "text-blue-400", gradient: "from-blue-500/10 to-transparent" },
+  talos:    { label: "Cisco Talos Intelligence",   tag: "Talos",     tone: "text-red-400",    gradient: "from-red-500/10 to-transparent",    chip: "bg-red-50 text-red-700" },
+  unit42:   { label: "Palo Alto Unit 42",           tag: "Unit42",    tone: "text-blue-400",   gradient: "from-blue-500/10 to-transparent",   chip: "bg-blue-50 text-blue-700" },
+  dfir:     { label: "The DFIR Report",             tag: "DFIR",      tone: "text-amber-400",  gradient: "from-amber-500/10 to-transparent",  chip: "bg-amber-50 text-amber-700" },
+  msthreat: { label: "Microsoft Threat Intelligence", tag: "MSTI",    tone: "text-emerald-400",gradient: "from-emerald-500/10 to-transparent",chip: "bg-emerald-50 text-emerald-700" },
 };
 
-const OTHERS = { talos: "unit42", unit42: "talos" };
+const ORDER = ["talos", "unit42", "dfir", "msthreat"];
 
 export default function CommunityFeed() {
   const { source = "talos" } = useParams();
@@ -42,7 +44,7 @@ export default function CommunityFeed() {
     return () => { live = false; };
   }, [source]);
 
-  const other = OTHERS[source];
+  const other = ORDER.filter((s) => s !== source);
 
   return (
     <div data-testid="community-feed-page" className="bg-white min-h-screen">
@@ -103,7 +105,7 @@ export default function CommunityFeed() {
                     </div>
                   )}
                   <div className="p-5 flex-1 flex flex-col">
-                    <span className={`inline-flex w-fit items-center text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded mb-3 ${meta.tag === "Talos" ? "bg-red-50 text-red-700" : "bg-blue-50 text-blue-700"}`}>{a.category || meta.tag}</span>
+                    <span className={`inline-flex w-fit items-center text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded mb-3 ${meta.chip}`}>{a.category || meta.tag}</span>
                     <h3 className="font-semibold text-slate-900 group-hover:text-[#2E7DF5] transition-colors leading-snug line-clamp-3">{a.title}</h3>
                     {a.excerpt && <p className="mt-2 text-sm text-slate-600 leading-relaxed line-clamp-3 flex-1">{a.excerpt}</p>}
                     <div className="mt-4 flex items-center justify-between pt-3 border-t border-slate-100">
@@ -121,11 +123,11 @@ export default function CommunityFeed() {
           )}
 
           <div className="mt-10 flex flex-wrap justify-center gap-3" data-testid="feed-source-nav">
-            {other && (
-              <Link to={`/community/${other}`} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-[#2E7DF5] border border-slate-200 hover:border-[#2E7DF5] rounded-full px-4 py-1.5 transition-colors">
-                Switch to {SOURCE_META[other].tag} <ArrowUpRight className="w-3.5 h-3.5" />
+            {other.map((s) => (
+              <Link key={s} to={`/community/${s}`} className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-[#2E7DF5] border border-slate-200 hover:border-[#2E7DF5] rounded-full px-4 py-1.5 transition-colors">
+                Switch to {SOURCE_META[s].tag} <ArrowUpRight className="w-3.5 h-3.5" />
               </Link>
-            )}
+            ))}
             <Link to="/community/cd/dfir" className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-[#2E7DF5] border border-slate-200 hover:border-[#2E7DF5] rounded-full px-4 py-1.5 transition-colors">
               Switch to CyberDefenders <ArrowUpRight className="w-3.5 h-3.5" />
             </Link>

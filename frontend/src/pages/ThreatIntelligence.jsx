@@ -30,6 +30,8 @@ const CYBERDEFENDERS = [
   { title: "SOC & Threat Hunting Playbooks",         desc: "Practical guidance on building detections, triaging alerts and hunting adversaries — CyberDefenders community feed.",     tag: "SOC",     url: "/community/cd/soc"     },
   { title: "Cisco Talos Intelligence",               desc: "Latest APT tracking, malware research and 0-day disclosures from Cisco Talos — refreshed hourly.",                        tag: "Talos",   url: "/community/talos"      },
   { title: "Palo Alto Unit 42",                      desc: "Deep-dive threat research, incident response case studies and vulnerability write-ups from Palo Alto's Unit 42 team.",     tag: "Unit42",  url: "/community/unit42"     },
+  { title: "The DFIR Report",                        desc: "Real-world incident response breakdowns — full intrusion timelines, attacker TTPs and detection opportunities from The DFIR Report.", tag: "DFIR Report", url: "/community/dfir"       },
+  { title: "Microsoft Threat Intelligence",          desc: "Nation-state activity, emerging malware and defender guidance published by the Microsoft Threat Intelligence team.",       tag: "MSTI",    url: "/community/msthreat"   },
 ];
 
 const DATE_RANGES = [
@@ -303,11 +305,11 @@ export default function ThreatIntelligence() {
             </div>
             <h2 className="font-heading text-2xl md:text-3xl font-semibold tracking-tight text-slate-900">Threat intel blog & writeups</h2>
             <p className="mt-4 text-base text-slate-600 leading-relaxed">
-              DFIR, malware analysis and SOC playbook writeups curated from CyberDefenders — browse the feed inside NivX, then click through to read the full article on the source.
+              DFIR, malware analysis and SOC playbook writeups curated from CyberDefenders, The DFIR Report, Cisco Talos, Palo Alto Unit 42 and Microsoft Threat Intelligence — browse the feed inside NivX, then click through to read the full article on the source.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {CYBERDEFENDERS.map((b, i) => (
               <motion.div
                 key={b.title}

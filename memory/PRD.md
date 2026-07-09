@@ -212,3 +212,12 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - Compliant aggregator pattern maintained: metadata + fair-use snippet only, card clicks outbound to source with target="_blank" and clear attribution on the destination page.
 - Verified end-to-end via screenshot + curl: 15 Talos + 15 Unit42 articles rendered natively, all cards outbound to source. Production build (`CI=true yarn build`) clean.
 
+
+
+## Latest (2026-07-09, session 26 — DFIR Report + Microsoft Threat Intel RSS feeds)
+- **Added 2 more RSS sources** to the generic aggregator: **The DFIR Report** (`https://thedfirreport.com/feed/`) and **Microsoft Threat Intelligence** (`https://www.microsoft.com/en-us/security/blog/topic/threat-intelligence/feed/`). Both return 10 items on first fetch, cached 6h.
+- **Backend**: extended `RSS_SOURCES` dict in `/app/backend/server.py` with `dfir` and `msthreat` keys — reuses the same generic RSS parser (no new code, zero regression risk). Verified: `/api/community/feed/dfir` and `/api/community/feed/msthreat` both return real live articles with title/url/date/excerpt/image.
+- **Frontend `CommunityFeed.jsx`**: `SOURCE_META` extended with DFIR (amber) and MSTI (emerald) accents; category chip color moved to per-source `meta.chip` (no more if/else); footer switcher renders all sibling sources dynamically.
+- **Threat Intelligence "From the Community" section**: 2 new cards added (7 total). Grid changed from `xl:grid-cols-5` → `xl:grid-cols-4` for a balanced 4+3 layout. Section subhead updated to name all 5 upstream sources.
+- Compliance: identical fair-use aggregator pattern (metadata + short snippet + cover image + prominent source attribution + outbound `target="_blank"` link to origin). No article bodies stored or reproduced.
+- Verified end-to-end via screenshot + curl. Lint clean (0 warnings). Production build should pass with `CI=true`.
