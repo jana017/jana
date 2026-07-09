@@ -8,12 +8,13 @@ import {
 import Navbar from "@/components/Navbar";
 import Contact from "@/components/Contact";
 import useSeo from "@/lib/useSeo";
-import { listPlugins, autoDecode, runRecipe, analyze } from "@/lib/cyberlabApi";
+import { listPlugins, autoDecode, runRecipe, analyze, detectFormat, processTree, runAiAnalysis } from "@/lib/cyberlabApi";
 import AttackChainViewer from "@/components/cyberlab/AttackChainViewer";
 import ProcessTreeViewer from "@/components/cyberlab/ProcessTreeViewer";
 import AiPanel from "@/components/cyberlab/AiPanel";
 import ShareModal from "@/components/cyberlab/ShareModal";
 import CustomRuleModal from "@/components/cyberlab/CustomRuleModal";
+import AutoInvestigateProgress from "@/components/cyberlab/AutoInvestigateProgress";
 
 const CATEGORY_STYLE = {
   Encoding:      { chip: "bg-blue-500/10 text-blue-300 border-blue-500/30",         dot: "bg-blue-400" },
@@ -81,7 +82,11 @@ export default function CyberLab() {
   const [recipe, setRecipe] = useState([]);
   const [running, setRunning] = useState(false);
   const [autoBusy, setAutoBusy] = useState(false);
+  const [investigateBusy, setInvestigateBusy] = useState(false);
+  const [investigateStages, setInvestigateStages] = useState([]);
+  const [investigateSummary, setInvestigateSummary] = useState("");
   const [result, setResult] = useState(null);
+  const [processTreeData, setProcessTreeData] = useState(null); // {nodes,edges,stats,forensic_events}
   const [ai, setAi] = useState(null); // { summary, sigma_rule, yara_rule } — set when AI generates
   const [tab, setTab] = useState("mitre");
   const [shareOpen, setShareOpen] = useState(false);
@@ -134,6 +139,168 @@ export default function CyberLab() {
     } catch (e) {
       toast.error(`Auto Decode failed: ${e.message}`);
     } finally { setAutoBusy(false); }
+  }, [input]);
+
+  // -- Auto Investigate: full orchestrated pipeline with live progress --
+  // Runs sequential stages so the UI can render a live progress log:
+  //    1. detect-format      2. auto-decode | parse-log
+  //    3. threat analysis    4. AI analysis (Claude 4.5)
+  //    5. render (graph + timeline)
+  const runAutoInvestigate = useCallback(async () => {
+    if (!input.trim()) { toast.error("Paste a payload first"); return; }
+    setInvestigateBusy(true);
+    setResult(null);
+    setAi(null);
+    setProcessTreeData(null);
+    setInvestigateSummary("");
+    // Seed all stages as pending so the panel appears immediately.
+    const initial = [
+      { name: "detect",       status: "pending" },
+      { name: "auto-decode",  status: "pending" },
+      { name: "analyze",      status: "pending" },
+      { name: "ai",           status: "pending" },
+      { name: "render",       status: "pending" },
+    ];
+    setInvestigateStages(initial);
+
+    const markStage = (name, patch) =>
+      setInvestigateStages((prev) => prev.map((s) => (s.name === name ? { ...s, ...patch } : s)));
+    const swapStage = (from, to) =>
+      setInvestigateStages((prev) => prev.map((s) => (s.name === from ? { ...s, name: to } : s)));
+
+    try {
+      // Stage 1 — detect
+      markStage("detect", { status: "running" });
+      const t0 = performance.now();
+      const detect = await detectFormat(input);
+      markStage("detect", {
+        status: "ok",
+        duration_ms: performance.now() - t0,
+        meta: { kind: detect.kind, format: detect.format },
+      });
+
+      let analysis, output = "", trace = [];
+
+      if (detect.kind === "log") {
+        // swap "auto-decode" placeholder for "parse-log"
+        swapStage("auto-decode", "parse-log");
+        markStage("parse-log", { status: "running" });
+        const t1 = performance.now();
+        const tree = await processTree(input, detect.format);
+        markStage("parse-log", {
+          status: "ok",
+          duration_ms: performance.now() - t1,
+          meta: { event_count: tree.stats?.event_count ?? 0, process_count: tree.stats?.process_count ?? 0 },
+        });
+        setProcessTreeData(tree);
+
+        // Aggregate MITRE from all events
+        markStage("analyze", { status: "running" });
+        const t2 = performance.now();
+        const mitreSeen = new Map();
+        for (const e of tree.forensic_events || []) {
+          for (const t of e.mitre_techniques || []) {
+            if (!mitreSeen.has(t.id)) {
+              mitreSeen.set(t.id, { id: t.id, name: t.name, tactic: t.tactic, description: "", evidence: [] });
+            }
+            const evd = e.command_line || e.registry_key || e.url || "";
+            const m = mitreSeen.get(t.id);
+            if (evd && m.evidence.length < 5) m.evidence.push(evd);
+          }
+        }
+        const mitreList = [...mitreSeen.values()];
+        const iocs = tree.iocs || [];
+        const worst = tree.stats?.worst_risk || "info";
+        const boost = { critical: 40, high: 25, medium: 10, low: 5, info: 0 }[worst] ?? 0;
+        let score = Math.min(100, Math.min(mitreList.length * 8, 40) + Math.min(iocs.length, 20) + boost);
+        const verdict = score >= 60 ? "malicious" : score >= 30 ? "suspicious" : "clean";
+        analysis = {
+          iocs, mitre: mitreList, rules: [],
+          risk_score: score, verdict,
+          summary: `${verdict[0].toUpperCase()}${verdict.slice(1)} — ${mitreList.length} MITRE technique${mitreList.length === 1 ? "" : "s"}, ${iocs.length} IOC${iocs.length === 1 ? "" : "s"}, ${tree.stats?.process_count ?? 0} process${(tree.stats?.process_count ?? 0) === 1 ? "" : "es"}.`,
+        };
+        markStage("analyze", {
+          status: "ok",
+          duration_ms: performance.now() - t2,
+          meta: { mitre: mitreList.length, iocs: iocs.length, risk_score: score },
+        });
+        setResult({ output: "", trace: [], analysis, duration_ms: 0, output_size: 0 });
+        setGraphMode("process");
+      } else {
+        // Payload path — recursive decode + analysis
+        markStage("auto-decode", { status: "running" });
+        const t1 = performance.now();
+        const dec = await autoDecode(input, { include_analysis: true, max_depth: 10 });
+        markStage("auto-decode", {
+          status: "ok",
+          duration_ms: performance.now() - t1,
+          meta: { steps: dec.trace?.length ?? 0, output_size: dec.output_size ?? 0 },
+        });
+        output = dec.output || "";
+        trace = dec.trace || [];
+        analysis = dec.analysis || {};
+        markStage("analyze", {
+          status: "ok",
+          duration_ms: 0,
+          meta: {
+            mitre: analysis.mitre?.length ?? 0,
+            rules: analysis.rules?.length ?? 0,
+            iocs: analysis.iocs?.length ?? 0,
+            risk_score: analysis.risk_score ?? 0,
+          },
+        });
+        setResult({
+          output, output_size: dec.output_size, trace,
+          duration_ms: dec.duration_ms, analysis,
+        });
+        if (trace.length) setRecipe(trace.map((s) => ({ id: s.id, params: {} })));
+        setGraphMode("chain");
+      }
+
+      // Stage 4 — AI analysis
+      markStage("ai", { status: "running" });
+      const t3 = performance.now();
+      try {
+        const aiPayload = {
+          input,
+          output: output || "",
+          analysis: {
+            mitre: analysis.mitre || [],
+            rules: analysis.rules || [],
+            iocs: analysis.iocs || [],
+            verdict: analysis.verdict || "clean",
+            risk_score: analysis.risk_score || 0,
+          },
+        };
+        const aiResult = await runAiAnalysis(aiPayload);
+        setAi(aiResult);
+        markStage("ai", {
+          status: "ok",
+          duration_ms: performance.now() - t3,
+          meta: { sigma: !!aiResult.sigma_rule, yara: !!aiResult.yara_rule, splunk: !!aiResult.splunk_spl },
+        });
+      } catch (e) {
+        markStage("ai", { status: "failed", duration_ms: performance.now() - t3, meta: { error: e.message } });
+      }
+
+      // Stage 5 — Render (client-side, essentially instant)
+      markStage("render", { status: "ok", duration_ms: 0, meta: {} });
+      // Switch to graph tab so the analyst sees the flow immediately.
+      setTab("graph");
+
+      setInvestigateSummary(
+        `${detect.kind === "log" ? "Log" : "Payload"} · ${detect.format} · verdict ${analysis.verdict?.toUpperCase()} · risk ${analysis.risk_score}/100`
+      );
+      toast.success(`Auto Investigation complete — ${analysis.verdict?.toUpperCase()} · risk ${analysis.risk_score}/100`);
+    } catch (e) {
+      toast.error(`Auto Investigation failed: ${e.message}`);
+      // Mark any pending stages as failed for clarity
+      setInvestigateStages((prev) =>
+        prev.map((s) => (s.status === "pending" || s.status === "running" ? { ...s, status: "failed", meta: { error: e.message } } : s))
+      );
+    } finally {
+      setInvestigateBusy(false);
+    }
   }, [input]);
 
   // -- Run current recipe manually --
@@ -232,19 +399,28 @@ export default function CyberLab() {
           </div>
           <div className="flex items-center gap-2">
             <button
+              data-testid="auto-investigate-btn"
+              onClick={runAutoInvestigate}
+              disabled={investigateBusy}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-gradient-to-r from-cyan-500 to-fuchsia-500 hover:from-cyan-400 hover:to-fuchsia-400 text-slate-900 font-bold text-sm disabled:opacity-50 transition-colors shadow-lg shadow-cyan-500/20"
+            >
+              {investigateBusy ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Radar className="w-4 h-4" />}
+              Auto Investigate
+            </button>
+            <button
               data-testid="auto-decode-btn"
               onClick={runAuto}
-              disabled={autoBusy}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-semibold text-sm disabled:opacity-50 transition-colors"
+              disabled={autoBusy || investigateBusy}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-semibold text-sm disabled:opacity-40 transition-colors"
             >
               {autoBusy ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-              Auto Decode &amp; Analyze
+              Auto Decode
             </button>
             <button
               data-testid="run-recipe-btn"
               onClick={runManual}
-              disabled={running || recipe.length === 0}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold text-sm disabled:opacity-40 transition-colors"
+              disabled={running || recipe.length === 0 || investigateBusy}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold text-sm disabled:opacity-40 transition-colors"
             >
               {running ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
               Run Recipe
@@ -284,6 +460,11 @@ export default function CyberLab() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Auto Investigation progress panel */}
+        {investigateStages.length > 0 && (
+          <AutoInvestigateProgress stages={investigateStages} summary={investigateSummary} />
         )}
 
         {/* Example chips */}
@@ -618,7 +799,10 @@ export default function CyberLab() {
                       mitre={analysis?.mitre || []}
                     />
                   ) : (
-                    <ProcessTreeViewer />
+                    <ProcessTreeViewer
+                      initialTree={processTreeData}
+                      initialText={processTreeData ? input : ""}
+                    />
                   )}
                 </div>
               )}

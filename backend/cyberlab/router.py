@@ -26,7 +26,7 @@ Phase 4 additions:
 from __future__ import annotations
 import time
 import logging
-from typing import Optional, List
+from typing import Optional, List, Dict
 from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from pydantic import BaseModel, Field
 
@@ -183,6 +183,256 @@ async def extract_iocs(payload: dict):
 class SysmonRequest(BaseModel):
     input: str
     format: Optional[str] = None  # 'xml' | 'json' | 'csv' | 'zeek' | 'cef' | 'leef' | 'evtx' (base64)
+
+
+# ============================================================================
+# Auto Investigation — end-to-end orchestrator (format detect + decode/parse +
+# threat analysis + optional AI). Used by CyberLab UI "Auto Investigate" CTA.
+# ============================================================================
+
+# Reasonably strict base64 fragment matcher (UTF-16LE PowerShell payloads,
+# nested macros, cert files, etc.). Requires ≥40 chars so we don't
+# hallucinate matches for short IDs.
+import base64 as _b64
+import re as _re
+_B64_FRAGMENT = _re.compile(r"[A-Za-z0-9+/]{40,}={0,2}")
+
+
+def _extract_and_decode_embedded_b64(text: str, limit: int = 5) -> str:
+    """Find base64 fragments embedded in a longer text, decode them
+    (trying UTF-8 + UTF-16LE), and return a text blob containing the
+    decoded strings. Used to surface URLs/IOCs hidden inside VBA macros,
+    PowerShell here-strings, certutil-encoded blobs, etc.
+    """
+    extras: list[str] = []
+    matches = list(_B64_FRAGMENT.finditer(text))[:limit]
+    for m in matches:
+        frag = m.group(0)
+        if len(frag) % 4:
+            frag = frag + "=" * (-len(frag) % 4)
+        try:
+            data = _b64.b64decode(frag, validate=False)
+        except Exception:
+            continue
+        # Prefer UTF-16LE first (PowerShell -EncodedCommand + VBA/JS macro
+        # style). Fall back to UTF-8. Reject decoded strings with embedded
+        # NULs (they slip past IOC regexes).
+        candidates: list[str] = []
+        # UTF-16LE only if length is even AND the data has plenty of nulls
+        if len(data) % 2 == 0 and data.count(b"\x00") >= max(2, len(data) // 4):
+            try:
+                candidates.append(data.decode("utf-16-le"))
+            except Exception:
+                pass
+        try:
+            candidates.append(data.decode("utf-8"))
+        except Exception:
+            pass
+        for cand in candidates:
+            cand = cand.strip("\x00").strip()
+            if "\x00" in cand:
+                continue
+            if cand and any(c.isprintable() for c in cand[:80]):
+                extras.append(cand)
+                break
+    return "\n".join(extras)
+
+
+class DetectFormatRequest(BaseModel):
+    input: str
+
+
+@router.post("/detect-format")
+async def detect_format(req: DetectFormatRequest):
+    """Classify raw input as a supported log format or a plain payload."""
+    text = req.input or ""
+    fmt = sysmon.detect_format(text)
+    kind = "log" if fmt in {"xml", "json", "csv", "zeek", "cef", "leef"} else "payload"
+    # 'json' is ambiguous — could be a small IOC bundle. Only classify as log
+    # when it contains recognisable sysmon/EDR fields.
+    if fmt == "json":
+        low = text.lower()
+        markers = ("processguid", "commandline", "event_simpleName".lower(),
+                   "event_simplename", "eventid", "winlog", "@timestamp",
+                   "process.executable", "device_process_events", "event.code")
+        if not any(m in low for m in markers):
+            kind = "payload"
+    return {
+        "format": fmt,
+        "kind": kind,
+        "size": len(text),
+    }
+
+
+class AutoInvestigateRequest(BaseModel):
+    input: str
+    max_depth: int = Field(default=10, ge=1, le=20)
+    include_ai: bool = True
+    format_hint: Optional[str] = None  # 'auto' | 'payload' | 'log' | log-format
+
+
+@router.post("/auto-investigate")
+async def auto_investigate(req: AutoInvestigateRequest, session_id: Optional[str] = None):
+    """One-shot orchestrator combining format detection, recursive decoding /
+    log parsing, threat analysis, and (optional) AI SIEM-query generation.
+
+    Response shape:
+        {
+          "kind": "payload" | "log",
+          "format": "raw" | "xml" | "json" | "csv" | "cef" | "leef" | "zeek" | "evtx",
+          "output": str,                # decoded final payload (payload mode) or ""
+          "trace": [StepResult],        # decoder trace (payload mode)
+          "forensic_events": [...],     # log mode
+          "tree": {nodes, edges, stats},# log mode
+          "analysis": {iocs, mitre, rules, risk_score, verdict, summary},
+          "ai": {summary, sigma_rule, yara_rule, splunk_spl, sentinel_kql, cisco_xdr} | None,
+          "stages": [{name, status, duration_ms, meta}],
+          "duration_ms": float,
+        }
+    """
+    t_all = time.perf_counter()
+    stages: List[dict] = []
+
+    def _stage(name: str, status: str, dt_ms: float, meta: Optional[dict] = None):
+        stages.append({"name": name, "status": status, "duration_ms": round(dt_ms, 2), "meta": meta or {}})
+
+    try:
+        # Stage 1 — Detect format
+        t0 = time.perf_counter()
+        raw = req.input or ""
+        if not raw.strip():
+            raise HTTPException(status_code=400, detail="Empty input")
+        fmt = req.format_hint or sysmon.detect_format(raw)
+        log_formats = {"xml", "json", "csv", "zeek", "cef", "leef"}
+        kind = "log" if fmt in log_formats else "payload"
+        if fmt == "json":
+            markers = ("processguid", "commandline", "event_simplename",
+                       "eventid", "winlog", "@timestamp", "process.executable")
+            if not any(m in raw.lower() for m in markers):
+                kind = "payload"
+                fmt = "raw"
+        if req.format_hint == "payload":
+            kind = "payload"
+            fmt = "raw"
+        _stage("detect", "ok", (time.perf_counter() - t0) * 1000, {"kind": kind, "format": fmt})
+
+        result: dict = {"kind": kind, "format": fmt, "stages": stages}
+
+        if kind == "log":
+            # Stage 2a — parse log
+            t0 = time.perf_counter()
+            tree = sysmon.parse(raw, format_hint=fmt if fmt in log_formats else None)
+            _stage("parse-log", "ok", (time.perf_counter() - t0) * 1000,
+                   {"event_count": tree["stats"].get("event_count", 0),
+                    "process_count": tree["stats"].get("process_count", 0)})
+            forensic = tree.get("forensic_events", [])
+
+            # Stage 3a — aggregate MITRE + IOCs across all events
+            t0 = time.perf_counter()
+            mitre_seen: Dict[str, dict] = {}
+            for e in forensic:
+                for t in e.get("mitre_techniques", []) or []:
+                    mitre_seen.setdefault(t["id"], {
+                        "id": t["id"], "name": t["name"], "tactic": t["tactic"],
+                        "description": "", "evidence": [],
+                    })
+                    evd = e.get("command_line") or e.get("registry_key") or e.get("url") or ""
+                    if evd and len(mitre_seen[t["id"]]["evidence"]) < 5:
+                        mitre_seen[t["id"]]["evidence"].append(evd)
+            mitre_list = list(mitre_seen.values())
+            iocs = tree.get("iocs", [])
+            # Compute risk from aggregated data
+            score, verdict, summary = engine.compute_risk(len(mitre_list), [], len(iocs))
+            # Boost by worst per-event risk
+            worst = tree["stats"].get("worst_risk", "info")
+            worst_boost = {"critical": 40, "high": 25, "medium": 10, "low": 5, "info": 0}.get(worst, 0)
+            score = min(100, score + worst_boost)
+            if score >= 60:
+                verdict = "malicious"
+            elif score >= 30:
+                verdict = "suspicious"
+            analysis = {
+                "iocs": iocs, "mitre": mitre_list, "rules": [],
+                "risk_score": score, "verdict": verdict, "summary": summary,
+            }
+            _stage("analyze", "ok", (time.perf_counter() - t0) * 1000,
+                   {"mitre": len(mitre_list), "iocs": len(iocs), "risk_score": score})
+            result.update({
+                "output": "",
+                "trace": [],
+                "forensic_events": forensic,
+                "tree": {"nodes": tree.get("nodes", []), "edges": tree.get("edges", []), "stats": tree.get("stats", {})},
+                "analysis": analysis,
+            })
+            # Prepare a text blob for AI: top command lines + IOCs summary
+            ai_blob_lines: List[str] = []
+            for e in forensic[:40]:
+                if e.get("command_line"):
+                    ai_blob_lines.append(f"[{e.get('event_type','event')}] {e.get('command_line','')}")
+                elif e.get("url"):
+                    ai_blob_lines.append(f"[url] {e['url']}")
+                elif e.get("registry_key"):
+                    ai_blob_lines.append(f"[reg] {e['registry_key']} = {e.get('registry_value','')}")
+            ai_blob = "\n".join(ai_blob_lines)[:4000]
+
+        else:
+            # Stage 2b — recursive auto-decode
+            t0 = time.perf_counter()
+            final_bytes, trace = engine.auto_decode(raw, max_depth=req.max_depth)
+            text = _to_best_text(final_bytes)
+            _stage("auto-decode", "ok", (time.perf_counter() - t0) * 1000,
+                   {"steps": len(trace), "output_size": len(final_bytes)})
+            # Stage 3b — analyse. Combine ORIGINAL + DECODED + any embedded
+            # base64 fragments so MITRE/IOC matches survive when auto-decode
+            # only touched the outer wrapper (e.g. `rundll32.exe javascript:...`)
+            # or missed nested payloads (e.g. base64 URLs inside VBA macros).
+            t0 = time.perf_counter()
+            embedded = _extract_and_decode_embedded_b64(raw)
+            combined_text = "\n".join(x for x in (raw, text if text != raw else "", embedded) if x)
+            combined_bytes = combined_text.encode("utf-8", errors="replace")
+            analysis = await _analyze(combined_text, combined_bytes, session_id)
+            _stage("analyze", "ok", (time.perf_counter() - t0) * 1000,
+                   {"mitre": len(analysis["mitre"]),
+                    "rules": len(analysis["rules"]),
+                    "iocs": len(analysis["iocs"]),
+                    "risk_score": analysis["risk_score"]})
+            result.update({
+                "output": text,
+                "output_size": len(final_bytes),
+                "trace": [t.model_dump() for t in trace],
+                "forensic_events": [],
+                "tree": {"nodes": [], "edges": [], "stats": {}},
+                "analysis": analysis,
+            })
+            ai_blob = text[:4000]
+
+        # Stage 4 — Optional AI analysis (Claude Sonnet 4.5)
+        ai_result = None
+        if req.include_ai:
+            t0 = time.perf_counter()
+            try:
+                ai_result = await ai_analysis.generate_ai_analysis(
+                    decoded_output=ai_blob,
+                    mitre=result["analysis"]["mitre"],
+                    rules=result["analysis"]["rules"],
+                    iocs=result["analysis"]["iocs"],
+                    verdict=result["analysis"]["verdict"],
+                    risk=result["analysis"]["risk_score"],
+                )
+                _stage("ai", "ok", (time.perf_counter() - t0) * 1000, {})
+            except Exception as e:
+                logger.exception("auto-investigate: AI stage failed")
+                _stage("ai", "failed", (time.perf_counter() - t0) * 1000, {"error": str(e)[:200]})
+        result["ai"] = ai_result
+        result["duration_ms"] = round((time.perf_counter() - t_all) * 1000, 2)
+        return result
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("auto-investigate failed")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/process-tree")

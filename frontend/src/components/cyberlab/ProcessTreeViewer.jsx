@@ -139,10 +139,13 @@ function computeLayout(nodes, edges) {
   return { rfNodes, rfEdges };
 }
 
-export default function ProcessTreeViewer() {
-  const [text, setText] = useState("");
+export default function ProcessTreeViewer({ initialTree = null, initialText = "" }) {
+  const [text, setText] = useState(initialText);
   const [busy, setBusy] = useState(false);
-  const [tree, setTree] = useState(null);
+  const [tree, setTree] = useState(initialTree);
+
+  // Sync when parent passes new pre-parsed data (Auto Investigate flow).
+  useMemo(() => { if (initialTree) setTree(initialTree); }, [initialTree]);
 
   const parse = useCallback(async () => {
     if (!text.trim()) { toast.error("Paste Sysmon telemetry first"); return; }

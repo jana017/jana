@@ -45,6 +45,25 @@ export const autoDecode = (input, opts = {}) => {
   });
 };
 
+export const detectFormat = (input) =>
+  req("/detect-format", { method: "POST", body: JSON.stringify({ input }) });
+
+export const autoInvestigate = (input, opts = {}) => {
+  const sid = getSessionId();
+  return req(`/auto-investigate?session_id=${sid}`, {
+    method: "POST",
+    body: JSON.stringify({
+      input,
+      max_depth: opts.max_depth ?? 10,
+      include_ai: opts.include_ai ?? true,
+      format_hint: opts.format_hint ?? null,
+    }),
+  });
+};
+
+export const processTree = (input, format) =>
+  req("/process-tree", { method: "POST", body: JSON.stringify({ input, format: format ?? null }) });
+
 export const analyze = (input, autoDecodeFirst = true) => {
   const sid = getSessionId();
   return req(`/analyze?session_id=${sid}`, {
