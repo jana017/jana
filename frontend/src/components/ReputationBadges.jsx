@@ -1,5 +1,5 @@
 import { ShieldAlert, ShieldCheck, ShieldQuestion } from "lucide-react";
-import { vtVerdict, abuseVerdict, haVerdict } from "@/lib/iocUtils";
+import { vtVerdict, abuseVerdict, haVerdict, mbVerdict } from "@/lib/iocUtils";
 
 const TONE = {
   bad: "bg-red-50 border-red-200 text-red-700",
@@ -20,7 +20,8 @@ export default function ReputationBadges({ reputation, size = "sm" }) {
   const vt = vtVerdict(reputation.vt);
   const ab = abuseVerdict(reputation.abuseipdb);
   const ha = haVerdict(reputation.hybrid_analysis);
-  if (!vt && !ab && !ha) return null;
+  const mb = mbVerdict(reputation.malwarebazaar);
+  if (!vt && !ab && !ha && !mb) return null;
   const pad = size === "sm" ? "px-2 py-0.5 text-[11px]" : "px-2.5 py-1 text-xs";
   return (
     <div className="flex flex-wrap items-center gap-1.5" data-testid="ioc-reputation">
@@ -37,6 +38,11 @@ export default function ReputationBadges({ reputation, size = "sm" }) {
       {ha && (
         <span data-testid="ioc-rep-ha" className={`inline-flex items-center gap-1 font-semibold rounded-md border ${pad} ${TONE[ha.tone]}`}>
           <Icon tone={ha.tone} /> Hybrid Analysis {ha.text}
+        </span>
+      )}
+      {mb && (
+        <span data-testid="ioc-rep-mb" className={`inline-flex items-center gap-1 font-semibold rounded-md border ${pad} ${TONE[mb.tone]}`}>
+          <Icon tone={mb.tone} /> MalwareBazaar {mb.text}
         </span>
       )}
     </div>

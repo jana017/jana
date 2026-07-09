@@ -593,6 +593,7 @@ async def admin_overview(user: dict = Depends(get_current_user)):
             "urlscan": bool(URLSCAN_API_KEY),
             "otx": bool(OTX_API_KEY),
             "hybrid_analysis": bool(HYBRID_ANALYSIS_API_KEY),
+            "malwarebazaar": bool(MALWAREBAZAAR_API_KEY),
             "ai_summary": bool(EMERGENT_LLM_KEY),
         },
         "generated_at": now_iso(),
@@ -677,6 +678,7 @@ async def threat_intel_overview():
             "urlscan": bool(URLSCAN_API_KEY),
             "otx": bool(OTX_API_KEY),
             "hybrid_analysis": bool(HYBRID_ANALYSIS_API_KEY),
+            "malwarebazaar": bool(MALWAREBAZAAR_API_KEY),
             "ai_summary": bool(EMERGENT_LLM_KEY),
         },
     }
@@ -993,6 +995,63 @@ async def _sync_abuseipdb_blacklist(limit: int = ABUSEIPDB_BLACKLIST_MAX, confid
 
 
 # ---------------------------------------------------------------------------
+# MalwareBazaar bulk sync — pulls the last ~100 sample submissions from
+# abuse.ch and upserts their SHA256 hashes into the curated IOC database.
+# ---------------------------------------------------------------------------
+async def _sync_malwarebazaar_recent(selector: int = 100) -> dict:
+    if not MALWAREBAZAAR_API_KEY:
+        return {"error": "MALWAREBAZAAR_API_KEY not configured", "items": 0, "added": 0, "updated": 0, "skipped": 0}
+    added = updated = skipped = 0
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as hc:
+        feed = await _mb_get_recent(hc, selector=selector)
+    if feed.get("error"):
+        return {"error": feed["error"], "items": 0, "added": 0, "updated": 0, "skipped": 0}
+    samples = feed.get("samples") or []
+    for s in samples:
+        value = (s.get("sha256_hash") or "").strip()
+        if not value or _classify_ioc(value) != "sha256":
+            skipped += 1
+            continue
+        family = (s.get("signature") or "").strip() or None
+        file_type = (s.get("file_type") or "").strip() or None
+        threat_name = family or file_type or "MalwareBazaar submission"
+        tags: List[str] = ["malwarebazaar"]
+        if family:
+            tags.append(f"family:{family}")
+        for t in (s.get("tags") or [])[:8]:
+            ts = str(t).strip()
+            if ts:
+                tags.append(ts)
+        source = f"MalwareBazaar · {s.get('sha256_hash')[:12]}"
+        notes_bits = []
+        if s.get("file_name"):
+            notes_bits.append(f"file={s.get('file_name')[:80]}")
+        if file_type:
+            notes_bits.append(f"type={file_type}")
+        if s.get("file_size"):
+            notes_bits.append(f"size={s.get('file_size')}")
+        if s.get("first_seen"):
+            notes_bits.append(f"first_seen={s.get('first_seen')}")
+        notes = "; ".join(notes_bits) or None
+        # Severity: signed / known malware family = critical, otherwise high (all MB submissions are malware).
+        sev = "critical" if family else "high"
+        try:
+            _, created = await _upsert_ioc(value, threat_name, tags, source, sev, notes)
+            added += 1 if created else 0
+            updated += 0 if created else 1
+        except Exception as e:
+            logger.warning(f"MalwareBazaar upsert failed for {value}: {e}")
+            skipped += 1
+    summary = {"items": len(samples), "added": added, "updated": updated, "skipped": skipped, "synced_at": now_iso()}
+    try:
+        await db.sync_meta.update_one({"_id": "malwarebazaar"}, {"$set": summary}, upsert=True)
+    except Exception:
+        pass
+    logger.info(f"MalwareBazaar sync complete: {summary}")
+    return summary
+
+
+# ---------------------------------------------------------------------------
 # Multi-source curated-IOC sync orchestrator (One-click "Sync all sources")
 # ---------------------------------------------------------------------------
 SYNC_SOURCES = [
@@ -1000,6 +1059,7 @@ SYNC_SOURCES = [
     ("otx",             "AlienVault OTX",    True,  None),
     ("hybrid_analysis", "Hybrid Analysis",   True,  None),
     ("abuseipdb",       "AbuseIPDB",         True,  None),
+    ("malwarebazaar",   "MalwareBazaar",     True,  None),
     ("urlscan",         "URLScan.io",        False, "Bulk 'malicious verdicts' search requires urlscan Pro"),
     ("virustotal",      "VirusTotal",        False, "Bulk hunting feed requires VT Enterprise tier"),
     ("talos",           "Cisco Talos",       False, "No public bulk IOC feed available"),
@@ -1021,6 +1081,7 @@ async def iocs_sync_status():
         "otx": bool(OTX_API_KEY),
         "hybrid_analysis": bool(HYBRID_ANALYSIS_API_KEY),
         "abuseipdb": bool(ABUSEIPDB_API_KEY),
+        "malwarebazaar": bool(MALWAREBAZAAR_API_KEY),
         "urlscan": bool(URLSCAN_API_KEY) if 'URLSCAN_API_KEY' in globals() else False,
         "virustotal": bool(VT_API_KEY) if 'VT_API_KEY' in globals() else False,
         "talos": False,
@@ -1042,12 +1103,13 @@ async def iocs_sync_status():
 @api_router.post("/iocs/sync-all")
 async def iocs_sync_all(user: dict = Depends(get_current_user)):
     """One-click sync across every source that provides a bulk IOC feed.
-    Runs OTX + Hybrid Analysis + AbuseIPDB in parallel. Sources without a
-    public bulk feed (VT / URLScan / Talos / Shodan) are reported as skipped."""
+    Runs OTX + Hybrid Analysis + AbuseIPDB + MalwareBazaar in parallel. Sources
+    without a public bulk feed (VT / URLScan / Talos / Shodan) are reported as skipped."""
     tasks = {
         "otx": _sync_otx_pulses() if OTX_API_KEY else None,
         "hybrid_analysis": _sync_hybrid_analysis_feed() if HYBRID_ANALYSIS_API_KEY else None,
         "abuseipdb": _sync_abuseipdb_blacklist() if ABUSEIPDB_API_KEY else None,
+        "malwarebazaar": _sync_malwarebazaar_recent() if MALWAREBAZAAR_API_KEY else None,
     }
     active_keys = [k for k, v in tasks.items() if v is not None]
     results_list = await asyncio.gather(*[tasks[k] for k in active_keys], return_exceptions=True)
@@ -1147,9 +1209,83 @@ ABUSEIPDB_API_KEY = os.environ.get("ABUSEIPDB_API_KEY")
 URLSCAN_API_KEY = os.environ.get("URLSCAN_API_KEY")
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY")
 HYBRID_ANALYSIS_API_KEY = os.environ.get("HYBRID_ANALYSIS_API_KEY")
+MALWAREBAZAAR_API_KEY = os.environ.get("MALWAREBAZAAR_API_KEY")
+_MB_URL = "https://mb-api.abuse.ch/api/v1/"
 _HA_BASE = "https://hybrid-analysis.com/api/v2"  # non-www — www 301-redirects and Cloudflare drops POST bodies
 _HA_HEADERS = {"api-key": HYBRID_ANALYSIS_API_KEY or "", "User-Agent": "Falcon Sandbox", "Accept": "application/json"}
 _REP_TTL = timedelta(hours=6)
+
+
+async def _mb_hash_lookup(hc: httpx.AsyncClient, hash_value: str) -> Optional[dict]:
+    """MalwareBazaar `get_info` lookup. Accepts SHA256/SHA1/MD5.
+    Returns None when disabled, or an enrichment dict on success:
+      {found, sha256, sha1, md5, signature, file_name, file_type, file_size,
+       first_seen, tags[], delivery_method, intelligence, reporter, url}
+    """
+    if not MALWAREBAZAAR_API_KEY:
+        return None
+    if _classify_ioc(hash_value) not in ("sha256", "sha1", "md5"):
+        return {"skipped": True, "reason": "hash_required"}
+    try:
+        r = await hc.post(
+            _MB_URL,
+            data={"query": "get_info", "hash": hash_value},
+            headers={"Auth-Key": MALWAREBAZAAR_API_KEY},
+            timeout=15,
+        )
+        if r.status_code != 200:
+            return {"error": f"MB HTTP {r.status_code}"}
+        j = r.json() or {}
+        status = j.get("query_status")
+        if status in ("hash_not_found", "no_results"):
+            return {"found": False}
+        if status not in ("ok",):
+            return {"error": f"MB status={status}"}
+        data = (j.get("data") or [])
+        if not data:
+            return {"found": False}
+        d = data[0] or {}
+        return {
+            "found": True,
+            "sha256": d.get("sha256_hash"),
+            "sha1": d.get("sha1_hash"),
+            "md5": d.get("md5_hash"),
+            "signature": d.get("signature"),
+            "file_name": d.get("file_name"),
+            "file_type": d.get("file_type"),
+            "file_size": d.get("file_size"),
+            "first_seen": d.get("first_seen"),
+            "last_seen": d.get("last_seen"),
+            "tags": d.get("tags") or [],
+            "delivery_method": d.get("delivery_method"),
+            "intelligence": {
+                "downloads": (d.get("intelligence") or {}).get("downloads"),
+                "uploads": (d.get("intelligence") or {}).get("uploads"),
+            } if d.get("intelligence") else None,
+            "reporter": d.get("reporter"),
+            "url": f"https://bazaar.abuse.ch/sample/{d.get('sha256_hash')}/" if d.get("sha256_hash") else None,
+        }
+    except Exception as e:
+        return {"error": f"MB error: {e}"}
+
+
+async def _mb_get_recent(hc: httpx.AsyncClient, selector: int = 100) -> dict:
+    """MalwareBazaar `get_recent` — last N sample submissions. Returns raw sample list."""
+    if not MALWAREBAZAAR_API_KEY:
+        return {"error": "MALWAREBAZAAR_API_KEY not configured", "samples": []}
+    try:
+        r = await hc.post(
+            _MB_URL,
+            data={"query": "get_recent", "selector": str(selector)},
+            headers={"Auth-Key": MALWAREBAZAAR_API_KEY},
+            timeout=25,
+        )
+        if r.status_code != 200:
+            return {"error": f"MB HTTP {r.status_code}", "samples": []}
+        j = r.json() or {}
+        return {"query_status": j.get("query_status"), "samples": j.get("data") or []}
+    except Exception as e:
+        return {"error": f"MB error: {e}", "samples": []}
 
 
 async def _ha_hash_lookup(hc: httpx.AsyncClient, hash_value: str) -> Optional[dict]:
@@ -1516,8 +1652,9 @@ async def _abuseipdb_lookup(hc: httpx.AsyncClient, normalized: str) -> Optional[
 
 
 async def _reputation(hc: httpx.AsyncClient, kind: str, normalized: str) -> Optional[dict]:
-    """VT + AbuseIPDB + Hybrid Analysis reputation with 6h Mongo cache. Returns None when no keys set."""
-    if not VT_API_KEY and not ABUSEIPDB_API_KEY and not HYBRID_ANALYSIS_API_KEY:
+    """VT + AbuseIPDB + Hybrid Analysis + MalwareBazaar reputation with 6h Mongo cache.
+    Also runs Hybrid Analysis URL quick-scan for URL inputs. Returns None when no keys set."""
+    if not (VT_API_KEY or ABUSEIPDB_API_KEY or HYBRID_ANALYSIS_API_KEY or MALWAREBAZAAR_API_KEY):
         return None
     cache_key = f"{kind}:{normalized}"
     try:
@@ -1527,11 +1664,22 @@ async def _reputation(hc: httpx.AsyncClient, kind: str, normalized: str) -> Opti
                 return doc.get("reputation")
     except Exception:
         pass
-    rep = {"vt": await _vt_lookup(hc, kind, normalized), "abuseipdb": None, "hybrid_analysis": None}
+    rep = {"vt": await _vt_lookup(hc, kind, normalized), "abuseipdb": None, "hybrid_analysis": None, "malwarebazaar": None}
     if kind == "ip":
         rep["abuseipdb"] = await _abuseipdb_lookup(hc, normalized)
     if kind in ("md5", "sha1", "sha256"):
-        rep["hybrid_analysis"] = await _ha_hash_lookup(hc, normalized)
+        # Run HA (sha256 only) + MalwareBazaar (all three hash types) in parallel.
+        ha_task = _ha_hash_lookup(hc, normalized)
+        mb_task = _mb_hash_lookup(hc, normalized)
+        ha, mb = await asyncio.gather(ha_task, mb_task)
+        rep["hybrid_analysis"] = ha
+        rep["malwarebazaar"] = mb
+    if kind == "url":
+        # Fold HA URL quick-scan into the unified analyzer for URL inputs.
+        try:
+            rep["hybrid_analysis"] = await _ha_quick_scan_url(hc, normalized, "all")
+        except Exception as e:
+            logger.warning(f"HA quick-scan failed for {normalized}: {e}")
     try:
         await db.ioc_cache.update_one({"_id": cache_key}, {"$set": {"reputation": rep, "ts": now_iso()}}, upsert=True)
     except Exception:
@@ -1763,7 +1911,12 @@ async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
 @api_router.get("/ioc-config")
 async def ioc_config():
     """Tells the frontend which key-based reputation providers are active."""
-    return {"vt_enabled": bool(VT_API_KEY), "abuseipdb_enabled": bool(ABUSEIPDB_API_KEY)}
+    return {
+        "vt_enabled": bool(VT_API_KEY),
+        "abuseipdb_enabled": bool(ABUSEIPDB_API_KEY),
+        "hybrid_analysis_enabled": bool(HYBRID_ANALYSIS_API_KEY),
+        "malwarebazaar_enabled": bool(MALWAREBAZAAR_API_KEY),
+    }
 
 
 @api_router.get("/ioc-lookup")

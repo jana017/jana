@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, ExternalLink, Loader2, ShieldQuestion, MapPin, Server, AlertTriangle, Globe2, ShieldCheck, List, Sparkles, Database, Check } from "lucide-react";
+import { Search, ExternalLink, Loader2, ShieldQuestion, MapPin, Server, AlertTriangle, Globe2, ShieldCheck, List, Sparkles, Database, Check, Bug, Zap } from "lucide-react";
 import { api, formatApiErrorDetail } from "@/lib/api";
 import { FAVICON, TYPE_LABEL } from "@/lib/iocUtils";
 import { useAuth } from "@/context/AuthContext";
@@ -277,6 +277,36 @@ export default function IocAnalyzer() {
                       ))}
                     </div>
                   )}
+                  {result.type === "url" && result.reputation?.hybrid_analysis?.total_scanners != null && (
+                    <div className="rounded-lg border border-slate-200 bg-white p-3.5" data-testid="ioc-ha-quickscan">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                        <Zap className="w-3.5 h-3.5 text-[#F5821F]" /> Hybrid Analysis · URL Quick Scan
+                        <span className="text-slate-400 font-normal normal-case tracking-normal">·</span>
+                        <span className="text-slate-600 font-normal">
+                          <span className="font-semibold">{result.reputation.hybrid_analysis.malicious_scanners}</span>/{result.reputation.hybrid_analysis.total_scanners} scanners flagged · {result.reputation.hybrid_analysis.reports_count} prior reports
+                        </span>
+                      </div>
+                      {result.reputation.hybrid_analysis.scanners?.length > 0 && (
+                        <div className="rounded-md border border-slate-200 divide-y divide-slate-100 bg-white">
+                          {result.reputation.hybrid_analysis.scanners.slice(0, 8).map((s, i) => {
+                            const flagged = s.positives != null && s.positives > 0;
+                            return (
+                              <div key={i} className="grid grid-cols-[1fr_auto_auto] gap-3 items-center px-3 py-1.5 text-sm">
+                                <span className="text-slate-800 truncate">{s.name}</span>
+                                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${flagged ? "bg-red-50 text-red-700" : "bg-slate-100 text-slate-500"}`}>{s.status || (flagged ? "detected" : "clean")}</span>
+                                <span className="text-xs text-slate-500 font-mono-data w-16 text-right tabular-nums">{s.positives != null && s.total != null ? `${s.positives}/${s.total}` : "—"}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {result.reputation.hybrid_analysis.report_url && (
+                        <a href={result.reputation.hybrid_analysis.report_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-[#2E7DF5] hover:underline mt-2">
+                          View full HA report <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+                  )}
                   <HaSandboxSamples value={result.value} kindLabel={result.type === "domain" ? "domain" : "URL"} />
                   <div className="text-xs text-slate-400">Enrichment: {en.sources.join(" · ")}</div>
                 </div>
@@ -329,6 +359,45 @@ export default function IocAnalyzer() {
                             <span key={`tag-${t}`} className="text-xs bg-slate-100 border border-slate-200 text-slate-600 px-2 py-0.5 rounded-full font-mono-data">{t}</span>
                           ))}
                         </div>
+                      )}
+                    </div>
+                  )}
+                  {result.reputation?.malwarebazaar?.found && (
+                    <div className="pt-3 mt-1 border-t border-slate-200" data-testid="ioc-hash-mb">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                        <Bug className="w-3.5 h-3.5 text-red-500" /> MalwareBazaar (abuse.ch)
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm mb-2">
+                        {result.reputation.malwarebazaar.signature && (
+                          <div><span className="text-slate-400 text-xs uppercase tracking-wide">Signature</span><div className="text-red-700 font-semibold">{result.reputation.malwarebazaar.signature}</div></div>
+                        )}
+                        {result.reputation.malwarebazaar.file_name && (
+                          <div><span className="text-slate-400 text-xs uppercase tracking-wide">File name</span><div className="text-slate-800 font-mono-data break-all">{result.reputation.malwarebazaar.file_name}</div></div>
+                        )}
+                        {result.reputation.malwarebazaar.file_type && (
+                          <div><span className="text-slate-400 text-xs uppercase tracking-wide">File type</span><div className="text-slate-800 font-mono-data">{result.reputation.malwarebazaar.file_type}</div></div>
+                        )}
+                        {result.reputation.malwarebazaar.file_size && (
+                          <div><span className="text-slate-400 text-xs uppercase tracking-wide">Size</span><div className="text-slate-800">{Number(result.reputation.malwarebazaar.file_size).toLocaleString()} bytes</div></div>
+                        )}
+                        {result.reputation.malwarebazaar.first_seen && (
+                          <div><span className="text-slate-400 text-xs uppercase tracking-wide">First seen</span><div className="text-slate-800 font-mono-data">{result.reputation.malwarebazaar.first_seen}</div></div>
+                        )}
+                        {result.reputation.malwarebazaar.delivery_method && (
+                          <div><span className="text-slate-400 text-xs uppercase tracking-wide">Delivery</span><div className="text-slate-800">{result.reputation.malwarebazaar.delivery_method}</div></div>
+                        )}
+                      </div>
+                      {result.reputation.malwarebazaar.tags?.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mb-2">
+                          {result.reputation.malwarebazaar.tags.map((t) => (
+                            <span key={`mb-tag-${t}`} className="text-xs bg-red-50 border border-red-200 text-red-700 px-2 py-0.5 rounded-full font-mono-data">{t}</span>
+                          ))}
+                        </div>
+                      )}
+                      {result.reputation.malwarebazaar.url && (
+                        <a href={result.reputation.malwarebazaar.url} target="_blank" rel="noopener noreferrer" data-testid="ioc-mb-link" className="inline-flex items-center gap-1 text-xs font-semibold text-[#2E7DF5] hover:underline">
+                          View full sample on MalwareBazaar <ExternalLink className="w-3 h-3" />
+                        </a>
                       )}
                     </div>
                   )}

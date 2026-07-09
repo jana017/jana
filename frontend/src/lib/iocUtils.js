@@ -80,11 +80,29 @@ export function haVerdict(ha) {
   if (ha.skipped) return null; // sha256 required — hide badge silently
   if (ha.error) return { text: `HA ${VT_ERR[ha.error] || ha.error}`, tone: "muted" };
   if (ha.found === false) return { text: "HA: no data", tone: "muted" };
+  // URL quick-scan shape has verdict + malicious_scanners + total_scanners.
+  if (ha.total_scanners != null) {
+    const flagged = ha.malicious_scanners || 0;
+    const verdict = (ha.verdict || "").toLowerCase();
+    const tone = verdict === "malicious" || flagged > 2 ? "bad" : verdict === "suspicious" || flagged > 0 ? "warn" : "good";
+    const label = verdict ? verdict.charAt(0).toUpperCase() + verdict.slice(1) : `${flagged}/${ha.total_scanners}`;
+    return { text: `${label} · ${flagged}/${ha.total_scanners}`, tone };
+  }
   const score = ha.threat_score ?? 0;
   const verdict = (ha.verdict || "").toLowerCase();
   const tone = verdict === "malicious" || score >= 70 ? "bad" : verdict === "suspicious" || score >= 30 ? "warn" : "good";
   const label = verdict ? verdict.charAt(0).toUpperCase() + verdict.slice(1) : `${score}/100`;
   return { text: `${label}${ha.threat_score != null ? ` · ${score}` : ""}`, tone };
+}
+
+// Returns { text, tone } for a MalwareBazaar reputation object, or null.
+export function mbVerdict(mb) {
+  if (!mb) return null;
+  if (mb.skipped) return null;
+  if (mb.error) return { text: `MB ${VT_ERR[mb.error] || mb.error}`, tone: "muted" };
+  if (mb.found === false) return { text: "MB: no data", tone: "muted" };
+  const sig = mb.signature;
+  return { text: sig ? sig : "Known sample", tone: "bad" };
 }
 
 function csvCell(v) {
