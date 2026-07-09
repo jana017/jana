@@ -24,6 +24,13 @@ import httpx
 from bson import ObjectId
 from openpyxl import load_workbook
 
+# Performance instrumentation + intelligent cache for OSINT lookups
+from ioc_perf import (
+    instrument, get_cached, set_cached, ensure_indexes as _ensure_perf_indexes,
+    metrics as _perf_metrics, gate as _gate,
+    BATCH_CONCURRENCY as _BATCH_CONCURRENCY, BatchTimer as _BatchTimer,
+)
+
 # ---------------------------------------------------------------------------
 # Setup
 # ---------------------------------------------------------------------------
@@ -2006,32 +2013,69 @@ async def _reputation(hc: httpx.AsyncClient, kind: str, normalized: str) -> Opti
 
 
 async def _shodan_ip(hc: httpx.AsyncClient, ip: str) -> dict:
-    try:
-        r = await hc.get(f"https://internetdb.shodan.io/{ip}")
-        return r.json() if r.status_code == 200 else {}
-    except Exception:
+    if not ip:
         return {}
+    cached = await get_cached(db, "shodan_ip", ip)
+    if cached is not None:
+        return cached
+    async with _gate("shodan_ip"):
+        async with instrument("shodan_ip") as m:
+            try:
+                r = await hc.get(f"https://internetdb.shodan.io/{ip}", timeout=6.0)
+                data = r.json() if r.status_code == 200 else {}
+                m["hit"] = bool(data)
+            except Exception:
+                data = {}
+    await set_cached(db, "shodan_ip", ip, data)
+    return data
 
 
 async def _geo_ip(hc: httpx.AsyncClient, ip: str) -> dict:
-    try:
-        r = await hc.get(f"http://ip-api.com/json/{ip}?fields=status,country,city,isp,org,as,query")
-        j = r.json()
-        return j if j.get("status") == "success" else {}
-    except Exception:
+    if not ip:
         return {}
+    cached = await get_cached(db, "geo_ip", ip)
+    if cached is not None:
+        return cached
+    async with _gate("geo_ip"):
+        async with instrument("geo_ip") as m:
+            try:
+                r = await hc.get(
+                    f"http://ip-api.com/json/{ip}?fields=status,country,city,isp,org,as,query",
+                    timeout=6.0,
+                )
+                j = r.json()
+                data = j if j.get("status") == "success" else {}
+                m["hit"] = bool(data)
+            except Exception:
+                data = {}
+    await set_cached(db, "geo_ip", ip, data)
+    return data
 
 
 async def _resolve_host(hc: httpx.AsyncClient, host: str) -> Optional[str]:
     """Resolve a hostname's first A record via Google DNS-over-HTTPS (no key)."""
-    try:
-        r = await hc.get(f"https://dns.google/resolve?name={host}&type=A", headers={"Accept": "application/json"})
-        if r.status_code == 200:
-            for ans in (r.json() or {}).get("Answer", []):
-                if ans.get("type") == 1 and ans.get("data"):
-                    return ans["data"]
-    except Exception:
-        pass
+    if not host:
+        return None
+    cached = await get_cached(db, "dns_resolve", host)
+    if cached is not None:
+        return cached or None
+    async with _gate("dns_resolve"):
+        async with instrument("dns_resolve") as m:
+            try:
+                r = await hc.get(
+                    f"https://dns.google/resolve?name={host}&type=A",
+                    headers={"Accept": "application/json"},
+                    timeout=5.0,
+                )
+                if r.status_code == 200:
+                    for ans in (r.json() or {}).get("Answer", []):
+                        if ans.get("type") == 1 and ans.get("data"):
+                            m["hit"] = True
+                            await set_cached(db, "dns_resolve", host, ans["data"])
+                            return ans["data"]
+            except Exception:
+                pass
+    await set_cached(db, "dns_resolve", host, "")
     return None
 
 
@@ -2085,83 +2129,89 @@ async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
             # then any scan for the host. Homepage is only a last-resort fallback.
 
             async def urlscan():
-                try:
-                    headers = {"API-Key": URLSCAN_API_KEY} if URLSCAN_API_KEY else {}
-
-                    def _norm_host(u: str) -> str:
+                cached = await get_cached(db, "urlscan", host or "")
+                if cached is not None:
+                    return cached
+                async with _gate("urlscan"):
+                    async with instrument("urlscan") as m:
                         try:
-                            from urllib.parse import urlparse as _up
-                            h = (_up(u).netloc or "").lower().split(":")[0]
-                            return h[4:] if h.startswith("www.") else h
-                        except Exception:
-                            return ""
+                            headers = {"API-Key": URLSCAN_API_KEY} if URLSCAN_API_KEY else {}
 
-                    target_host = (host[4:] if host.startswith("www.") else host).lower()
+                            def _norm_host(u: str) -> str:
+                                try:
+                                    from urllib.parse import urlparse as _up
+                                    h = (_up(u).netloc or "").lower().split(":")[0]
+                                    return h[4:] if h.startswith("www.") else h
+                                except Exception:
+                                    return ""
 
-                    all_results: list[dict] = []
-                    scan_count = 0
+                            target_host = (host[4:] if host.startswith("www.") else host).lower()
 
-                    # Step 1 — for URL inputs, try an exact URL match first.
-                    if requested_url:
-                        exact_q = f'page.url:"{requested_url}"'
-                        r1 = await hc.get(f"https://urlscan.io/api/v1/search/?q={exact_q}&size=5", headers=headers)
-                        if r1.status_code == 200:
-                            j1 = r1.json()
-                            # Even the "exact" search can return unrelated tokenized matches — filter by host.
-                            for x in (j1.get("results", []) or []):
-                                if _norm_host(x.get("task", {}).get("url", "")) == target_host:
-                                    all_results.append(x)
-                            scan_count = j1.get("total", 0) or scan_count
+                            all_results: list[dict] = []
+                            scan_count = 0
 
-                    # Step 2 — quoted-domain search + strict host filter (defends against urlscan's
-                    # loose token matching that used to return unrelated scans containing the host token).
-                    if host:
-                        dq = f'page.domain:"{host}"'
-                        r2 = await hc.get(f"https://urlscan.io/api/v1/search/?q={dq}&size=25", headers=headers)
-                        if r2.status_code == 200:
-                            j2 = r2.json()
-                            filtered = [x for x in (j2.get("results", []) or []) if _norm_host(x.get("task", {}).get("url", "")) == target_host]
-                            existing_ids = {x.get("_id") for x in all_results}
-                            for x in filtered:
-                                if x.get("_id") not in existing_ids:
-                                    all_results.append(x)
-                            scan_count = scan_count or j2.get("total", 0) or 0
+                            # Step 1 — for URL inputs, try an exact URL match first.
+                            if requested_url:
+                                exact_q = f'page.url:"{requested_url}"'
+                                r1 = await hc.get(f"https://urlscan.io/api/v1/search/?q={exact_q}&size=5", headers=headers, timeout=6.0)
+                                if r1.status_code == 200:
+                                    j1 = r1.json()
+                                    for x in (j1.get("results", []) or []):
+                                        if _norm_host(x.get("task", {}).get("url", "")) == target_host:
+                                            all_results.append(x)
+                                    scan_count = j1.get("total", 0) or scan_count
 
-                    recent = [{"url": x["task"]["url"], "date": x["task"].get("time"), "score": x.get("verdicts", {}).get("overall", {}).get("score"), "screenshot": x.get("screenshot")} for x in all_results[:5]]
+                            # Step 2 — quoted-domain search + strict host filter.
+                            if host:
+                                dq = f'page.domain:"{host}"'
+                                r2 = await hc.get(f"https://urlscan.io/api/v1/search/?q={dq}&size=25", headers=headers, timeout=6.0)
+                                if r2.status_code == 200:
+                                    j2 = r2.json()
+                                    filtered = [x for x in (j2.get("results", []) or []) if _norm_host(x.get("task", {}).get("url", "")) == target_host]
+                                    existing_ids = {x.get("_id") for x in all_results}
+                                    for x in filtered:
+                                        if x.get("_id") not in existing_ids:
+                                            all_results.append(x)
+                                    scan_count = scan_count or j2.get("total", 0) or 0
 
-                    def _is_home(u: str) -> bool:
-                        n = _norm_url(u)
-                        return n in (f"http://{host}", f"https://{host}", f"http://www.{host}", f"https://www.{host}")
+                            recent = [{"url": x["task"]["url"], "date": x["task"].get("time"), "score": x.get("verdicts", {}).get("overall", {}).get("score"), "screenshot": x.get("screenshot")} for x in all_results[:5]]
 
-                    def _rank(x: dict) -> int:
-                        u = _norm_url(x.get("task", {}).get("url", ""))
-                        if not x.get("screenshot"):
-                            return 99
-                        if requested_url:
-                            req = _norm_url(requested_url)
-                            if u == req:
-                                return 0
-                            # If the user typed a homepage URL, prefer the homepage.
-                            if _is_home(req):
+                            def _is_home(u: str) -> bool:
+                                n = _norm_url(u)
+                                return n in (f"http://{host}", f"https://{host}", f"http://www.{host}", f"https://www.{host}")
+
+                            def _rank(x: dict) -> int:
+                                u = _norm_url(x.get("task", {}).get("url", ""))
+                                if not x.get("screenshot"):
+                                    return 99
+                                if requested_url:
+                                    req = _norm_url(requested_url)
+                                    if u == req:
+                                        return 0
+                                    if _is_home(req):
+                                        return 0 if _is_home(u) else 3
+                                    if req and u.startswith(req + "/"):
+                                        return 1
+                                    if req.startswith(u + "/") and not _is_home(u):
+                                        return 2
+                                    if not _is_home(u):
+                                        return 3
+                                    return 5
                                 return 0 if _is_home(u) else 3
-                            if req and u.startswith(req + "/"):
-                                return 1
-                            if req.startswith(u + "/") and not _is_home(u):
-                                return 2
-                            if not _is_home(u):
-                                return 3
-                            return 5
-                        return 0 if _is_home(u) else 3
 
-                    ranked = sorted(all_results, key=_rank)
-                    preview = None
-                    for x in ranked:
-                        if x.get("screenshot"):
-                            preview = {"screenshot": x["screenshot"], "url": x.get("task", {}).get("url"), "result": x.get("result")}
-                            break
-                    return {"scan_count": scan_count, "recent_scans": recent, "preview": preview}
-                except Exception:
-                    return {"scan_count": 0, "recent_scans": [], "preview": None}
+                            ranked = sorted(all_results, key=_rank)
+                            preview = None
+                            for x in ranked:
+                                if x.get("screenshot"):
+                                    preview = {"screenshot": x["screenshot"], "url": x.get("task", {}).get("url"), "result": x.get("result")}
+                                    break
+                            payload = {"scan_count": scan_count, "recent_scans": recent, "preview": preview}
+                            m["hit"] = bool(recent) or bool(preview)
+                            await set_cached(db, "urlscan", host or "", payload)
+                            return payload
+                        except Exception:
+                            fallback = {"scan_count": 0, "recent_scans": [], "preview": None}
+                            return fallback
 
             us, resolved = await asyncio.gather(urlscan(), _resolve_host(hc, host))
             sources = ["Google DNS", "urlscan.io"]
@@ -2201,17 +2251,30 @@ async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
                 "sources": ["CIRCL hashlookup"],
             }
             try:
-                r = await hc.get(f"https://hashlookup.circl.lu/lookup/{kind}/{normalized}", headers={"Accept": "application/json"})
-                if r.status_code == 200:
-                    j = r.json()
-                    if isinstance(j, dict) and not j.get("message"):
-                        enr["found"] = True
-                        enr["known_malicious"] = bool(j.get("KnownMalicious"))
-                        enr["filename"] = j.get("FileName")
-                        enr["filesize"] = j.get("FileSize")
-                        enr["product"] = (j.get("ProductCode") or {}).get("ProductName") if isinstance(j.get("ProductCode"), dict) else None
-                        enr["source_label"] = j.get("KnownMalicious") or ("NSRL known-good file" if j.get("RDS:package_id") else "Known file")
-                        enr["note"] = None
+                cached = await get_cached(db, "circl_hash", normalized)
+                if cached is not None:
+                    r_status, r_json = 200, cached
+                else:
+                    async with _gate("circl_hash"):
+                        async with instrument("circl_hash") as m:
+                            r = await hc.get(
+                                f"https://hashlookup.circl.lu/lookup/{kind}/{normalized}",
+                                headers={"Accept": "application/json"}, timeout=6.0,
+                            )
+                            r_status = r.status_code
+                            r_json = r.json() if r_status == 200 else None
+                            m["hit"] = r_status == 200 and isinstance(r_json, dict) and not r_json.get("message")
+                            if m["hit"]:
+                                await set_cached(db, "circl_hash", normalized, r_json)
+                if r_status == 200 and isinstance(r_json, dict) and not r_json.get("message"):
+                    j = r_json
+                    enr["found"] = True
+                    enr["known_malicious"] = bool(j.get("KnownMalicious"))
+                    enr["filename"] = j.get("FileName")
+                    enr["filesize"] = j.get("FileSize")
+                    enr["product"] = (j.get("ProductCode") or {}).get("ProductName") if isinstance(j.get("ProductCode"), dict) else None
+                    enr["source_label"] = j.get("KnownMalicious") or ("NSRL known-good file" if j.get("RDS:package_id") else "Known file")
+                    enr["note"] = None
             except Exception:
                 pass
             result["enrichment"] = enr
