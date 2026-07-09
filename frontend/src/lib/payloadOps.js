@@ -8,6 +8,36 @@ import CryptoJS from "crypto-js";
 /* --------------------------------- helpers --------------------------------- */
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: false });
+const utf16leDecoder = new TextDecoder("utf-16le", { fatal: false });
+
+/* Score a decoded string by how many printable-ish chars it contains.
+ * Higher = better. Used to auto-pick between UTF-8 and UTF-16LE. */
+const printableScore = (s) => {
+  if (!s) return 0;
+  let ok = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c === 9 || c === 10 || c === 13 || (c >= 32 && c < 127) || c >= 160) ok++;
+  }
+  return ok / s.length;
+};
+
+/* Decode a byte array as either UTF-8 or UTF-16LE — whichever yields more
+ * printable text. Strips a trailing run of null-bytes (common in Windows
+ * fixed-length string fields). */
+const bytesToBestText = (bytes) => {
+  // Trim trailing NULs
+  let end = bytes.length;
+  while (end > 0 && bytes[end - 1] === 0) end--;
+  const trimmed = bytes.subarray(0, end);
+  const utf8 = decoder.decode(trimmed);
+  // UTF-16LE requires even byte length; if odd, drop the last byte.
+  const evenLen = trimmed.length - (trimmed.length % 2);
+  const utf16 = evenLen > 0 ? utf16leDecoder.decode(trimmed.subarray(0, evenLen)) : "";
+  const s8 = printableScore(utf8);
+  const s16 = printableScore(utf16);
+  return s16 > s8 + 0.05 ? utf16 : utf8;  // small bias toward UTF-8
+};
 
 const bufToHex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 const hexToBytes = (hex) => {
@@ -26,6 +56,15 @@ const bytesToB64 = (bytes) => btoa(String.fromCharCode(...bytes));
 const asyncHash = async (algo, input) => bufToHex(await crypto.subtle.digest(algo, encoder.encode(input)));
 
 /* --------------------------------- ops ------------------------------------- */
+/* Extract the longest run of Base64-looking chars from a mixed string —
+ * lets "From Base64" work on command lines that contain a Base64 blob
+ * (like PowerShell `-EncodedCommand …` or Windows exec strings). */
+const findB64Blob = (s) => {
+  const matches = String(s).match(/[A-Za-z0-9+/=_-]{16,}/g) || [];
+  if (!matches.length) return null;
+  return matches.reduce((a, b) => (b.length > a.length ? b : a));
+};
+
 const ops = {
   /* ---------- Encoding ---------- */
   "base64-encode": {
@@ -35,11 +74,32 @@ const ops = {
   },
   "base64-decode": {
     name: "From Base64", category: "Encoding",
-    desc: "Decode standard or URL-safe Base64 back to UTF-8 text.",
+    desc: "Decode standard or URL-safe Base64. Auto-detects UTF-8 vs UTF-16LE (Windows strings), and auto-extracts the Base64 blob if the input contains surrounding text.",
     async run(input) {
-      const s = input.trim().replace(/\s+/g, "");
-      try { return decodeURIComponent(escape(atob(s.replace(/-/g, "+").replace(/_/g, "/")))); }
-      catch { return decoder.decode(b64ToBytes(s)); }
+      const raw = input.trim().replace(/\s+/g, "");
+      const looksClean = /^[A-Za-z0-9+/_=-]+$/.test(raw) && raw.length > 0;
+      const decodeSmart = (s) => {
+        const bytes = b64ToBytes(s.replace(/-/g, "+").replace(/_/g, "/"));
+        return bytesToBestText(bytes);
+      };
+      if (looksClean) return decodeSmart(raw);
+      const blob = findB64Blob(input.replace(/\s+/g, ""));
+      if (!blob) throw new Error("No Base64 substring found in input.");
+      return decodeSmart(blob);
+    },
+  },
+  "base64-decode-utf16": {
+    name: "From Base64 · UTF-16LE (forced)", category: "Encoding",
+    desc: "Decode Base64 → UTF-16 Little Endian. Use when auto-detect picks the wrong encoding (common for Windows registry strings and .exe SESSION tokens).",
+    async run(input) {
+      const raw = input.trim().replace(/\s+/g, "");
+      const b64 = /^[A-Za-z0-9+/_=-]+$/.test(raw) ? raw : (findB64Blob(input.replace(/\s+/g, "")) || raw);
+      const bytes = b64ToBytes(b64.replace(/-/g, "+").replace(/_/g, "/"));
+      // Trim trailing NULs and enforce even length.
+      let end = bytes.length;
+      while (end > 0 && bytes[end - 1] === 0) end--;
+      const even = end - (end % 2);
+      return utf16leDecoder.decode(bytes.subarray(0, even));
     },
   },
   "url-encode": {
@@ -59,8 +119,8 @@ const ops = {
   },
   "hex-decode": {
     name: "From Hex", category: "Encoding",
-    desc: "Convert hex string back to UTF-8 text. Non-hex chars are ignored.",
-    async run(input) { return decoder.decode(hexToBytes(input)); },
+    desc: "Convert hex string back to text. Auto-detects UTF-8 vs UTF-16LE. Non-hex chars are ignored.",
+    async run(input) { return bytesToBestText(hexToBytes(input)); },
   },
   "html-entity-decode": {
     name: "HTML Entity Decode", category: "Encoding",
@@ -160,10 +220,12 @@ const ops = {
   },
   "gzip-decompress-b64": {
     name: "Gzip decompress (from Base64)", category: "Compression",
-    desc: "Decompress a gzip payload provided as Base64. Common in PowerShell payloads.",
+    desc: "Decompress a gzip payload provided as Base64. Auto-extracts the Base64 blob if the input contains surrounding text. Common in PowerShell payloads.",
     async run(input) {
       try {
-        const bytes = b64ToBytes(input.trim().replace(/\s+/g, ""));
+        const clean = input.trim().replace(/\s+/g, "");
+        const b64 = /^[A-Za-z0-9+/_=-]+$/.test(clean) ? clean : (findB64Blob(clean) || clean);
+        const bytes = b64ToBytes(b64);
         const ds = new DecompressionStream("gzip");
         const stream = new Blob([bytes]).stream().pipeThrough(ds);
         return await new Response(stream).text();
@@ -172,10 +234,12 @@ const ops = {
   },
   "zlib-decompress-b64": {
     name: "Zlib inflate (from Base64)", category: "Compression",
-    desc: "Inflate a raw-deflate/zlib payload provided as Base64.",
+    desc: "Inflate a raw-deflate/zlib payload provided as Base64. Auto-extracts the Base64 blob if the input contains surrounding text.",
     async run(input) {
       try {
-        const bytes = b64ToBytes(input.trim().replace(/\s+/g, ""));
+        const clean = input.trim().replace(/\s+/g, "");
+        const b64 = /^[A-Za-z0-9+/_=-]+$/.test(clean) ? clean : (findB64Blob(clean) || clean);
+        const bytes = b64ToBytes(b64);
         const ds = new DecompressionStream("deflate");
         const stream = new Blob([bytes]).stream().pipeThrough(ds);
         return await new Response(stream).text();
