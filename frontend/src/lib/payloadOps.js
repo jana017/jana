@@ -65,10 +65,32 @@ const hexToBytes = (hex) => {
   return out;
 };
 const b64ToBytes = (b64) => {
-  const bin = atob(b64.replace(/-/g, "+").replace(/_/g, "/"));
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
+  // Lenient: strip non-Base64 chars, trim to nearest multiple of 4, then pad.
+  // This survives real-world corruption from copy-paste (PowerShell payloads
+  // from PDFs / terminals often gain/lose a character mid-blob).
+  let clean = String(b64).replace(/[^A-Za-z0-9+/_=-]/g, "").replace(/-/g, "+").replace(/_/g, "/");
+  // Strip trailing equals then re-pad correctly.
+  clean = clean.replace(/=+$/g, "");
+  const rem = clean.length % 4;
+  if (rem === 1) clean = clean.slice(0, -1);          // 4k+1 is impossible; drop 1 char
+  clean = clean + "=".repeat((4 - (clean.length % 4)) % 4);
+  try {
+    const bin = atob(clean);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  } catch {
+    // Second-chance: decode in blocks, skip broken ones.
+    const chunks = [];
+    for (let i = 0; i < clean.length; i += 4) {
+      const chunk = clean.substr(i, 4).padEnd(4, "=");
+      try {
+        const bin = atob(chunk);
+        for (let j = 0; j < bin.length; j++) chunks.push(bin.charCodeAt(j));
+      } catch { /* skip broken block */ }
+    }
+    return new Uint8Array(chunks);
+  }
 };
 const bytesToB64 = (bytes) => btoa(String.fromCharCode(...bytes));
 const asyncHash = async (algo, input) => bufToHex(await crypto.subtle.digest(algo, encoder.encode(input)));
@@ -438,6 +460,8 @@ const AUTO_OP_IDS = [
  * and pure-hex/pure-base64 outputs (that just means we haven't decoded yet). */
 function scoreText(s) {
   if (!s || s.length < 3) return 0;
+  // Ignore our own error markers so Auto Decode doesn't "win" with a graceful failure.
+  if (/^\[(Gzip|Zlib|AES|JSON|Base64)]/.test(s.trim())) return 0;
   let printable = 0, letters = 0, digits = 0, punct = 0, spaces = 0, replacement = 0;
   for (let i = 0; i < Math.min(s.length, 4000); i++) {
     const c = s.charCodeAt(i);
@@ -473,10 +497,11 @@ export async function autoDecode(input, { maxDepth = 4, minGain = 0.05 } = {}) {
   const queue = [{ cur: input, chain: [], depth: 0 }];
 
   // Special seed: if the input contains a big Base64-looking substring, try
-  // decoding just that first. This covers mixed inputs like "Program Files\... /SESSION:<blob>".
-  // For mixed inputs the base score is artificially high (plain text prefix inflates it),
-  // so we override the beat-the-base rule when a seed decode scores decently on its own.
-  const EMBED_ACCEPT = 0.5;  // any candidate above this from an embedded blob is worth showing
+  // decoding just that first. This covers mixed inputs like "powershell.exe -e <blob>".
+  // We ALWAYS prefer a good embedded-blob decode over the raw input, because
+  // the user explicitly asked us to "auto-decode" — the whole point is to
+  // reveal what's hidden inside, even when the wrapper is plain English.
+  const EMBED_ACCEPT = 0.5;
   const b64Match = String(input).match(/[A-Za-z0-9+/=_-]{40,}/g);
   if (b64Match) {
     const longest = b64Match.reduce((a, b) => (b.length > a.length ? b : a));
@@ -486,11 +511,10 @@ export async function autoDecode(input, { maxDepth = 4, minGain = 0.05 } = {}) {
         if (out && !seen.has(out)) {
           seen.add(out);
           const s = scoreText(out);
-          // Force-adopt embedded-blob decodes above EMBED_ACCEPT even if base looks textual.
-          if (s >= EMBED_ACCEPT && (s > best.score || best.chain.length === 0)) {
+          // Force-adopt any embedded-blob decode above EMBED_ACCEPT — user
+          // explicitly wants to see what's hidden inside the wrapper.
+          if (s >= EMBED_ACCEPT && (best.embedded ? s > best.score : true)) {
             best = { output: out, chain: [opId], score: s, embedded: true };
-          } else if (s > best.score + minGain) {
-            best = { output: out, chain: [opId], score: s };
           }
           queue.push({ cur: out, chain: [opId], depth: 1 });
         }

@@ -21,6 +21,7 @@ const CATEGORY_TONE = {
 };
 
 const EXAMPLES = [
+  { label: "PowerShell -e (auto-decode)", input: "powershell.exe -e JABvAHMAIAA9ACAARwBlAHQALQBDAGkAbQBJAG4AcwB0AGEAbgBjAGUAIABXAGkAbgAzADIAXwBPAHAAZQByAGEAdABpAG4AZwBTAHkAcwB0AGUAbQA=", recipe: [{ id: "base64-decode" }] },
   { label: "PowerShell Base64 payload", input: "cG93ZXJzaGVsbCAtbm9wIC1lbmMgVzFOelBTPT0=", recipe: [{ id: "base64-decode" }] },
   { label: "Defanged IOC bundle", input: "Contact hxxps://malicious[.]site/beacon then C2 = 45[.]137[.]21[.]90 and hash 44d88612fea8a8f36de82e1278abb02f", recipe: [{ id: "refang" }, { id: "extract-urls" }] },
   { label: "URL-encoded payload", input: "%3Cscript%3Ealert(1)%3C%2Fscript%3E", recipe: [{ id: "url-decode" }] },
