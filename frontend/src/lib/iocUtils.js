@@ -142,3 +142,62 @@ export function downloadCSV(csv, filename = "ioc-analysis.csv") {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+function _download(text, mime, filename) {
+  const blob = new Blob([text], { type: `${mime};charset=utf-8;` });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/** Full JSON dump — includes full reputation payload from every OSINT provider. */
+export function resultsToJSON(results) {
+  return JSON.stringify(
+    {
+      generated_at: new Date().toISOString(),
+      source: "NivX Machines · IOC Analyzer",
+      count: results.length,
+      results,
+    },
+    null,
+    2,
+  );
+}
+export const downloadJSON = (json, filename = "ioc-analysis.json") =>
+  _download(json, "application/json", filename);
+
+/** Human-readable Markdown table with reputation summaries. */
+export function resultsToMarkdown(results) {
+  const lines = [
+    "# NivX Machines · IOC Analysis Report",
+    `_Generated ${new Date().toISOString()}_`,
+    "",
+    `**${results.length} indicator${results.length === 1 ? "" : "s"}** analyzed`,
+    "",
+    "| IOC | Type | Summary | VT hits | AbuseIPDB | Sources |",
+    "|-----|------|---------|---------|-----------|---------|",
+  ];
+  for (const r of results) {
+    const vt = r.reputation?.vt;
+    const ab = r.reputation?.abuseipdb;
+    const vtOk = vt && !vt.error && vt.found !== false;
+    const abOk = ab && !ab.error;
+    const cell = (s) => String(s ?? "—").replace(/\|/g, "\\|").replace(/\n/g, " ");
+    lines.push(
+      `| \`${cell(r.value)}\` | ${cell(TYPE_LABEL[r.type] || r.type)} | ${cell(iocSummary(r))} `
+      + `| ${vtOk ? `${(vt.malicious || 0) + (vt.suspicious || 0)}/${vt.total || "?"}` : "—"} `
+      + `| ${abOk ? `${ab.score ?? "—"}${ab.reports != null ? ` (${ab.reports} reports)` : ""}` : "—"} `
+      + `| ${cell(Object.keys(r.links || {}).join(", "))} |`
+    );
+  }
+  lines.push("");
+  lines.push("_Report auto-generated. Always human-review before production remediation._");
+  return lines.join("\n");
+}
+export const downloadMarkdown = (md, filename = "ioc-analysis.md") =>
+  _download(md, "text/markdown", filename);

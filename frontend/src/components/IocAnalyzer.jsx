@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, ExternalLink, Loader2, ShieldQuestion, MapPin, Server, AlertTriangle, Globe2, ShieldCheck, List, Sparkles, Database, Check, Bug, Zap } from "lucide-react";
 import { api, formatApiErrorDetail } from "@/lib/api";
@@ -8,6 +8,7 @@ import ReputationBadges from "./ReputationBadges";
 import KnownIocBanner from "./KnownIocBanner";
 import IocBulkTable from "./IocBulkTable";
 import HaSandboxSamples from "./HaSandboxSamples";
+import ForensicEventsPanel from "./ForensicEventsPanel";
 
 export default function IocAnalyzer() {
   const { user } = useAuth();
@@ -20,6 +21,50 @@ export default function IocAnalyzer() {
   const [ai, setAi] = useState({ loading: false, text: "", error: "" });
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [handoff, setHandoff] = useState(null); // IOCs handed off from CyberLab
+  const [forensic, setForensic] = useState(null); // { source, format, events, iocs } from CyberLab process-tree
+  const [bulkPrefill, setBulkPrefill] = useState(null); // { text, autoRun, key }
+
+  // Auto-load IOCs / forensic events sent from CyberLab via sessionStorage.
+  useEffect(() => {
+    try {
+      // 1. Rich forensic handoff (from Sysmon parser)
+      const rawF = sessionStorage.getItem("nivx.forensicHandoff");
+      if (rawF) {
+        const parsed = JSON.parse(rawF);
+        sessionStorage.removeItem("nivx.forensicHandoff");
+        if (parsed?.events?.length) {
+          setForensic(parsed);
+          setHandoff({ count: parsed.iocs?.length || 0, source: parsed.source || "CyberLab", forensic: true });
+          const iocValues = [...new Set((parsed.iocs || []).map((i) => String(i.value).trim()).filter(Boolean))];
+          if (iocValues.length > 0) {
+            setMode("bulk");
+            setBulkPrefill({ text: iocValues.join("\n"), autoRun: true, key: Date.now() });
+          }
+          requestAnimationFrame(() => {
+            document.getElementById("ioc-analyzer-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          });
+          return;
+        }
+      }
+      // 2. Legacy plain-IOC handoff
+      const raw = sessionStorage.getItem("nivx.iocBatch");
+      if (!raw) return;
+      const iocs = JSON.parse(raw);
+      if (!Array.isArray(iocs) || iocs.length === 0) return;
+      sessionStorage.removeItem("nivx.iocBatch");
+      const clean = [...new Set(iocs.map((v) => String(v).trim()).filter(Boolean))];
+      if (clean.length === 0) return;
+      setHandoff({ count: clean.length, source: "CyberLab" });
+      setMode("bulk");
+      setBulkPrefill({ text: clean.join("\n"), autoRun: true, key: Date.now() });
+      requestAnimationFrame(() => {
+        document.getElementById("ioc-analyzer-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    } catch {
+      /* ignore parse errors */
+    }
+  }, []);
 
   const analyze = async (e) => {
     e.preventDefault();
@@ -86,7 +131,32 @@ export default function IocAnalyzer() {
   const en = result?.enrichment;
 
   return (
-    <div className="mb-10">
+    <div className="mb-10" id="ioc-analyzer-anchor">
+      {handoff && (
+        <div data-testid="cyberlab-handoff-banner" className="mb-4 rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 flex items-center gap-3">
+          <Zap className="w-4 h-4 text-cyan-600 shrink-0" />
+          <div className="flex-1 text-sm">
+            <span className="font-semibold text-cyan-900">
+              {forensic ? `${forensic.events.length} forensic event${forensic.events.length === 1 ? "" : "s"}` : `${handoff.count} IOC${handoff.count === 1 ? "" : "s"}`}
+            </span>
+            <span className="text-cyan-800"> received from {handoff.source}. </span>
+            <span className="text-cyan-700">
+              {forensic
+                ? "Full forensic record shown below with all fields (src/dst IPs, ports, hashes, MITRE, etc.). Bulk IOC enrichment runs in parallel — download the merged report when complete."
+                : "Running bulk analysis — download the report below when complete."}
+            </span>
+          </div>
+          <button
+            data-testid="dismiss-handoff-banner"
+            onClick={() => { setHandoff(null); setForensic(null); }}
+            className="text-xs font-semibold text-cyan-700 hover:text-cyan-900 px-2 py-1"
+          >Dismiss</button>
+        </div>
+      )}
+
+      {/* Forensic Events table — full record from CyberLab Sysmon parser */}
+      {forensic && <ForensicEventsPanel forensic={forensic} />}
+
       {/* Mode toggle */}
       <div className="inline-flex items-center gap-1 p-1 mb-4 bg-slate-100 rounded-lg" data-testid="ioc-mode-toggle">
         <button
@@ -106,7 +176,7 @@ export default function IocAnalyzer() {
       </div>
 
       {mode === "bulk" ? (
-        <IocBulkTable />
+        <IocBulkTable initialText={bulkPrefill?.text} autoRun={bulkPrefill?.autoRun} prefillKey={bulkPrefill?.key} />
       ) : (
         <>
       <form onSubmit={analyze} data-testid="ioc-analyzer-form" className="flex flex-col sm:flex-row gap-3">

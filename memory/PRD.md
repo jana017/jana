@@ -479,3 +479,34 @@ Added the ability to feed the attack-chain graph real Sysmon Event ID 1 telemetr
 - P2: Wire real WhatsApp / Twitter / LinkedIn hrefs in Landing Hero (carry-over from earlier).
 - P3: Refactor `server.py` (3812 lines) into `routes/services/models/` — cosmetic, not blocking.
 - P3: OG image generation per `/cyberlab/share/:id` for viral DFIR sharing on Twitter/LinkedIn.
+
+
+## Session 35 (2026-07-09) — Rich forensic parser + Send-to-Analyzer end-to-end
+
+Fixed the broken "Send to Analyzer" flow and rewrote the parser to extract full forensic records (network, filesystem, DNS, registry — not just process events).
+
+### Backend — `/app/backend/cyberlab/sysmon.py` (rewrite)
+- Now supports **Sysmon event IDs 1, 3, 5, 7, 11, 12, 13, 14, 22, 23** — Process Create, Network Connection, Process Terminate, Image Load, File Create, Registry Create/Set/Rename, DNS Query, File Delete.
+- Extended alias mapping: 40+ field aliases for Windows Sysmon, Elastic ECS, EDR JSON, and firewall logs.
+- Normalized forensic record schema (34 fields):
+  `timestamp, event_id, event_type, action, category, host, user, integrity_level, process_guid, process_id, process_name, process_image, command_line, parent_process_guid, parent_process_id, parent_process_name, parent_image, parent_command_line, file_path, file_hash_md5, file_hash_sha1, file_hash_sha256, parent_file_hash, src_ip, src_port, dst_ip, dst_port, protocol, domain, url, dns_query, dns_answer, registry_key, registry_value, mitre_techniques, risk`
+- `POST /api/cyberlab/process-tree` now returns `forensic_events[]` + `iocs[]` + tree `nodes/edges` + `stats.by_action` histogram in one response.
+
+### Frontend
+- **CyberLab** `ProcessTreeViewer.jsx` — new Forensic Events preview table (14 core columns visible, all 34 in downloads); new `Send to Analyzer` button ships the full forensic record via `sessionStorage['nivx.forensicHandoff']` to `/threat-intelligence#analyzer`.
+- **IocAnalyzer** — auto-detects the rich handoff, shows a new `ForensicEventsPanel` (all 34 columns, sticky header, sortable filter by risk/action, free-text search) above the bulk IOC results.
+- **New downloads** in the analyzer forensic panel: **CSV** (all columns for spreadsheet), **JSON** (nested with MITRE techniques array), **Markdown** (report table). All time-stamped filenames.
+- **IocBulkTable** — CSV button replaced with a `Download report` dropdown: CSV / JSON / Markdown.
+- **Also fixed the broken IOC-only handoff**: previously CyberLab's IOCs-tab `Send to Analyzer` stashed data in sessionStorage but the analyzer never read it. Now it does, always routes to Bulk mode, and auto-runs enrichment.
+
+### Files added/modified
+- REWROTE  /app/backend/cyberlab/sysmon.py (multi-event forensic parser)
+- ADDED    /app/frontend/src/components/ForensicEventsPanel.jsx (34-col table + CSV/JSON/MD exports)
+- MODIFIED /app/frontend/src/components/IocAnalyzer.jsx (sessionStorage auto-load + forensic handoff)
+- MODIFIED /app/frontend/src/components/IocBulkTable.jsx (initialText+autoRun props + 3-format download dropdown)
+- MODIFIED /app/frontend/src/components/cyberlab/ProcessTreeViewer.jsx (events table + Send to Analyzer)
+- MODIFIED /app/frontend/src/lib/iocUtils.js (added resultsToJSON, downloadJSON, resultsToMarkdown, downloadMarkdown)
+
+### Testing
+- All 6 existing Sysmon pytest cases still pass (`test_cyberlab_sysmon.py`, 0.68s).
+- Live e2e verified: Sysmon XML with process + network + DNS events → 3 forensic rows land in the analyzer with all fields populated → CSV/JSON/MD downloads all present.

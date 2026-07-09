@@ -1,8 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Loader2, Download, ListChecks, ShieldQuestion, ExternalLink, ShieldPlus, Check } from "lucide-react";
+import { Loader2, Download, ListChecks, ShieldQuestion, ExternalLink, ShieldPlus, Check, ChevronDown, FileText, FileJson, FileSpreadsheet } from "lucide-react";
 import { api, formatApiErrorDetail } from "@/lib/api";
-import { FAVICON, TYPE_LABEL, iocSummary, resultsToCSV, downloadCSV, severityStyle } from "@/lib/iocUtils";
+import {
+  FAVICON, TYPE_LABEL, iocSummary, severityStyle,
+  resultsToCSV, downloadCSV,
+  resultsToJSON, downloadJSON,
+  resultsToMarkdown, downloadMarkdown,
+} from "@/lib/iocUtils";
 import { useAuth } from "@/context/AuthContext";
 import ReputationBadges from "./ReputationBadges";
 
@@ -52,14 +57,15 @@ export default function IocBulkTable() {
 
   const flaggedResults = useMemo(() => (results || []).filter(isFlagged), [results]);
 
-  const analyze = async () => {
-    if (!text.trim()) return;
+  const analyze = async (overrideText) => {
+    const payload = (overrideText ?? text).trim();
+    if (!payload) return;
     setLoading(true);
     setError("");
     setResults(null);
     setSaveMsg(null);
     try {
-      const { data } = await api.post("/ioc-lookup-batch", { values: [text] });
+      const { data } = await api.post("/ioc-lookup-batch", { values: [payload] });
       setResults(data.results || []);
     } catch (err) {
       setError(formatApiErrorDetail(err.response?.data?.detail) || "Batch lookup failed");
@@ -68,8 +74,21 @@ export default function IocBulkTable() {
     }
   };
 
-  const exportCSV = () => {
-    if (results?.length) downloadCSV(resultsToCSV(results), "nivx-ioc-analysis.csv");
+  const stamp = () => new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const doExportCSV = () => {
+    if (!results?.length) return;
+    downloadCSV(resultsToCSV(results), `nivx-ioc-analysis-${stamp()}.csv`);
+    setExportOpen(false);
+  };
+  const doExportJSON = () => {
+    if (!results?.length) return;
+    downloadJSON(resultsToJSON(results), `nivx-ioc-analysis-${stamp()}.json`);
+    setExportOpen(false);
+  };
+  const doExportMarkdown = () => {
+    if (!results?.length) return;
+    downloadMarkdown(resultsToMarkdown(results), `nivx-ioc-analysis-${stamp()}.md`);
+    setExportOpen(false);
   };
 
   const saveFlagged = async () => {
@@ -117,16 +136,45 @@ export default function IocBulkTable() {
         <span className="text-xs text-slate-500 flex items-center gap-1.5"><ListChecks className="w-4 h-4 text-[#2E7DF5]" /> {parsedCount} unique IOC{parsedCount === 1 ? "" : "s"} detected {parsedCount > 50 && <span className="text-orange-600">(first 50 analyzed)</span>}</span>
         <div className="flex items-center gap-2">
           {results?.length > 0 && (
-            <button onClick={exportCSV} data-testid="ioc-bulk-export" className="inline-flex items-center gap-2 border border-slate-300 hover:border-[#2E7DF5] hover:text-[#2E7DF5] text-slate-700 text-sm font-semibold px-4 py-2.5 rounded-md transition-colors">
-              <Download className="w-4 h-4" /> Download CSV
-            </button>
+            <div className="relative" ref={exportRef}>
+              <button
+                onClick={() => setExportOpen((v) => !v)}
+                data-testid="ioc-bulk-export"
+                className="inline-flex items-center gap-2 border border-slate-300 hover:border-[#2E7DF5] hover:text-[#2E7DF5] text-slate-700 text-sm font-semibold px-4 py-2.5 rounded-md transition-colors"
+              >
+                <Download className="w-4 h-4" /> Download report
+                <ChevronDown className={`w-3 h-3 transition-transform ${exportOpen ? "rotate-180" : ""}`} />
+              </button>
+              {exportOpen && (
+                <div
+                  data-testid="ioc-bulk-export-menu"
+                  className="absolute right-0 mt-1 w-52 rounded-md border border-slate-200 bg-white shadow-lg z-10 py-1"
+                >
+                  <button
+                    onClick={doExportCSV}
+                    data-testid="ioc-bulk-export-csv"
+                    className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 inline-flex items-center gap-2"
+                  ><FileSpreadsheet className="w-4 h-4 text-emerald-600" /> CSV (spreadsheet)</button>
+                  <button
+                    onClick={doExportJSON}
+                    data-testid="ioc-bulk-export-json"
+                    className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 inline-flex items-center gap-2"
+                  ><FileJson className="w-4 h-4 text-blue-600" /> JSON (full reputation)</button>
+                  <button
+                    onClick={doExportMarkdown}
+                    data-testid="ioc-bulk-export-md"
+                    className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 inline-flex items-center gap-2"
+                  ><FileText className="w-4 h-4 text-fuchsia-600" /> Markdown (report)</button>
+                </div>
+              )}
+            </div>
           )}
           {isAdmin && flaggedResults.length > 0 && (
             <button onClick={saveFlagged} disabled={saving} data-testid="ioc-bulk-save-flagged" className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white text-sm font-semibold px-4 py-2.5 rounded-md transition-colors">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldPlus className="w-4 h-4" />} Save all flagged ({flaggedResults.length})
             </button>
           )}
-          <button onClick={analyze} disabled={loading || !text.trim()} data-testid="ioc-bulk-submit" className="inline-flex items-center justify-center gap-2 bg-[#2E7DF5] hover:bg-[#2563EB] text-white text-sm font-semibold px-6 py-2.5 rounded-md transition-colors disabled:opacity-60">
+          <button onClick={() => analyze()} disabled={loading || !text.trim()} data-testid="ioc-bulk-submit" className="inline-flex items-center justify-center gap-2 bg-[#2E7DF5] hover:bg-[#2563EB] text-white text-sm font-semibold px-6 py-2.5 rounded-md transition-colors disabled:opacity-60">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ListChecks className="w-4 h-4" />} Analyze all
           </button>
         </div>
