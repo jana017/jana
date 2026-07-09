@@ -1,0 +1,585 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import {
+  Search, X, ChevronUp, ChevronDown, Copy, Trash2, Download, Upload, Sparkles,
+  ShieldAlert, ShieldCheck, Zap, Play, Beaker, Bug, Fingerprint, Network,
+  FileWarning, RefreshCw, Layers, Radar, Target, Cpu,
+} from "lucide-react";
+import Navbar from "@/components/Navbar";
+import Contact from "@/components/Contact";
+import useSeo from "@/lib/useSeo";
+import { listPlugins, autoDecode, runRecipe, analyze } from "@/lib/cyberlabApi";
+
+const CATEGORY_STYLE = {
+  Encoding:      { chip: "bg-blue-500/10 text-blue-300 border-blue-500/30",         dot: "bg-blue-400" },
+  Compression:   { chip: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30", dot: "bg-emerald-400" },
+  Cryptography:  { chip: "bg-amber-500/10 text-amber-300 border-amber-500/30",       dot: "bg-amber-400" },
+  Deobfuscation: { chip: "bg-fuchsia-500/10 text-fuchsia-300 border-fuchsia-500/30", dot: "bg-fuchsia-400" },
+  Extractors:    { chip: "bg-rose-500/10 text-rose-300 border-rose-500/30",           dot: "bg-rose-400" },
+  Utilities:     { chip: "bg-slate-500/10 text-slate-300 border-slate-500/30",       dot: "bg-slate-400" },
+  Hashing:       { chip: "bg-indigo-500/10 text-indigo-300 border-indigo-500/30",     dot: "bg-indigo-400" },
+};
+
+const SEVERITY_STYLE = {
+  critical: "bg-red-500/15 text-red-300 border-red-500/40",
+  high:     "bg-orange-500/15 text-orange-300 border-orange-500/40",
+  medium:   "bg-yellow-500/15 text-yellow-300 border-yellow-500/40",
+  low:      "bg-blue-500/15 text-blue-300 border-blue-500/40",
+  info:     "bg-slate-500/15 text-slate-300 border-slate-500/40",
+};
+
+const VERDICT_STYLE = {
+  malicious:  { bg: "bg-red-500/10 border-red-500/40", text: "text-red-300", label: "Malicious", icon: ShieldAlert },
+  suspicious: { bg: "bg-amber-500/10 border-amber-500/40", text: "text-amber-300", label: "Suspicious", icon: FileWarning },
+  clean:      { bg: "bg-emerald-500/10 border-emerald-500/40", text: "text-emerald-300", label: "Clean", icon: ShieldCheck },
+};
+
+const EXAMPLES = [
+  {
+    label: "PowerShell -EncodedCommand",
+    input: "powershell.exe -e JABvAHMAIAA9ACAARwBlAHQALQBDAGkAbQBJAG4AcwB0AGEAbgBjAGUAIABXAGkAbgAzADIAXwBPAHAAZQByAGEAdABpAG4AZwBTAHkAcwB0AGUAbQAKAEkAZgAgACgAJABvAHMALgBDAGEAcAB0AGkAbwBuACAALQBsAGkAawBlACAAIgAqAFcAaQBuAGQAbwB3AHMAKgAiACkAIAB7ACAAaAB0AHQAcABzADoALwAvADEAOAA1AC4AMgAyADAALgAxADAAMQAuADQAMgAvAGIAZQBhAGMAbwBuACAAfQA=",
+  },
+  {
+    label: "Ransomware Note",
+    input: "All your files have been encrypted with AES-256!\nContact us at hxxps://attacker[.]xyz/pay-btc-now\nBitcoin address: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa\nTo restore your files, you must pay the ransom in 72 hours.\nvssadmin.exe delete shadows /all /quiet\nbcdedit /set {default} recoveryenabled No",
+  },
+  {
+    label: "Defanged IOCs bundle",
+    input: "C2 = 45[.]137[.]21[.]90\nCallback: hxxps://malicious[.]site/beacon\nDropper hash: 44d88612fea8a8f36de82e1278abb02f\nDropper sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\nContact: bad[at]attacker[.]xyz",
+  },
+  {
+    label: "Nested base64 → gzip",
+    input: "H4sIAAAAAAAAA0vOSCxKzUlNAQBqRZ2gCQAAAA==",
+  },
+  {
+    label: "URL-encoded XSS",
+    input: "%3Cscript%3Ealert(document.cookie)%3C%2Fscript%3E",
+  },
+];
+
+const RISK_TEXT = (score) => {
+  if (score >= 60) return "text-red-400";
+  if (score >= 30) return "text-amber-400";
+  return "text-emerald-400";
+};
+
+export default function CyberLab() {
+  useSeo({
+    title: "CyberLab — Decoder & Threat Analysis Platform · NivX Machines",
+    description: "Enterprise-grade payload decoder for DFIR analysts. Auto-decode PowerShell, MITRE ATT&CK mapping, YARA-lite rules, IOC extraction, and risk scoring.",
+    canonical: "https://nivxmachines.com/cyberlab",
+  });
+
+  const [plugins, setPlugins] = useState([]);
+  const [q, setQ] = useState("");
+  const [input, setInput] = useState("powershell.exe -e JABvAHMAIAA9ACAARwBlAHQALQBDAGkAbQBJAG4AcwB0AGEAbgBjAGUAIABXAGkAbgAzADIAXwBPAHAAZQByAGEAdABpAG4AZwBTAHkAcwB0AGUAbQA=");
+  const [recipe, setRecipe] = useState([]);
+  const [running, setRunning] = useState(false);
+  const [autoBusy, setAutoBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [tab, setTab] = useState("mitre");
+
+  useEffect(() => {
+    listPlugins().then(setPlugins).catch((e) => toast.error(`Load plugins: ${e.message}`));
+  }, []);
+
+  // Group plugins by category
+  const grouped = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    const out = {};
+    for (const p of plugins) {
+      if (term && !p.name.toLowerCase().includes(term) && !p.description.toLowerCase().includes(term)) continue;
+      (out[p.category] ||= []).push(p);
+    }
+    return out;
+  }, [plugins, q]);
+
+  const pluginMap = useMemo(() => Object.fromEntries(plugins.map((p) => [p.id, p])), [plugins]);
+
+  const addStep = (id) => setRecipe((r) => [...r, { id, params: {} }]);
+  const removeStep = (i) => setRecipe((r) => r.filter((_, idx) => idx !== i));
+  const moveStep = (i, delta) => setRecipe((r) => {
+    const next = [...r]; const t = i + delta;
+    if (t < 0 || t >= next.length) return r;
+    [next[i], next[t]] = [next[t], next[i]]; return next;
+  });
+  const clearRecipe = () => setRecipe([]);
+  const updateParam = (i, key, val) => setRecipe((r) => r.map((s, idx) =>
+    idx === i ? { ...s, params: { ...(s.params || {}), [key]: val } } : s));
+
+  // -- Auto Decode: server-side chain search + full analysis --
+  const runAuto = useCallback(async () => {
+    if (!input.trim()) { toast.error("Paste a payload first"); return; }
+    setAutoBusy(true);
+    setResult(null);
+    try {
+      const res = await autoDecode(input, { include_analysis: true, max_depth: 10 });
+      setResult(res);
+      if (res.trace?.length) {
+        setRecipe(res.trace.map((s) => ({ id: s.id, params: {} })));
+        toast.success(`Auto-decoded ${res.trace.length} step${res.trace.length === 1 ? "" : "s"} · ${res.trace.map((s) => s.name).join(" → ")}`);
+      } else {
+        toast.info("No decoding needed — input is already plaintext.");
+      }
+    } catch (e) {
+      toast.error(`Auto Decode failed: ${e.message}`);
+    } finally { setAutoBusy(false); }
+  }, [input]);
+
+  // -- Run current recipe manually --
+  const runManual = useCallback(async () => {
+    if (!input.trim()) { toast.error("Paste a payload first"); return; }
+    setRunning(true);
+    try {
+      const res = await runRecipe(input, recipe);
+      // For a manual run, also fetch full analysis of the resulting output
+      const analysis = await analyze(res.output, false);
+      setResult({
+        output: res.output,
+        output_size: res.output_size,
+        trace: res.trace,
+        duration_ms: res.duration_ms,
+        analysis: {
+          iocs: analysis.iocs,
+          mitre: analysis.mitre,
+          rules: analysis.rules,
+          risk_score: analysis.risk_score,
+          verdict: analysis.verdict,
+          summary: analysis.summary,
+        },
+      });
+    } catch (e) {
+      toast.error(`Run failed: ${e.message}`);
+    } finally { setRunning(false); }
+  }, [input, recipe]);
+
+  const copyOutput = () => {
+    if (!result?.output) return;
+    navigator.clipboard.writeText(result.output);
+    toast.success("Output copied");
+  };
+
+  const downloadReport = () => {
+    if (!result) return;
+    const report = {
+      input,
+      output: result.output,
+      pipeline: result.trace?.map((s) => `${s.name} (${s.category})`),
+      analysis: result.analysis,
+      generated_at: new Date().toISOString(),
+    };
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = `cyberlab-report-${Date.now()}.json`; a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Report downloaded");
+  };
+
+  const sendToAnalyzer = () => {
+    const iocs = (result?.analysis?.iocs || []).map((i) => i.value);
+    if (!iocs.length) { toast.error("No IOCs to send."); return; }
+    try { sessionStorage.setItem("nivx.iocBatch", JSON.stringify(iocs)); } catch { /* quota */ }
+    window.location.href = "/threat-intelligence#analyzer";
+  };
+
+  const uploadFile = (e) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    if (f.size > 5 * 1024 * 1024) { toast.error("Max file size 5 MB"); return; }
+    const r = new FileReader();
+    r.onload = (ev) => setInput(String(ev.target?.result || ""));
+    r.readAsText(f);
+  };
+
+  const analysis = result?.analysis || null;
+  const verdict = analysis?.verdict || null;
+  const V = verdict ? VERDICT_STYLE[verdict] : null;
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100" data-testid="cyberlab-root">
+      <Navbar />
+
+      {/* Grid backdrop */}
+      <div className="pointer-events-none absolute inset-0 -z-0 opacity-[0.03]"
+        style={{ backgroundImage: "linear-gradient(#22d3ee 1px, transparent 1px), linear-gradient(90deg, #22d3ee 1px, transparent 1px)", backgroundSize: "56px 56px" }} />
+
+      <main className="relative mx-auto max-w-[1600px] px-4 lg:px-8 py-8">
+        {/* Header */}
+        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-cyan-400 mb-2">
+              <Cpu className="w-3.5 h-3.5" /> CyberLab · v2
+              <span className="ml-2 inline-flex items-center gap-1 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                <Radar className="w-3 h-3" /> Auto-decode · MITRE · YARA · IOC
+              </span>
+            </div>
+            <h1 className="font-heading text-3xl md:text-4xl font-semibold tracking-tight text-white">
+              Decoder &amp; Threat Analysis Platform
+            </h1>
+            <p className="mt-2 text-sm text-slate-400 max-w-3xl">
+              DFIR-grade payload triage — chain 28+ decoders, auto-solve nested encodings, and get MITRE ATT&amp;CK mapping, YARA-lite rule hits, IOC extraction &amp; risk scoring in a single click.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              data-testid="auto-decode-btn"
+              onClick={runAuto}
+              disabled={autoBusy}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-semibold text-sm disabled:opacity-50 transition-colors"
+            >
+              {autoBusy ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+              Auto Decode &amp; Analyze
+            </button>
+            <button
+              data-testid="run-recipe-btn"
+              onClick={runManual}
+              disabled={running || recipe.length === 0}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold text-sm disabled:opacity-40 transition-colors"
+            >
+              {running ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+              Run Recipe
+            </button>
+            <label
+              data-testid="upload-btn"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-300 hover:text-cyan-400 border border-slate-700 hover:border-cyan-500/50 rounded-md px-3 py-2 cursor-pointer transition-colors"
+            >
+              <Upload className="w-3.5 h-3.5" /> Upload
+              <input type="file" accept=".txt,.log,.b64,.hex,.json,.js,.ps1,.eml,.bin" className="hidden" onChange={uploadFile} />
+            </label>
+          </div>
+        </div>
+
+        {/* Verdict banner */}
+        {V && (
+          <div className={`mb-6 rounded-lg border ${V.bg} p-4 flex items-center justify-between gap-4`} data-testid="verdict-banner">
+            <div className="flex items-center gap-3">
+              <V.icon className={`w-6 h-6 ${V.text}`} />
+              <div>
+                <div className={`text-xs font-bold uppercase tracking-widest ${V.text}`}>Verdict · {V.label}</div>
+                <div className="text-sm text-slate-200 mt-0.5">{analysis.summary}</div>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Risk Score</div>
+              <div className={`text-3xl font-bold tabular-nums ${RISK_TEXT(analysis.risk_score)}`} data-testid="risk-score">
+                {analysis.risk_score}<span className="text-sm text-slate-500">/100</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Example chips */}
+        <div className="mb-4 flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Load example:</span>
+          {EXAMPLES.map((ex) => (
+            <button
+              key={ex.label}
+              data-testid={`example-${ex.label.replace(/\s+/g, "-")}`}
+              onClick={() => { setInput(ex.input); setResult(null); toast.success(`Loaded: ${ex.label}`); }}
+              className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-300 hover:text-cyan-400 border border-slate-700 hover:border-cyan-500/50 bg-slate-900 rounded-full px-2.5 py-0.5 transition-colors"
+            >
+              <Sparkles className="w-3 h-3" /> {ex.label}
+            </button>
+          ))}
+        </div>
+
+        {/* 3-column layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          {/* ---- Column 1: Palette ---- */}
+          <aside className="lg:col-span-3 rounded-xl border border-slate-800 bg-slate-900/60 backdrop-blur p-4 h-fit lg:sticky lg:top-24">
+            <div className="flex items-center gap-2 mb-3">
+              <Beaker className="w-4 h-4 text-cyan-400" />
+              <h3 className="font-semibold text-white text-sm">Operations</h3>
+              <span className="ml-auto text-[10px] text-slate-500">{plugins.length}</span>
+            </div>
+            <div className="relative mb-3">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+              <input
+                data-testid="ops-search"
+                placeholder="Search operations…"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                className="w-full text-xs pl-7 pr-3 py-1.5 rounded-md bg-slate-950 border border-slate-800 focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 outline-none text-slate-100 placeholder-slate-600"
+              />
+            </div>
+            <div className="space-y-3 max-h-[75vh] overflow-y-auto pr-1">
+              {Object.entries(grouped).map(([cat, items]) => (
+                <div key={cat}>
+                  <div className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border ${(CATEGORY_STYLE[cat] || CATEGORY_STYLE.Utilities).chip} mb-1.5`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${(CATEGORY_STYLE[cat] || CATEGORY_STYLE.Utilities).dot}`} /> {cat}
+                  </div>
+                  <div className="space-y-0.5">
+                    {items.map((op) => (
+                      <button
+                        key={op.id}
+                        data-testid={`add-op-${op.id}`}
+                        onClick={() => addStep(op.id)}
+                        title={op.description}
+                        className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-slate-800/70 border border-transparent hover:border-slate-700 text-slate-300 hover:text-white transition-colors"
+                      >
+                        {op.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </aside>
+
+          {/* ---- Column 2: Input / Recipe / Output ---- */}
+          <section className="lg:col-span-5 space-y-4">
+            {/* Input */}
+            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-slate-300">Input</h3>
+                  <span className="text-[10px] text-slate-500">{input.length.toLocaleString()} chars</span>
+                </div>
+                <button
+                  data-testid="clear-input-btn"
+                  onClick={() => { setInput(""); setResult(null); }}
+                  className="text-[10px] text-slate-400 hover:text-red-400 inline-flex items-center gap-1 transition-colors"
+                >
+                  <X className="w-3 h-3" /> Clear
+                </button>
+              </div>
+              <textarea
+                data-testid="input-textarea"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Paste a suspicious payload — base64, hex, URL-encoded, PowerShell -EncodedCommand, obfuscated JS, ransomware notes, defanged IOCs..."
+                className="w-full h-40 font-mono text-xs bg-slate-950 border border-slate-800 rounded-md px-3 py-2 outline-none focus:border-cyan-500/50 text-slate-100 placeholder-slate-600 resize-y"
+              />
+            </div>
+
+            {/* Recipe */}
+            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Layers className="w-3.5 h-3.5 text-cyan-400" />
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-slate-300">Recipe</h3>
+                  <span className="text-[10px] text-slate-500">{recipe.length} step{recipe.length === 1 ? "" : "s"}</span>
+                </div>
+                {recipe.length > 0 && (
+                  <button data-testid="clear-recipe-btn" onClick={clearRecipe} className="text-[10px] text-slate-400 hover:text-red-400 inline-flex items-center gap-1 transition-colors">
+                    <Trash2 className="w-3 h-3" /> Clear
+                  </button>
+                )}
+              </div>
+              {recipe.length === 0 ? (
+                <div className="text-xs text-slate-500 italic px-2 py-6 text-center border border-dashed border-slate-800 rounded-md">
+                  Click operations on the left to build a pipeline, or hit <span className="text-cyan-400 font-semibold">Auto Decode</span> to let CyberLab figure it out.
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {recipe.map((step, i) => {
+                    const p = pluginMap[step.id];
+                    if (!p) return null;
+                    const tone = CATEGORY_STYLE[p.category] || CATEGORY_STYLE.Utilities;
+                    return (
+                      <div key={i} data-testid={`recipe-step-${i}`}
+                        className="group flex items-center gap-2 px-2 py-1.5 rounded-md border border-slate-800 bg-slate-950 hover:border-slate-700 transition-colors">
+                        <span className="text-[10px] font-bold text-slate-500 w-4 text-center">{i + 1}</span>
+                        <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded border ${tone.chip}`}>
+                          <span className={`w-1 h-1 rounded-full ${tone.dot}`} /> {p.category}
+                        </span>
+                        <span className="text-xs text-white flex-1">{p.name}</span>
+                        {p.params?.length > 0 && (
+                          <input
+                            data-testid={`step-${i}-param`}
+                            placeholder={p.params[0].name}
+                            value={step.params?.[p.params[0].name] ?? ""}
+                            onChange={(e) => updateParam(i, p.params[0].name, e.target.value)}
+                            className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-cyan-300 w-24 outline-none focus:border-cyan-500/50"
+                          />
+                        )}
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
+                          <button onClick={() => moveStep(i, -1)} className="p-0.5 text-slate-500 hover:text-white" title="Move up"><ChevronUp className="w-3 h-3" /></button>
+                          <button onClick={() => moveStep(i, 1)} className="p-0.5 text-slate-500 hover:text-white" title="Move down"><ChevronDown className="w-3 h-3" /></button>
+                          <button onClick={() => removeStep(i)} data-testid={`remove-step-${i}`} className="p-0.5 text-slate-500 hover:text-red-400" title="Remove"><X className="w-3 h-3" /></button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Output */}
+            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-slate-300">Output</h3>
+                  {result && (
+                    <span className="text-[10px] text-slate-500">
+                      {result.output_size?.toLocaleString()} bytes · {result.duration_ms?.toFixed(1)} ms
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button data-testid="copy-output-btn" onClick={copyOutput} disabled={!result?.output} className="text-[10px] text-slate-400 hover:text-cyan-400 inline-flex items-center gap-1 disabled:opacity-40 transition-colors">
+                    <Copy className="w-3 h-3" /> Copy
+                  </button>
+                  <button data-testid="download-report-btn" onClick={downloadReport} disabled={!result} className="text-[10px] text-slate-400 hover:text-cyan-400 inline-flex items-center gap-1 disabled:opacity-40 transition-colors">
+                    <Download className="w-3 h-3" /> Report
+                  </button>
+                </div>
+              </div>
+              <pre
+                data-testid="output-pre"
+                className="w-full min-h-40 max-h-96 overflow-auto font-mono text-xs bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-emerald-300 whitespace-pre-wrap break-all"
+              >{result?.output ?? <span className="text-slate-600 italic">Run a recipe or click Auto Decode to see decoded output here…</span>}</pre>
+            </div>
+          </section>
+
+          {/* ---- Column 3: Threat Analysis ---- */}
+          <aside className="lg:col-span-4 rounded-xl border border-slate-800 bg-slate-900/60 p-4 h-fit">
+            <div className="flex items-center gap-2 mb-3">
+              <Radar className="w-4 h-4 text-cyan-400" />
+              <h3 className="font-semibold text-white text-sm">Threat Analysis</h3>
+            </div>
+
+            {/* Tab bar */}
+            <div className="flex items-center gap-1 mb-3 border-b border-slate-800">
+              {[
+                { id: "mitre",  label: "MITRE",   icon: Target,      count: analysis?.mitre?.length ?? 0 },
+                { id: "rules",  label: "Rules",   icon: Bug,         count: analysis?.rules?.length ?? 0 },
+                { id: "iocs",   label: "IOCs",    icon: Fingerprint, count: analysis?.iocs?.length ?? 0 },
+                { id: "trace",  label: "Chain",   icon: Network,     count: result?.trace?.length ?? 0 },
+              ].map((t) => (
+                <button
+                  key={t.id}
+                  data-testid={`tab-${t.id}`}
+                  onClick={() => setTab(t.id)}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold border-b-2 transition-colors ${
+                    tab === t.id
+                      ? "border-cyan-400 text-cyan-300"
+                      : "border-transparent text-slate-500 hover:text-slate-300"
+                  }`}
+                >
+                  <t.icon className="w-3 h-3" />
+                  {t.label}
+                  {t.count > 0 && (
+                    <span className={`ml-0.5 text-[9px] px-1.5 py-0.5 rounded-full font-bold ${tab === t.id ? "bg-cyan-500/20 text-cyan-300" : "bg-slate-800 text-slate-400"}`}>{t.count}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <div className="max-h-[70vh] overflow-y-auto pr-1 space-y-2">
+              {!analysis && !result?.trace?.length && (
+                <div className="text-xs text-slate-500 italic px-2 py-8 text-center">
+                  No analysis yet — run auto-decode or a recipe.
+                </div>
+              )}
+
+              {tab === "mitre" && (analysis?.mitre?.length ? analysis.mitre.map((m) => (
+                <div key={m.id} data-testid={`mitre-${m.id}`} className="rounded-md border border-slate-800 bg-slate-950 p-2.5">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <a href={`https://attack.mitre.org/techniques/${m.id.replace(".", "/")}/`} target="_blank" rel="noreferrer" className="text-xs font-bold text-cyan-300 hover:text-cyan-200">{m.id}</a>
+                    <span className="text-[9px] uppercase font-bold text-slate-500 tracking-widest">{m.tactic}</span>
+                  </div>
+                  <div className="text-xs font-semibold text-white mb-1">{m.name}</div>
+                  <div className="text-[11px] text-slate-400 mb-1.5">{m.description}</div>
+                  {m.evidence?.length > 0 && (
+                    <div className="space-y-0.5">
+                      {m.evidence.map((e, i) => (
+                        <div key={i} className="font-mono text-[10px] bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-amber-300 break-all">{e}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )) : analysis && <div className="text-xs text-slate-500 italic px-2 py-4">No ATT&amp;CK techniques detected.</div>)}
+
+              {tab === "rules" && (analysis?.rules?.length ? analysis.rules.map((r, i) => (
+                <div key={i} data-testid={`rule-${r.rule}`} className="rounded-md border border-slate-800 bg-slate-950 p-2.5">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <Bug className="w-3 h-3 text-fuchsia-400" /> {r.rule}
+                    </div>
+                    <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border ${SEVERITY_STYLE[r.severity] || SEVERITY_STYLE.medium}`}>{r.severity}</span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 mb-1.5">{r.description}</div>
+                  <div className="flex flex-wrap gap-1 mb-1.5">
+                    {r.tags?.map((t) => (
+                      <span key={t} className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400">#{t}</span>
+                    ))}
+                  </div>
+                  {r.matched?.length > 0 && (
+                    <div className="space-y-0.5">
+                      {r.matched.slice(0, 3).map((m, k) => (
+                        <div key={k} className="font-mono text-[10px] bg-slate-900 border border-slate-800 rounded px-1.5 py-0.5 text-fuchsia-300 break-all">{m}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )) : analysis && <div className="text-xs text-slate-500 italic px-2 py-4">No rule matches.</div>)}
+
+              {tab === "iocs" && (
+                analysis?.iocs?.length ? (
+                  <>
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-[10px] text-slate-500">{analysis.iocs.length} extracted</span>
+                      <button data-testid="send-to-analyzer-btn" onClick={sendToAnalyzer} className="inline-flex items-center gap-1 text-[10px] font-semibold text-cyan-400 hover:text-cyan-300 transition-colors">
+                        Send to Analyzer <ChevronDown className="w-3 h-3 -rotate-90" />
+                      </button>
+                    </div>
+                    {analysis.iocs.map((i, k) => (
+                      <div key={k} className="flex items-center gap-2 rounded border border-slate-800 bg-slate-950 px-2 py-1.5" data-testid={`ioc-${k}`}>
+                        <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500 w-14 shrink-0">{i.type}</span>
+                        <span className="font-mono text-[11px] text-cyan-300 flex-1 truncate">{i.value}</span>
+                        <button
+                          onClick={() => { navigator.clipboard.writeText(i.value); toast.success("Copied"); }}
+                          className="text-slate-500 hover:text-white"
+                          title="Copy"
+                        ><Copy className="w-3 h-3" /></button>
+                      </div>
+                    ))}
+                  </>
+                ) : analysis && <div className="text-xs text-slate-500 italic px-2 py-4">No IOCs extracted.</div>
+              )}
+
+              {tab === "trace" && (result?.trace?.length ? (
+                <div className="space-y-1.5">
+                  {result.trace.map((s, i) => {
+                    const tone = CATEGORY_STYLE[s.category] || CATEGORY_STYLE.Utilities;
+                    return (
+                      <div key={i} data-testid={`trace-${i}`} className="rounded-md border border-slate-800 bg-slate-950 p-2">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[10px] font-bold text-slate-500 w-4">{i + 1}</span>
+                          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded border ${tone.chip}`}>
+                            <span className={`w-1 h-1 rounded-full ${tone.dot}`} /> {s.category}
+                          </span>
+                          <span className="text-xs font-semibold text-white flex-1">{s.name}</span>
+                          {s.confidence && <span className="text-[10px] text-emerald-400 font-mono">conf: {s.confidence}</span>}
+                          <span className="text-[10px] text-slate-500 font-mono">{s.duration_ms?.toFixed(1)}ms</span>
+                        </div>
+                        {s.error && <div className="font-mono text-[10px] text-red-400 mt-1">✕ {s.error}</div>}
+                        {!s.error && (
+                          <div className="font-mono text-[10px] text-slate-400 bg-slate-900 border border-slate-800 rounded px-1.5 py-1 truncate">
+                            → {s.output_preview}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : <div className="text-xs text-slate-500 italic px-2 py-4">No pipeline steps yet.</div>)}
+            </div>
+          </aside>
+        </div>
+
+        {/* Footer note */}
+        <div className="mt-8 text-center text-[11px] text-slate-500">
+          <ShieldCheck className="w-3 h-3 inline mr-1 text-emerald-400" />
+          Server-side analysis is scoped to this session — payloads are not stored.
+        </div>
+      </main>
+
+      <div className="bg-white text-slate-900">
+        <Contact />
+      </div>
+    </div>
+  );
+}

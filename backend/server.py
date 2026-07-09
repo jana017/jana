@@ -3604,6 +3604,10 @@ async def public_enabled_community_sources():
 
 app.include_router(api_router)
 
+# CyberLab Decoder & Threat Analysis Platform (modular sub-app)
+from cyberlab import router as cyberlab_router  # noqa: E402
+app.include_router(cyberlab_router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,

@@ -16,6 +16,7 @@ const BlogIndex = lazy(() => import("@/pages/BlogIndex"));
 const CommunityCd = lazy(() => import("@/pages/CommunityCd"));
 const CommunityFeed = lazy(() => import("@/pages/CommunityFeed"));
 const PayloadLab = lazy(() => import("@/pages/PayloadLab"));
+const CyberLab = lazy(() => import("@/pages/CyberLab"));
 
 function RouteFallback() {
   return (
@@ -46,6 +47,7 @@ function App() {
                 <Route path="/community/:source" element={<CommunityFeed />} />
                 <Route path="/detonate" element={<PayloadLab />} />
                 <Route path="/payload-lab" element={<PayloadLab />} />
+                <Route path="/cyberlab" element={<CyberLab />} />
                 <Route path="/admin" element={<Admin />} />
               </Routes>
             </Suspense>
