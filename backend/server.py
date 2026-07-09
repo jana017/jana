@@ -1606,33 +1606,94 @@ async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
             }
         elif kind in ("domain", "url"):
             from urllib.parse import urlparse
-            host = (urlparse(normalized).netloc if kind == "url" else normalized).split(":")[0]
-            query = f"page.domain:{host}" if host else f"page.url:{normalized}"
+            parsed = urlparse(normalized) if kind == "url" else None
+            host = ((parsed.netloc if parsed else normalized).split(":")[0]) if (parsed or normalized) else ""
+            # Full requested URL (only for URL inputs).
+            requested_url = normalized if kind == "url" else None
+
+            def _norm_url(u: str) -> str:
+                return (u or "").rstrip("/").lower()
+
+            # urlscan search always keys on domain for broad recall; ranking below picks the
+            # scan whose page matches the requested URL first, then falls back to path prefix,
+            # then any scan for the host. Homepage is only a last-resort fallback.
 
             async def urlscan():
                 try:
                     headers = {"API-Key": URLSCAN_API_KEY} if URLSCAN_API_KEY else {}
-                    r = await hc.get(f"https://urlscan.io/api/v1/search/?q={query}&size=10", headers=headers)
-                    if r.status_code != 200:
-                        return {"scan_count": 0, "recent_scans": [], "preview": None}
-                    j = r.json()
-                    results = j.get("results", [])
-                    recent = [{"url": x["task"]["url"], "date": x["task"].get("time"), "score": x.get("verdicts", {}).get("overall", {}).get("score"), "screenshot": x.get("screenshot")} for x in results[:5]]
-                    # Pick a representative landing-page screenshot: prefer the homepage of the host.
+
+                    def _norm_host(u: str) -> str:
+                        try:
+                            from urllib.parse import urlparse as _up
+                            h = (_up(u).netloc or "").lower().split(":")[0]
+                            return h[4:] if h.startswith("www.") else h
+                        except Exception:
+                            return ""
+
+                    target_host = (host[4:] if host.startswith("www.") else host).lower()
+
+                    all_results: list[dict] = []
+                    scan_count = 0
+
+                    # Step 1 — for URL inputs, try an exact URL match first.
+                    if requested_url:
+                        exact_q = f'page.url:"{requested_url}"'
+                        r1 = await hc.get(f"https://urlscan.io/api/v1/search/?q={exact_q}&size=5", headers=headers)
+                        if r1.status_code == 200:
+                            j1 = r1.json()
+                            # Even the "exact" search can return unrelated tokenized matches — filter by host.
+                            for x in (j1.get("results", []) or []):
+                                if _norm_host(x.get("task", {}).get("url", "")) == target_host:
+                                    all_results.append(x)
+                            scan_count = j1.get("total", 0) or scan_count
+
+                    # Step 2 — quoted-domain search + strict host filter (defends against urlscan's
+                    # loose token matching that used to return unrelated scans containing the host token).
+                    if host:
+                        dq = f'page.domain:"{host}"'
+                        r2 = await hc.get(f"https://urlscan.io/api/v1/search/?q={dq}&size=25", headers=headers)
+                        if r2.status_code == 200:
+                            j2 = r2.json()
+                            filtered = [x for x in (j2.get("results", []) or []) if _norm_host(x.get("task", {}).get("url", "")) == target_host]
+                            existing_ids = {x.get("_id") for x in all_results}
+                            for x in filtered:
+                                if x.get("_id") not in existing_ids:
+                                    all_results.append(x)
+                            scan_count = scan_count or j2.get("total", 0) or 0
+
+                    recent = [{"url": x["task"]["url"], "date": x["task"].get("time"), "score": x.get("verdicts", {}).get("overall", {}).get("score"), "screenshot": x.get("screenshot")} for x in all_results[:5]]
+
                     def _is_home(u: str) -> bool:
-                        u = (u or "").rstrip("/").lower()
-                        return u in (f"http://{host}", f"https://{host}", f"http://www.{host}", f"https://www.{host}")
+                        n = _norm_url(u)
+                        return n in (f"http://{host}", f"https://{host}", f"http://www.{host}", f"https://www.{host}")
+
+                    def _rank(x: dict) -> int:
+                        u = _norm_url(x.get("task", {}).get("url", ""))
+                        if not x.get("screenshot"):
+                            return 99
+                        if requested_url:
+                            req = _norm_url(requested_url)
+                            if u == req:
+                                return 0
+                            # If the user typed a homepage URL, prefer the homepage.
+                            if _is_home(req):
+                                return 0 if _is_home(u) else 3
+                            if req and u.startswith(req + "/"):
+                                return 1
+                            if req.startswith(u + "/") and not _is_home(u):
+                                return 2
+                            if not _is_home(u):
+                                return 3
+                            return 5
+                        return 0 if _is_home(u) else 3
+
+                    ranked = sorted(all_results, key=_rank)
                     preview = None
-                    for x in results:
-                        if x.get("screenshot") and _is_home(x.get("task", {}).get("url", "")):
-                            preview = {"screenshot": x["screenshot"], "url": x["task"]["url"], "result": x.get("result")}
+                    for x in ranked:
+                        if x.get("screenshot"):
+                            preview = {"screenshot": x["screenshot"], "url": x.get("task", {}).get("url"), "result": x.get("result")}
                             break
-                    if not preview:
-                        for x in results:
-                            if x.get("screenshot"):
-                                preview = {"screenshot": x["screenshot"], "url": x.get("task", {}).get("url"), "result": x.get("result")}
-                                break
-                    return {"scan_count": j.get("total", 0), "recent_scans": recent, "preview": preview}
+                    return {"scan_count": scan_count, "recent_scans": recent, "preview": preview}
                 except Exception:
                     return {"scan_count": 0, "recent_scans": [], "preview": None}
 

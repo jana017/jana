@@ -153,3 +153,11 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - Result view adapts to the IOC kind: URL renders scanner table, hash renders overview card, IP/domain renders sandbox-linkage list. Kind pill above every result for quick recognition.
 - All 5 code paths verified via curl + screenshot: URL "No threat", SHA-256 "not found", MD5 clean error message, IP 50 samples/18 malicious, domain 50/17.
 - Production build (`CI=true yarn build`) clean.
+
+
+## Latest (2026-07-09, session 19 — URL preview accuracy fix)
+- **Bug**: When user pasted a specific URL (e.g. `github.com/torvalds/linux`) into "Investigate indicators in one click", the preview thumbnail showed the domain landing page — or worse, completely unrelated scans like `20.26.156.215` or `gophish.mfa.cuda-labs.com`. Two root causes: (1) unquoted `page.domain:X` in urlscan.io search matches loose tokens, returning unrelated scans that mention the domain; (2) the ranking function explicitly preferred the homepage screenshot.
+- **Fix (`/app/backend/server.py` `_ioc_lookup`)**: (a) Step-1 exact URL search with `page.url:"<exact_url>"` → surfaces prior scans of the exact URL when they exist. (b) Step-2 quoted domain search `page.domain:"<host>"` + **strict host filter** (`urlparse.netloc == target_host`) — removes all cross-host contamination. (c) Ranking now: exact match (0) > path-prefix match (1) > super-path (2) > any same-host non-homepage (3) > homepage (5). If input IS the homepage URL, prefer homepage.
+- **Frontend (`IocAnalyzer.jsx`)**: preview overlay now shows the **actual scanned URL** (was previously just the host), and if it doesn't match the requested URL an **amber warning** appears: "No prior scan of the requested URL — showing the closest scan on this host".
+- **Verified via curl + screenshot**: `github.com/torvalds/linux` → exact-match preview (no warning); `microsoft.com/en-us/security` → path-prefix match (blog article under `/en-us/security/`); `wikipedia.org/wiki/Cybersecurity` → wikipedia homepage with amber warning shown clearly. No more unrelated-host previews.
+- Production build (`CI=true yarn build`) passes.
