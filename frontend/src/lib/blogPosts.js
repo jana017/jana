@@ -1,9 +1,12 @@
 // NivX-branded blog article content. Each post has its own long-form body
 // with structured sections rendered natively on /blog/:slug.
 
+import { WINDOWS_LOLBAS_360 } from "./lolbasArticle";
+
 const IMG = (id) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=1600&q=80`;
 
 export const BLOG_POSTS = [
+  WINDOWS_LOLBAS_360,
   {
     slug: "locked-shields-2026",
     title: "NivX participation in Locked Shields 2026",

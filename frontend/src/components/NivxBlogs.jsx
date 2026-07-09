@@ -4,8 +4,9 @@ import { Calendar, ArrowUpRight, Tag, Clock } from "lucide-react";
 import { BLOG_POSTS } from "@/lib/blogPosts";
 
 export default function NivxBlogs() {
-  const featured = BLOG_POSTS[0];
-  const rest = BLOG_POSTS.slice(1);
+  const visible = BLOG_POSTS.filter((p) => !p.hidden_from_landing);
+  const featured = visible[0];
+  const rest = visible.slice(1);
 
   return (
     <section id="blog" data-testid="nivx-blogs" className="py-20 lg:py-28 bg-white border-t border-slate-100">
