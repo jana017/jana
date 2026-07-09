@@ -177,3 +177,10 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - **Total curated IOC DB is now 2,768 indicators** (2045 critical + 499 high + 140 medium + 84 low).
 - Backend compiles cleanly (`python -c "import server"` OK). Frontend `CI=true yarn build` passes.
 
+
+
+## Latest (2026-07-09, session 22 — navigation perf)
+- **Fast tab-switching** — user reported slow navigation between pages/sections. Root causes: (1) lazy-loaded route chunks download on click (adds 500-1000ms); (2) default Lenis smooth-scroll duration (~1.2s) on section jumps.
+- **Fix**: new `/app/frontend/src/lib/routePrefetch.js` exposes `prefetchRoute(path)` using webpack `/* webpackPrefetch: true */` dynamic imports. `Navbar.jsx` fires this on `onMouseEnter` / `onFocus` for every route link, PLUS runs `requestIdleCallback` on mount to warm ALL lazy chunks (Blog, Cyber 101, Threat Intelligence, Admin) once the page is idle. In-page section jumps (About/Services/Gallery/Careers/Support) now call `lenis.scrollTo(el, { duration: 0.35, offset: -70 })` instead of the default long ease. Scroll listener switched to `{ passive: true }`.
+- **Measured**: `/threat-intelligence` → `/cybersecurity-101` = **89ms**; cross-route once warm = ~100ms; section jumps ~350ms (was ~1200ms). 9 `<link rel="prefetch">` tags observed after 2s of idle time.
+- Verified via Playwright; production build (`CI=true yarn build`) clean.

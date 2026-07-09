@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useLenis } from "lenis/react";
 import { Menu, X, Phone } from "lucide-react";
+import { prefetchRoute } from "@/lib/routePrefetch";
 
 const SECTION_LINKS = [
   { label: "About", id: "about" },
@@ -15,11 +17,24 @@ export default function Navbar() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const lenis = useLenis();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener("scroll", onScroll);
+    window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Warm up all lazy chunks once the initial route is idle — makes every
+  // subsequent nav-click near-instant regardless of which link the user hits first.
+  useEffect(() => {
+    const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 800));
+    const handle = idle(() => {
+      ["/blog", "/threat-intelligence", "/cybersecurity-101", "/admin"].forEach(prefetchRoute);
+    });
+    return () => {
+      if (window.cancelIdleCallback) window.cancelIdleCallback(handle);
+    };
   }, []);
 
   const go = (id) => {
@@ -27,9 +42,13 @@ export default function Navbar() {
     if (location.pathname !== "/") {
       sessionStorage.setItem("scrollTo", id);
       navigate("/");
-    } else {
-      document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+      return;
     }
+    const el = document.getElementById(id);
+    if (!el) return;
+    // Fast snap (~350ms) instead of the default long ease.
+    if (lenis) lenis.scrollTo(el, { offset: -70, duration: 0.35 });
+    else el.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const isIntel = location.pathname === "/threat-intelligence";
@@ -55,6 +74,8 @@ export default function Navbar() {
           <Link
             to="/blog"
             data-testid="nav-blog"
+            onMouseEnter={() => prefetchRoute("/blog")}
+            onFocus={() => prefetchRoute("/blog")}
             className={`text-sm font-medium transition-colors ${isBlog ? "text-[#2E7DF5]" : "text-slate-600 hover:text-slate-900"}`}
           >
             Blog
@@ -62,6 +83,8 @@ export default function Navbar() {
           <Link
             to="/cybersecurity-101"
             data-testid="nav-cyber-101"
+            onMouseEnter={() => prefetchRoute("/cybersecurity-101")}
+            onFocus={() => prefetchRoute("/cybersecurity-101")}
             className={`text-sm font-medium transition-colors ${isKb ? "text-[#2E7DF5]" : "text-slate-600 hover:text-slate-900"}`}
           >
             Cyber 101
@@ -69,6 +92,8 @@ export default function Navbar() {
           <Link
             to="/threat-intelligence"
             data-testid="nav-threat-intelligence"
+            onMouseEnter={() => prefetchRoute("/threat-intelligence")}
+            onFocus={() => prefetchRoute("/threat-intelligence")}
             className={`text-sm font-medium transition-colors ${isIntel ? "text-[#2E7DF5]" : "text-slate-600 hover:text-slate-900"}`}
           >
             Threat Intelligence
@@ -76,7 +101,7 @@ export default function Navbar() {
         </div>
 
         <div className="flex items-center gap-3">
-          <Link to="/admin" data-testid="nav-admin-link" className="hidden sm:inline-flex text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">Admin</Link>
+          <Link to="/admin" data-testid="nav-admin-link" onMouseEnter={() => prefetchRoute("/admin")} onFocus={() => prefetchRoute("/admin")} className="hidden sm:inline-flex text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">Admin</Link>
           <a href="tel:9059565125" data-testid="nav-contact-cta" className="hidden sm:inline-flex items-center gap-2 bg-[#2E7DF5] hover:bg-[#2563EB] text-white text-sm font-semibold px-4 py-2 rounded-md transition-colors">
             <Phone className="w-4 h-4" strokeWidth={2} /> Get Secured
           </a>
