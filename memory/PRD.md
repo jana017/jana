@@ -184,3 +184,13 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - **Fix**: new `/app/frontend/src/lib/routePrefetch.js` exposes `prefetchRoute(path)` using webpack `/* webpackPrefetch: true */` dynamic imports. `Navbar.jsx` fires this on `onMouseEnter` / `onFocus` for every route link, PLUS runs `requestIdleCallback` on mount to warm ALL lazy chunks (Blog, Cyber 101, Threat Intelligence, Admin) once the page is idle. In-page section jumps (About/Services/Gallery/Careers/Support) now call `lenis.scrollTo(el, { duration: 0.35, offset: -70 })` instead of the default long ease. Scroll listener switched to `{ passive: true }`.
 - **Measured**: `/threat-intelligence` → `/cybersecurity-101` = **89ms**; cross-route once warm = ~100ms; section jumps ~350ms (was ~1200ms). 9 `<link rel="prefetch">` tags observed after 2s of idle time.
 - Verified via Playwright; production build (`CI=true yarn build`) clean.
+
+## Latest (2026-07-09, session 23 — internalized community blog cards)
+- **Bug**: "From the Community · Threat intel blog & writeups" section on `/threat-intelligence` sent users to `cyberdefenders.org` (external). User asked to route to native NivX content.
+- **Fix**: 3 cards now point to internal `/blog?topic=dfir` / `?topic=malware` / `?topic=soc`. Section renamed "From the NivX Library"; CTA switched to "Read on NivX Blogs".
+- **BlogIndex filtering** — `BlogIndex.jsx` now reads `?topic=X` query param and filters articles via a `TOPIC_MAP` (dfir → Forensics/Case Study/APT Deep Dive/Threat Actor Insight/SOC Playbook; malware → similar; soc → SOC Playbook/Case Study/Forensics). Hero heading, subhead, canonical URL and article count all adapt to the active filter. Small "× Show all articles" button clears the filter without a full page reload.
+- **Empty-state** added for `no articles match` topics; **canonical** SEO URL reflects filter for search engines.
+- Fixed a stray `))}` text artifact left by the earlier `motion.a` → `Link` wrapper refactor.
+- Verified via screenshot: DFIR card → 11 filtered articles rendered on our own site (was landing on cyberdefenders.org). No more external links from that section.
+- Production build passes.
+

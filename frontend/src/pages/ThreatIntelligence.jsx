@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import Navbar from "@/components/Navbar";
@@ -24,9 +25,9 @@ const OSINT_TOOLS = [
 ];
 
 const CYBERDEFENDERS = [
-  { title: "Blue Team Labs & Threat Investigations", desc: "Hands-on DFIR writeups, malware analysis walkthroughs and detection engineering from the CyberDefenders community.", tag: "DFIR", url: "https://cyberdefenders.org/blog/" },
-  { title: "Malware Analysis Case Studies", desc: "Step-by-step reverse-engineering of real-world samples with IOCs, YARA rules and TTP mapping.", tag: "Malware", url: "https://cyberdefenders.org/blog/" },
-  { title: "SOC & Threat Hunting Playbooks", desc: "Practical guidance on building detections, triaging alerts and hunting adversaries across the enterprise.", tag: "SOC", url: "https://cyberdefenders.org/blog/" },
+  { title: "Blue Team Labs & Threat Investigations", desc: "Hands-on DFIR writeups, malware analysis walkthroughs and detection engineering from the NivX field library.", tag: "DFIR", url: "/blog?topic=dfir" },
+  { title: "Malware Analysis Case Studies", desc: "Step-by-step reverse-engineering of real-world samples with IOCs, YARA rules and TTP mapping.", tag: "Malware", url: "/blog?topic=malware" },
+  { title: "SOC & Threat Hunting Playbooks", desc: "Practical guidance on building detections, triaging alerts and hunting adversaries across the enterprise.", tag: "SOC", url: "/blog?topic=soc" },
 ];
 
 const DATE_RANGES = [
@@ -296,33 +297,34 @@ export default function ThreatIntelligence() {
         <div className="mx-auto max-w-7xl px-6">
           <div className="max-w-2xl mb-10">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-[#F5821F] mb-3">
-              <BookOpen className="w-4 h-4" /> From the Community
+              <BookOpen className="w-4 h-4" /> From the NivX Library
             </div>
             <h2 className="font-heading text-2xl md:text-3xl font-semibold tracking-tight text-slate-900">Threat intel blog & writeups</h2>
             <p className="mt-4 text-base text-slate-600 leading-relaxed">
-              Deep-dive DFIR and malware-analysis articles curated from CyberDefenders.
+              Deep-dive DFIR, malware analysis and SOC playbook articles curated by the NivX editorial team.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {CYBERDEFENDERS.map((b, i) => (
-              <motion.a
+              <motion.div
                 key={b.title}
-                href={b.url}
-                target="_blank"
-                rel="noopener noreferrer"
                 initial={{ opacity: 0, y: 14 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.45, delay: i * 0.08 }}
-                data-testid={`blog-card-${i}`}
-                className="group rounded-xl border border-slate-200 bg-white shadow-sm hover:shadow-md hover:-translate-y-1 transition-[transform,box-shadow] p-7 flex flex-col"
               >
-                <span className="inline-flex w-fit items-center text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-blue-50 text-blue-700 mb-4">{b.tag}</span>
-                <h3 className="font-heading text-lg font-semibold text-slate-900 mb-2 group-hover:text-[#2E7DF5] transition-colors">{b.title}</h3>
-                <p className="text-sm text-slate-600 leading-relaxed flex-1">{b.desc}</p>
-                <span className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-[#F5821F]">Read on CyberDefenders <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" /></span>
-              </motion.a>
+                <Link
+                  to={b.url}
+                  data-testid={`blog-card-${i}`}
+                  className="group h-full rounded-xl border border-slate-200 bg-white shadow-sm hover:shadow-md hover:-translate-y-1 transition-[transform,box-shadow] p-7 flex flex-col"
+                >
+                  <span className="inline-flex w-fit items-center text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-blue-50 text-blue-700 mb-4">{b.tag}</span>
+                  <h3 className="font-heading text-lg font-semibold text-slate-900 mb-2 group-hover:text-[#2E7DF5] transition-colors">{b.title}</h3>
+                  <p className="text-sm text-slate-600 leading-relaxed flex-1">{b.desc}</p>
+                  <span className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-[#F5821F]">Read on NivX Blogs <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" /></span>
+                </Link>
+              </motion.div>
             ))}
           </div>
         </div>
