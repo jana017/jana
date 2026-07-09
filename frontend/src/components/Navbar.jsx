@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useLenis } from "lenis/react";
-import { Menu, X, Phone } from "lucide-react";
+import { Menu, X, Phone, ShieldCheck } from "lucide-react";
 import { prefetchRoute } from "@/lib/routePrefetch";
 
 const SECTION_LINKS = [
@@ -101,7 +101,9 @@ export default function Navbar() {
         </div>
 
         <div className="flex items-center gap-3">
-          <Link to="/admin" data-testid="nav-admin-link" onMouseEnter={() => prefetchRoute("/admin")} onFocus={() => prefetchRoute("/admin")} className="hidden sm:inline-flex text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">Admin</Link>
+          <Link to="/admin" data-testid="nav-admin-link" onMouseEnter={() => prefetchRoute("/admin")} onFocus={() => prefetchRoute("/admin")} className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">
+            <ShieldCheck className="w-4 h-4" /> <span className="hidden sm:inline">Admin</span>
+          </Link>
           <a href="tel:9059565125" data-testid="nav-contact-cta" className="hidden sm:inline-flex items-center gap-2 bg-[#2E7DF5] hover:bg-[#2563EB] text-white text-sm font-semibold px-4 py-2 rounded-md transition-colors">
             <Phone className="w-4 h-4" strokeWidth={2} /> Get Secured
           </a>
@@ -119,6 +121,9 @@ export default function Navbar() {
           <Link to="/blog" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Blog</Link>
           <Link to="/cybersecurity-101" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Cyber 101</Link>
           <Link to="/threat-intelligence" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-[#2E7DF5]">Threat Intelligence</Link>
+          <Link to="/admin" data-testid="mobile-nav-admin-link" onClick={() => setOpen(false)} className="inline-flex items-center gap-2 text-left text-sm font-semibold text-slate-700 pt-3 mt-1 border-t border-slate-200">
+            <ShieldCheck className="w-4 h-4" /> Admin sign in
+          </Link>
         </div>
       )}
     </header>
