@@ -256,7 +256,11 @@ export default function LiveThreatMap() {
           <div>
             <div className="text-xs text-slate-500 flex items-center gap-1.5"><Activity className="w-3 h-3 text-[#2E7DF5]" /> Threat monitoring</div>
             <div className="text-sm font-semibold text-slate-900">
-              {stats.incidents != null ? `${stats.incidents} active signals · 24/7 SOC` : "Active · 24/7 SOC"}
+              {stats.victims24h != null && stats.victims24h > 0
+                ? `${stats.victims24h} new victims · last 24h`
+                : stats.incidents != null
+                  ? `${stats.incidents} tracked incidents · 24/7 SOC`
+                  : "Active · 24/7 SOC"}
             </div>
           </div>
         </div>

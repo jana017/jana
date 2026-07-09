@@ -2414,7 +2414,7 @@ async def attack_feed():
             r.raise_for_status()
             raw = r.json()
         items = []
-        for v in raw[:40]:
+        for v in raw[:200]:  # ransomware.live returns ~100 items; keep 200 as safety cap
             items.append({
                 "victim": v.get("victim"),
                 "group": v.get("group"),
@@ -2448,14 +2448,24 @@ async def attack_feed():
 # frontend polls every 30 seconds.
 # ---------------------------------------------------------------------------
 def _parse_victim_dt(v: dict) -> Optional[datetime]:
-    for key in ("attackdate", "discovered", "date"):
+    for key in ("attackdate", "discovered", "date", "published"):
         raw = v.get(key)
         if not raw:
             continue
-        # ransomware.live returns "YYYY-MM-DD HH:MM:SS.SSS" (no tz) — treat as UTC.
+        s = str(raw).strip()
+        # 1) ISO 8601 with tz (ransomware.live v2 current format): "2026-07-09T13:57:36.957462+00:00"
+        try:
+            # Python 3.11's fromisoformat handles offsets like +00:00 natively.
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except ValueError:
+            pass
+        # 2) Legacy formats (fallback for other sources)
         for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
             try:
-                return datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
+                return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc)
             except ValueError:
                 continue
     return None
