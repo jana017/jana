@@ -85,6 +85,12 @@ body {
 }
 .pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
 
+@keyframes pulse-slow {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.45); }
+  50%      { opacity: 0.92; box-shadow: 0 0 0 8px rgba(249, 115, 22, 0); }
+}
+.animate-pulse-slow { animation: pulse-slow 2s ease-in-out infinite; }
+
 /* Live threat map */
 @keyframes tm-ping {
   0% { transform: scale(0.6); opacity: 0.7; }

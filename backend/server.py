@@ -3224,7 +3224,8 @@ async def admin_settings_list(user: dict = Depends(get_current_user)):
         env_val = os.environ.get(spec["name"])
         effective = db_val or env_val
         source = "db" if db_val else ("env" if env_val else "missing")
-        keys_out.append({
+        active_tier = (db_doc or {}).get("active_tier")  # 'enterprise' | 'free' | None
+        entry = {
             "name": spec["name"],
             "label": spec["label"],
             "desc": spec["desc"],
@@ -3233,7 +3234,26 @@ async def admin_settings_list(user: dict = Depends(get_current_user)):
             "source": source,
             "updated_at": (db_doc or {}).get("updated_at"),
             "updated_by": (db_doc or {}).get("updated_by"),
-        })
+        }
+        # Enterprise/Free tier metadata for eligible keys.
+        if spec["name"] in ENTERPRISE_ELIGIBLE:
+            ent_doc = by_key.get(f"{spec['name']}__ENTERPRISE")
+            free_doc = by_key.get(f"{spec['name']}__FREE")
+            sync_meta = by_key.get(f"{spec['name']}__ENTERPRISE_SYNC_META") or {}
+            entry["tier_supported"] = True
+            entry["active_tier"] = active_tier or ("enterprise" if effective and ent_doc and ent_doc.get("value") == effective else ("free" if effective and free_doc and free_doc.get("value") == effective else None))
+            entry["enterprise_masked"] = _mask_key((ent_doc or {}).get("value") or "")
+            entry["free_masked"] = _mask_key((free_doc or {}).get("value") or "")
+            entry["last_enterprise_sync"] = {
+                "started_at": sync_meta.get("last_started_at"),
+                "finished_at": sync_meta.get("last_finished_at"),
+                "duration_ms": sync_meta.get("last_duration_ms"),
+                "ok": sync_meta.get("last_ok"),
+                "by": sync_meta.get("last_by"),
+                "vt_added": sync_meta.get("last_vt_added"),
+                "talos_added": sync_meta.get("last_talos_added"),
+            } if sync_meta else None
+        keys_out.append(entry)
     enabled_sources = await _get_enabled_community_sources()
     return {
         "api_keys": keys_out,
@@ -3362,6 +3382,139 @@ async def admin_settings_test_key(name: str, user: dict = Depends(get_current_us
     effective = globals().get(spec["global_var"])
     result = await _test_api_key(name, effective or "")
     return result
+
+
+# ---------------------------------------------------------------------------
+# Enterprise/Free tier storage — user pastes both keys once; the "Monthly
+# Enterprise Sync" button temporarily swaps in the Enterprise key, runs the
+# VT + Talos-community bulk sync, then automatically reverts to the Free key
+# so premium credits are only spent during the actual sync window.
+# Currently applicable to VIRUSTOTAL_API_KEY. Enterprise sync also runs the
+# Talos-community feeds during the same window.
+# ---------------------------------------------------------------------------
+ENTERPRISE_ELIGIBLE = {"VIRUSTOTAL_API_KEY"}
+
+
+class TierValue(BaseModel):
+    value: str
+
+
+@api_router.put("/admin/settings/api-key/{name}/tier/{tier}")
+async def admin_settings_upsert_tier(name: str, tier: str, payload: TierValue, user: dict = Depends(get_current_user)):
+    if name not in ENTERPRISE_ELIGIBLE:
+        raise HTTPException(status_code=400, detail=f"{name} does not support Enterprise/Free tiers")
+    if tier not in ("enterprise", "free"):
+        raise HTTPException(status_code=400, detail="tier must be 'enterprise' or 'free'")
+    value = (payload.value or "").strip()
+    if not value:
+        raise HTTPException(status_code=400, detail="Value must not be empty")
+    doc_id = f"{name}__{tier.upper()}"
+    now_ts = datetime.now(timezone.utc).isoformat()
+    await db.app_settings.update_one(
+        {"key": doc_id},
+        {"$set": {"key": doc_id, "value": value, "updated_at": now_ts, "updated_by": user.get("email")}},
+        upsert=True,
+    )
+    # If a Free tier value is being saved and no active override exists, promote it
+    # to be the currently-active key so the app doesn't sit idle waiting.
+    if tier == "free":
+        active = await db.app_settings.find_one({"key": name})
+        if not active:
+            await db.app_settings.update_one(
+                {"key": name},
+                {"$set": {"key": name, "value": value, "updated_at": now_ts, "updated_by": user.get("email"), "active_tier": "free"}},
+                upsert=True,
+            )
+            await _load_settings_from_db()
+    return {"ok": True, "tier": tier, "masked": _mask_key(value)}
+
+
+async def _read_tier_value(name: str, tier: str) -> Optional[str]:
+    doc = await db.app_settings.find_one({"key": f"{name}__{tier.upper()}"})
+    return (doc or {}).get("value")
+
+
+async def _set_active_key(name: str, value: str, tier: str, user_email: Optional[str]) -> None:
+    """Swap the currently-active value used by _load_settings_from_db."""
+    now_ts = datetime.now(timezone.utc).isoformat()
+    await db.app_settings.update_one(
+        {"key": name},
+        {"$set": {"key": name, "value": value, "updated_at": now_ts, "updated_by": user_email, "active_tier": tier}},
+        upsert=True,
+    )
+    await _load_settings_from_db()
+
+
+@api_router.post("/admin/settings/enterprise-sync")
+async def admin_settings_enterprise_sync(user: dict = Depends(get_current_user)):
+    """Monthly Enterprise Sync — atomically swap VT to Enterprise key, run VT
+    Enterprise + Talos-community bulk syncs, then revert to Free. Returns a
+    detailed timeline the admin can audit."""
+    name = "VIRUSTOTAL_API_KEY"
+    enterprise = await _read_tier_value(name, "enterprise")
+    free = await _read_tier_value(name, "free")
+    if not enterprise:
+        raise HTTPException(status_code=400, detail="Enterprise key not configured. Save it in Admin → Settings → VirusTotal → Enterprise tier first.")
+
+    started_at = datetime.now(timezone.utc)
+    timeline: list[dict] = [{"step": "start", "at": started_at.isoformat(), "tier_before": "unknown"}]
+    original_doc = await db.app_settings.find_one({"key": name})
+    original_value = (original_doc or {}).get("value")
+    original_tier = (original_doc or {}).get("active_tier") or ("free" if original_value == free else "unknown")
+
+    try:
+        # Step 1: swap in Enterprise
+        await _set_active_key(name, enterprise, "enterprise", user.get("email"))
+        timeline.append({"step": "swap_to_enterprise", "at": datetime.now(timezone.utc).isoformat()})
+
+        # Step 2: run VT Enterprise + Talos syncs in parallel
+        vt_task = _sync_virustotal_intel()
+        talos_task = _sync_talos_blocklist()
+        vt_res, talos_res = await asyncio.gather(vt_task, talos_task, return_exceptions=True)
+        vt_result = {"error": str(vt_res)} if isinstance(vt_res, Exception) else vt_res
+        talos_result = {"error": str(talos_res)} if isinstance(talos_res, Exception) else talos_res
+        timeline.append({"step": "sync_complete", "at": datetime.now(timezone.utc).isoformat(), "vt": vt_result, "talos": talos_result})
+    finally:
+        # Step 3: ALWAYS revert to Free (or previous value) — even if syncs errored
+        revert_val = free or original_value
+        if revert_val:
+            await _set_active_key(name, revert_val, "free" if free else original_tier, user.get("email"))
+        else:
+            # No free key and no previous → drop DB override entirely (fall back to .env)
+            await db.app_settings.delete_one({"key": name})
+            await _load_settings_from_db()
+        timeline.append({"step": "revert_to_free", "at": datetime.now(timezone.utc).isoformat()})
+
+    finished_at = datetime.now(timezone.utc)
+    duration_ms = int((finished_at - started_at).total_seconds() * 1000)
+
+    # Persist "last_successful_enterprise_sync" for the UI
+    ok = not (isinstance(vt_res, Exception) or isinstance(talos_res, Exception))
+    await db.app_settings.update_one(
+        {"key": f"{name}__ENTERPRISE_SYNC_META"},
+        {"$set": {
+            "key": f"{name}__ENTERPRISE_SYNC_META",
+            "last_started_at": started_at.isoformat(),
+            "last_finished_at": finished_at.isoformat(),
+            "last_duration_ms": duration_ms,
+            "last_ok": bool(ok),
+            "last_by": user.get("email"),
+            "last_vt_added": (vt_result or {}).get("added") if isinstance(vt_result, dict) else None,
+            "last_talos_added": (talos_result or {}).get("added") if isinstance(talos_result, dict) else None,
+        }},
+        upsert=True,
+    )
+
+    return {
+        "ok": ok,
+        "started_at": started_at.isoformat(),
+        "finished_at": finished_at.isoformat(),
+        "duration_ms": duration_ms,
+        "vt": vt_result,
+        "talos": talos_result,
+        "timeline": timeline,
+        "final_tier": "free" if free else original_tier,
+    }
 
 
 @api_router.put("/admin/settings/community-sources")

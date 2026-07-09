@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
 import { CheckCircle2, XCircle, Loader2, ExternalLink, KeyRound, Radio, RefreshCw, Save, Trash2, Server, History, ChevronDown, ChevronUp, Rewind, Database, Zap } from "lucide-react";
 import { api } from "@/lib/api";
+import EnterpriseTierPanel from "@/components/EnterpriseTierPanel";
 
 const SYNCABLE_KEYS = new Set([
   "VIRUSTOTAL_API_KEY",
@@ -17,7 +18,7 @@ const SOURCE_BADGE = {
   missing: { text: "Missing",       cls: "bg-red-50 text-red-700 border-red-200" },
 };
 
-function ApiKeyCard({ item, onSave, onClear, onTest, onLoadHistory, onApplyHistory, onSync }) {
+function ApiKeyCard({ item, onSave, onClear, onTest, onLoadHistory, onApplyHistory, onSync, onRefresh }) {
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -238,6 +239,10 @@ function ApiKeyCard({ item, onSave, onClear, onTest, onLoadHistory, onApplyHisto
           </div>
         )}
       </div>
+
+      {item.tier_supported && (
+        <EnterpriseTierPanel item={item} onRefresh={onRefresh} />
+      )}
     </div>
   );
 }
@@ -351,7 +356,7 @@ export default function AdminSettings() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5" data-testid="settings-api-keys">
         {data.api_keys.map((k) => (
-          <ApiKeyCard key={k.name} item={k} onSave={saveKey} onClear={clearKey} onTest={testKey} onLoadHistory={loadHistory} onApplyHistory={applyHistory} onSync={syncKey} />
+          <ApiKeyCard key={k.name} item={k} onSave={saveKey} onClear={clearKey} onTest={testKey} onLoadHistory={loadHistory} onApplyHistory={applyHistory} onSync={syncKey} onRefresh={load} />
         ))}
       </div>
 
