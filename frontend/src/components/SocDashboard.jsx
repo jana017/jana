@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { severityStyle, TYPE_LABEL } from "@/lib/iocUtils";
+import LiveThreatsPanel from "@/components/LiveThreatsPanel";
 
 const NUM = (n) => (typeof n === "number" ? n.toLocaleString() : "—");
 
@@ -240,6 +241,9 @@ export default function SocDashboard() {
           </div>
         </Panel>
       )}
+
+      {/* Live cyber threat map — real-time ransomware.live victims + CISA KEV CVEs */}
+      <LiveThreatsPanel />
     </div>
   );
 }
