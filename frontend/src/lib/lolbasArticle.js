@@ -560,6 +560,5 @@ export const WINDOWS_LOLBAS_360 = {
   date: "July 9, 2026",
   read_mins: 18,
   image: COVER,
-  hidden_from_landing: true, // do NOT surface on Landing preview / master page
   sections: SECTIONS,
 };

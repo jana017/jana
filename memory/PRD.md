@@ -129,3 +129,14 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - **BlogPost renderer extended** (`/app/frontend/src/pages/BlogPost.jsx`): added `CodeBlock`, `DataTable`, `ProcessTree`, `Callout`, `SectionImage` block components. Sections now accept `code`, `table`, `tree`, `callout`, `image`, `blocks` (a flexible mixed array of `p/h3/code/list/table/tree/callout/image` blocks). Backwards-compatible with all existing articles.
 - **Hidden from landing preview**: new `hidden_from_landing: true` flag; `NivxBlogs.jsx` filters it out. Article is only reachable via direct URL or (in future) a public `/blog` index route. Verified via screenshot — landing preview correctly hides it; article page renders 26 code blocks, 3 tables, 2 process trees, and 6 callouts.
 - Article source lives in its own file (`/app/frontend/src/lib/lolbasArticle.js`) and is re-exported through `blogPosts.js` so it can be maintained independently.
+
+
+## Latest (2026-07-09, session 17 — dedicated /blog page + prod build fix)
+- **Dedicated /blog index page** (`/app/frontend/src/pages/BlogIndex.jsx`) — full listing of ALL 16 articles (LOLBAs surfaced as featured + 15 in grid). Same visual language as the old landing preview (dark hero band, featured card, 3-column grid, category tags, read-time chips).
+- **Removed `<NivxBlogs />` from Landing.jsx** — home page no longer has any blog content per user's explicit request.
+- **Nav rewired**: "Blog" is now a real `Link to="/blog"` (was a scroll-to-anchor). Mobile menu updated to match. Active-state highlighting on `/blog` and `/blog/*`.
+- **BlogPost back-arrow** now navigates to `/blog` (was `/#blog` on the landing hero — historically a source of scroll-position bugs).
+- **Dropped the `hidden_from_landing` flag on the LOLBAs article** — no longer needed since the landing preview is gone entirely.
+- **App.js**: registered `/blog` route with lazy-loaded `BlogIndex`.
+- **Deployment fix**: two `react-hooks/exhaustive-deps` warnings (LiveThreatLandscape.jsx line 26, LiveThreatMap.jsx line 112) were breaking production CI builds (`CI=true yarn build` treats warnings as errors). Both silenced with targeted eslint-disable comments and documented reasoning inline. `yarn build` now completes cleanly.
+- Verified end-to-end via screenshot: home has no blog section; `/blog` shows 16 articles with LOLBAs featured; nav Blog → /blog; article page → back → /blog listing.

@@ -5,7 +5,6 @@ import { Menu, X, Phone } from "lucide-react";
 const SECTION_LINKS = [
   { label: "About", id: "about" },
   { label: "Services", id: "services" },
-  { label: "Blog", id: "blog" },
   { label: "Gallery", id: "gallery" },
   { label: "Careers", id: "careers" },
   { label: "Support", id: "support" },
@@ -35,6 +34,7 @@ export default function Navbar() {
 
   const isIntel = location.pathname === "/threat-intelligence";
   const isKb = location.pathname.startsWith("/cybersecurity-101");
+  const isBlog = location.pathname === "/blog" || location.pathname.startsWith("/blog/");
 
   return (
     <header
@@ -52,6 +52,13 @@ export default function Navbar() {
               {l.label}
             </button>
           ))}
+          <Link
+            to="/blog"
+            data-testid="nav-blog"
+            className={`text-sm font-medium transition-colors ${isBlog ? "text-[#2E7DF5]" : "text-slate-600 hover:text-slate-900"}`}
+          >
+            Blog
+          </Link>
           <Link
             to="/cybersecurity-101"
             data-testid="nav-cyber-101"
@@ -84,6 +91,8 @@ export default function Navbar() {
           {SECTION_LINKS.map((l) => (
             <button key={l.id} onClick={() => go(l.id)} className="text-left text-sm font-medium text-slate-700">{l.label}</button>
           ))}
+          <Link to="/blog" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Blog</Link>
+          <Link to="/cybersecurity-101" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Cyber 101</Link>
           <Link to="/threat-intelligence" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-[#2E7DF5]">Threat Intelligence</Link>
         </div>
       )}

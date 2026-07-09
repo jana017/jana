@@ -127,7 +127,7 @@ export default function BlogPost() {
         <div className="pt-32 pb-20 mx-auto max-w-3xl px-6 text-center">
           <h1 className="font-heading text-3xl font-semibold text-slate-900">Article not found</h1>
           <p className="mt-3 text-slate-500">The article you&rsquo;re looking for doesn&rsquo;t exist.</p>
-          <Link to="/#blog" className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-[#2E7DF5] hover:underline">
+          <Link to="/blog" className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-[#2E7DF5] hover:underline">
             <ArrowLeft className="w-4 h-4" /> Back to NivX Blogs
           </Link>
         </div>
@@ -135,7 +135,7 @@ export default function BlogPost() {
     );
   }
 
-  const related = BLOG_POSTS.filter((p) => p.slug !== article.slug && !p.hidden_from_landing).slice(0, 3);
+  const related = BLOG_POSTS.filter((p) => p.slug !== article.slug).slice(0, 3);
 
   return (
     <div className="min-h-screen bg-white">
@@ -148,7 +148,7 @@ export default function BlogPost() {
           <div className="absolute inset-0 bg-gradient-to-t from-white via-white/85 to-white/50" />
         </div>
         <div className="relative mx-auto max-w-4xl px-6">
-          <Link to="/#blog" data-testid="blog-back" className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-[#2E7DF5] mb-6">
+          <Link to="/blog" data-testid="blog-back" className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-[#2E7DF5] mb-6">
             <ArrowLeft className="w-3.5 h-3.5" /> NivX Blogs
           </Link>
           <div className="text-xs font-bold uppercase tracking-[0.2em] text-orange-500 mb-3">{article.category}</div>
