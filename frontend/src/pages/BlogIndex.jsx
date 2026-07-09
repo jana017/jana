@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Calendar, ArrowUpRight, Tag, Clock, BookOpen, X } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Contact from "@/components/Contact";
+import LiveFirehose from "@/components/LiveFirehose";
 import { BLOG_POSTS } from "@/lib/blogPosts";
 import useSeo from "@/lib/useSeo";
 
@@ -63,6 +64,8 @@ export default function BlogIndex() {
           </div>
         </div>
       </section>
+
+      <LiveFirehose />
 
       <section className="py-14 lg:py-20 bg-white">
         <div className="mx-auto max-w-7xl px-6">

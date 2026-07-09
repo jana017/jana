@@ -2967,12 +2967,17 @@ _RSS_CACHE: dict = {}
 _RSS_TTL = timedelta(minutes=30)
 
 RSS_SOURCES = {
-    "talos":    {"name": "Cisco Talos Intelligence",         "url": "https://blog.talosintelligence.com/rss/",   "site": "https://blog.talosintelligence.com"},
-    "unit42":   {"name": "Palo Alto Unit 42",                 "url": "https://unit42.paloaltonetworks.com/feed/", "site": "https://unit42.paloaltonetworks.com"},
-    "dfir":     {"name": "The DFIR Report",                   "url": "https://thedfirreport.com/feed/",           "site": "https://thedfirreport.com"},
-    "msthreat": {"name": "Microsoft Threat Intelligence",     "url": "https://www.microsoft.com/en-us/security/blog/topic/threat-intelligence/feed/", "site": "https://www.microsoft.com/en-us/security/blog/topic/threat-intelligence/"},
-    "bleeping": {"name": "BleepingComputer",                  "url": "https://www.bleepingcomputer.com/feed/",    "site": "https://www.bleepingcomputer.com"},
-    "hn":       {"name": "Hacker News",                       "url": "https://news.ycombinator.com/rss",          "site": "https://news.ycombinator.com"},
+    "talos":        {"name": "Cisco Talos Intelligence",         "url": "https://blog.talosintelligence.com/rss/",                                                                          "site": "https://blog.talosintelligence.com"},
+    "unit42":       {"name": "Palo Alto Unit 42",                 "url": "https://unit42.paloaltonetworks.com/feed/",                                                                        "site": "https://unit42.paloaltonetworks.com"},
+    "dfir":         {"name": "The DFIR Report",                   "url": "https://thedfirreport.com/feed/",                                                                                   "site": "https://thedfirreport.com"},
+    "msthreat":     {"name": "Microsoft Threat Intelligence",     "url": "https://www.microsoft.com/en-us/security/blog/topic/threat-intelligence/feed/",                                    "site": "https://www.microsoft.com/en-us/security/blog/topic/threat-intelligence/"},
+    "bleeping":     {"name": "BleepingComputer",                  "url": "https://www.bleepingcomputer.com/feed/",                                                                            "site": "https://www.bleepingcomputer.com"},
+    "hn":           {"name": "Hacker News",                       "url": "https://news.ycombinator.com/rss",                                                                                  "site": "https://news.ycombinator.com"},
+    "thn":          {"name": "The Hacker News",                   "url": "https://feeds.feedburner.com/TheHackersNews",                                                                       "site": "https://thehackernews.com"},
+    "krebs":        {"name": "Krebs on Security",                 "url": "https://krebsonsecurity.com/feed/",                                                                                 "site": "https://krebsonsecurity.com"},
+    "darkreading":  {"name": "Dark Reading",                       "url": "https://www.darkreading.com/rss.xml",                                                                              "site": "https://www.darkreading.com"},
+    "securityweek": {"name": "SecurityWeek",                       "url": "https://www.securityweek.com/feed/",                                                                                "site": "https://www.securityweek.com"},
+    "therecord":    {"name": "The Record (Recorded Future)",      "url": "https://therecord.media/feed/",                                                                                     "site": "https://therecord.media"},
 }
 
 
@@ -3009,13 +3014,17 @@ def _parse_rss_feed(xml: str, max_items: int = 15) -> list[dict]:
             slug = link.rstrip("/").split("/")[-1][:80]
             # Prefer human date if parseable.
             display_date = date
+            iso_date = None
             try:
                 from email.utils import parsedate_to_datetime
                 dt = parsedate_to_datetime(date)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
                 display_date = dt.strftime("%b %-d, %Y")
+                iso_date = dt.astimezone(timezone.utc).isoformat()
             except Exception:
                 pass
-            items.append({"slug": slug or f"item-{len(items)}", "url": link, "title": title, "image": image, "date": display_date, "excerpt": excerpt, "category": "Threat Research"})
+            items.append({"slug": slug or f"item-{len(items)}", "url": link, "title": title, "image": image, "date": display_date, "iso_date": iso_date, "excerpt": excerpt, "category": "Threat Research"})
             if len(items) >= max_items:
                 break
     return items
@@ -3051,6 +3060,65 @@ async def community_feed(source: str):
         "attribution": f"Content curated from {src['name']}. Click any card to read the full article on the source site.",
         "count": len(articles),
         "articles": articles,
+    }
+
+
+@api_router.get("/community/firehose")
+async def community_firehose(limit: int = 60):
+    """Merged live-firehose feed: pulls every configured RSS source in parallel,
+    de-duplicates by URL, sorts by publish date DESC, and returns a single
+    unified list. Powers the Blog page's "Live Cyber News" section. Cached
+    server-side via the per-source _RSS_CACHE."""
+    now = datetime.now(timezone.utc)
+    tasks = []
+    labels = []
+    for slug, src in RSS_SOURCES.items():
+        cached = _RSS_CACHE.get(slug)
+        if cached and (now - cached["ts"]) < _RSS_TTL:
+            tasks.append(asyncio.sleep(0, result=cached["data"]))
+            labels.append((slug, src))
+            continue
+
+        async def _fetch(slug=slug, src=src):
+            try:
+                async with httpx.AsyncClient(timeout=15, follow_redirects=True, headers={"User-Agent": "NivX-Aggregator/1.0"}) as hc:
+                    r = await hc.get(src["url"])
+                    if r.status_code != 200:
+                        return []
+                    parsed = _parse_rss_feed(r.text, max_items=15)
+                    _RSS_CACHE[slug] = {"ts": now, "data": parsed}
+                    return parsed
+            except Exception:
+                return []
+        tasks.append(_fetch())
+        labels.append((slug, src))
+
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    merged: list[dict] = []
+    seen_urls: set[str] = set()
+    for (slug, src), items in zip(labels, results):
+        if isinstance(items, Exception) or not items:
+            continue
+        for a in items:
+            url = a.get("url")
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            merged.append({**a, "source_slug": slug, "source_name": src["name"], "source_site": src["site"]})
+
+    # Sort by parsed date descending (fallback: original list order).
+    def _dt(a):
+        try:
+            return datetime.fromisoformat(str(a.get("iso_date") or "").replace("Z", "+00:00")) if a.get("iso_date") else datetime.min.replace(tzinfo=timezone.utc)
+        except Exception:
+            return datetime.min.replace(tzinfo=timezone.utc)
+    merged.sort(key=_dt, reverse=True)
+
+    return {
+        "updated_at": now.isoformat(),
+        "sources": [{"slug": s, "name": src["name"], "site": src["site"]} for s, src in RSS_SOURCES.items()],
+        "count": min(len(merged), max(1, min(limit, 200))),
+        "articles": merged[: max(1, min(limit, 200))],
     }
 
 

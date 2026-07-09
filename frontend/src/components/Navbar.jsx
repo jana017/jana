@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useLenis } from "lenis/react";
-import { Menu, X, Phone, ShieldCheck } from "lucide-react";
+import { Menu, X, Phone, ShieldCheck, Beaker } from "lucide-react";
 import { prefetchRoute } from "@/lib/routePrefetch";
 
 const SECTION_LINKS = [
@@ -98,6 +98,15 @@ export default function Navbar() {
           >
             Threat Intelligence
           </Link>
+          <Link
+            to="/detonate"
+            data-testid="nav-payload-lab"
+            onMouseEnter={() => prefetchRoute("/detonate")}
+            onFocus={() => prefetchRoute("/detonate")}
+            className={`inline-flex items-center gap-1 text-sm font-medium transition-colors ${location.pathname === "/detonate" ? "text-[#F5821F]" : "text-slate-600 hover:text-slate-900"}`}
+          >
+            <Beaker className="w-3.5 h-3.5" /> Payload Lab
+          </Link>
         </div>
 
         <div className="flex items-center gap-3">
@@ -121,6 +130,9 @@ export default function Navbar() {
           <Link to="/blog" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Blog</Link>
           <Link to="/cybersecurity-101" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Cyber 101</Link>
           <Link to="/threat-intelligence" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-[#2E7DF5]">Threat Intelligence</Link>
+          <Link to="/detonate" data-testid="mobile-nav-payload-lab" onClick={() => setOpen(false)} className="inline-flex items-center gap-1.5 text-left text-sm font-medium text-slate-700">
+            <Beaker className="w-4 h-4" /> Payload Lab
+          </Link>
           <Link to="/admin" data-testid="mobile-nav-admin-link" onClick={() => setOpen(false)} className="inline-flex items-center gap-2 text-left text-sm font-semibold text-slate-700 pt-3 mt-1 border-t border-slate-200">
             <ShieldCheck className="w-4 h-4" /> Admin sign in
           </Link>
