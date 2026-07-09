@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Database, Search, Trash2, Upload, Plus, ListPlus, FileSpreadsheet, Loader2, RefreshCw, Cloud } from "lucide-react";
+import { Database, Search, Trash2, Upload, Plus, ListPlus, FileSpreadsheet, Loader2, RefreshCw, Cloud, CheckCircle2, XCircle, MinusCircle } from "lucide-react";
 import { api, formatApiErrorDetail } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { TYPE_LABEL, severityStyle } from "@/lib/iocUtils";
@@ -26,24 +26,48 @@ export default function IocDatabase() {
   const [bulkText, setBulkText] = useState("");
   const [bulkMeta, setBulkMeta] = useState({ threat_name: "", severity: "medium", tags: "", source: "" });
   const [file, setFile] = useState(null);
-  const [otx, setOtx] = useState(null);   // { configured, last_sync }
-  const [otxBusy, setOtxBusy] = useState(false);
+  const [syncStatus, setSyncStatus] = useState(null); // { sources: [...] }
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [perSourceBusy, setPerSourceBusy] = useState(null); // key of currently syncing single source
 
-  const flash = (kind, text) => { setMsg({ kind, text }); setTimeout(() => setMsg(null), 5000); };
+  const flash = (kind, text) => { setMsg({ kind, text }); setTimeout(() => setMsg(null), 6000); };
 
-  const fetchOtx = useCallback(async () => {
-    try { const { data } = await api.get("/otx/status"); setOtx(data); } catch { /* noop */ }
+  const fetchSyncStatus = useCallback(async () => {
+    try { const { data } = await api.get("/iocs/sync-status"); setSyncStatus(data); } catch { /* noop */ }
   }, []);
 
-  const syncOtx = async () => {
-    setOtxBusy(true);
+  const syncAll = async () => {
+    setSyncBusy(true);
     try {
-      const { data } = await api.post("/otx/sync");
-      flash("ok", `OTX synced: ${data.added} new · ${data.updated} updated · ${data.skipped} skipped (${data.pulses} pulses, ${data.indicators} indicators)`);
-      await Promise.all([fetchOtx(), fetchList(), fetchStats()]);
+      const { data } = await api.post("/iocs/sync-all");
+      const t = data.totals || {};
+      const active = Object.entries(data.results || {}).filter(([, v]) => !v.skipped && !v.error).map(([k]) => k);
+      flash("ok", `Sync all complete: ${t.added || 0} new · ${t.updated || 0} updated across ${active.length} source${active.length === 1 ? "" : "s"}.`);
+      await Promise.all([fetchSyncStatus(), fetchList(), fetchStats()]);
     } catch (err) {
-      flash("err", formatApiErrorDetail(err.response?.data?.detail) || "OTX sync failed");
-    } finally { setOtxBusy(false); }
+      flash("err", formatApiErrorDetail(err.response?.data?.detail) || "Sync all failed");
+    } finally { setSyncBusy(false); }
+  };
+
+  const syncOne = async (key) => {
+    // Only OTX has a dedicated single-source POST endpoint today; fall back to sync-all otherwise.
+    setPerSourceBusy(key);
+    try {
+      if (key === "otx") {
+        const { data } = await api.post("/otx/sync");
+        flash("ok", `AlienVault OTX synced: ${data.added} new · ${data.updated} updated (${data.pulses} pulses).`);
+      } else {
+        // Trigger sync-all but only surface this source's result.
+        const { data } = await api.post("/iocs/sync-all");
+        const r = (data.results || {})[key] || {};
+        if (r.error) throw new Error(r.error);
+        if (r.skipped) flash("ok", `${key} skipped: ${r.reason}`);
+        else flash("ok", `${key} synced: ${r.added || 0} new · ${r.updated || 0} updated.`);
+      }
+      await Promise.all([fetchSyncStatus(), fetchList(), fetchStats()]);
+    } catch (err) {
+      flash("err", err.response?.data?.detail || err.message || "Sync failed");
+    } finally { setPerSourceBusy(null); }
   };
 
   const fetchStats = useCallback(async () => {
@@ -61,7 +85,7 @@ export default function IocDatabase() {
   }, [q, type, severity]);
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
-  useEffect(() => { fetchOtx(); }, [fetchOtx]);
+  useEffect(() => { fetchSyncStatus(); }, [fetchSyncStatus]);
   useEffect(() => { const t = setTimeout(fetchList, 300); return () => clearTimeout(t); }, [fetchList]);
 
   const refresh = () => { fetchList(); fetchStats(); };
@@ -135,21 +159,77 @@ export default function IocDatabase() {
       {/* Admin upload panel */}
       {isAdmin && (
         <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-          {/* AlienVault OTX sync bar */}
-          {otx?.configured && (
-            <div data-testid="otx-sync-bar" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50/60 px-3.5 py-2.5">
-              <div className="flex items-center gap-2 text-sm">
-                <Cloud className="w-4 h-4 text-[#2E7DF5]" />
-                <span className="font-semibold text-slate-800">AlienVault OTX</span>
-                <span className="text-slate-500">
-                  {otx.last_sync
-                    ? `Last sync ${new Date(otx.last_sync.synced_at).toLocaleString()} · ${otx.last_sync.added} new · ${otx.last_sync.updated} updated (${otx.last_sync.pulses} pulses)`
-                    : "Awaiting first sync…"}
-                </span>
+          {/* Multi-source threat-intel sync panel */}
+          {syncStatus?.sources?.length > 0 && (
+            <div data-testid="sync-panel" className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <div className="flex items-center gap-2">
+                  <Cloud className="w-4 h-4 text-[#2E7DF5]" />
+                  <span className="font-semibold text-slate-800 text-sm">Threat-intel source sync</span>
+                  <span className="text-xs text-slate-400">One click · pulls curated indicators from every source that offers a bulk feed</span>
+                </div>
+                <button
+                  onClick={syncAll}
+                  disabled={syncBusy}
+                  data-testid="sync-all-btn"
+                  className="inline-flex items-center gap-2 bg-[#2E7DF5] hover:bg-[#2563EB] text-white text-sm font-semibold px-4 py-2 rounded-md transition-colors disabled:opacity-60"
+                >
+                  {syncBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                  {syncBusy ? "Syncing all sources…" : "Sync all sources"}
+                </button>
               </div>
-              <button onClick={syncOtx} disabled={otxBusy} data-testid="otx-sync-btn" className="inline-flex items-center gap-2 border border-[#2E7DF5] text-[#2E7DF5] hover:bg-[#2E7DF5] hover:text-white text-sm font-semibold px-3.5 py-1.5 rounded-md transition-colors disabled:opacity-60">
-                {otxBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sync now
-              </button>
+
+              <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {syncStatus.sources.map((s) => {
+                  const busySource = perSourceBusy === s.key || syncBusy;
+                  const StatusIcon = s.can_sync
+                    ? (s.configured ? CheckCircle2 : XCircle)
+                    : MinusCircle;
+                  const statusTone = s.can_sync
+                    ? (s.configured ? "text-emerald-500" : "text-slate-300")
+                    : "text-amber-400";
+                  const last = s.last_sync;
+                  const lastLine = last?.synced_at
+                    ? `Last sync ${new Date(last.synced_at).toLocaleString()} · ${last.added ?? 0} new · ${last.updated ?? 0} updated`
+                    : (s.can_sync && s.configured ? "Awaiting first sync…" : null);
+                  return (
+                    <li
+                      key={s.key}
+                      data-testid={`sync-source-${s.key}`}
+                      className={`flex items-start justify-between gap-3 rounded-md border px-3 py-2.5 ${s.can_sync ? "border-slate-200 bg-slate-50/40" : "border-amber-100 bg-amber-50/30"}`}
+                    >
+                      <div className="flex items-start gap-2 min-w-0">
+                        <StatusIcon className={`w-4 h-4 mt-0.5 shrink-0 ${statusTone}`} />
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-slate-800">{s.label}</div>
+                          {lastLine && <div className="text-[11px] text-slate-500 truncate">{lastLine}</div>}
+                          {!s.can_sync && s.reason && (
+                            <div className="text-[11px] text-amber-600">{s.reason}</div>
+                          )}
+                          {s.can_sync && !s.configured && (
+                            <div className="text-[11px] text-slate-400">API key not configured</div>
+                          )}
+                        </div>
+                      </div>
+                      {s.can_sync && s.configured ? (
+                        <button
+                          onClick={() => syncOne(s.key)}
+                          disabled={busySource}
+                          data-testid={`sync-source-btn-${s.key}`}
+                          className="shrink-0 inline-flex items-center gap-1.5 border border-[#2E7DF5] text-[#2E7DF5] hover:bg-[#2E7DF5] hover:text-white text-xs font-semibold px-2.5 py-1 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {perSourceBusy === s.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                          Sync
+                        </button>
+                      ) : (
+                        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-400 self-center">
+                          {s.can_sync ? "not configured" : "lookup only"}
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
           )}
 

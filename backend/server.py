@@ -848,6 +848,239 @@ async def _otx_sync_loop():
 
 
 # ---------------------------------------------------------------------------
+# Hybrid Analysis "latest feed" sync — pulls last 250 sandbox submissions
+# and upserts their SHA256 hashes into the curated IOC database.
+# ---------------------------------------------------------------------------
+HA_FEED_URL = "https://www.hybrid-analysis.com/api/v2/feed/latest"
+HA_FEED_MAX = 250
+
+
+def _ha_severity(item: dict) -> str:
+    verdict = str(item.get("verdict") or "").lower()
+    threat_level = int(item.get("threat_level") or 0)
+    threat_score = int(item.get("threat_score") or 0)
+    if verdict == "malicious" or threat_level >= 2 or threat_score >= 80:
+        return "critical"
+    if verdict == "suspicious" or threat_level == 1 or threat_score >= 50:
+        return "high"
+    if threat_score >= 20:
+        return "medium"
+    return "low"
+
+
+async def _sync_hybrid_analysis_feed(max_items: int = HA_FEED_MAX) -> dict:
+    if not HYBRID_ANALYSIS_API_KEY:
+        return {"error": "HYBRID_ANALYSIS_API_KEY not configured", "items": 0, "added": 0, "updated": 0, "skipped": 0}
+    added = updated = skipped = 0
+    items: List[dict] = []
+    try:
+        async with httpx.AsyncClient(timeout=25, follow_redirects=True) as hc:
+            r = await hc.get(HA_FEED_URL, headers={"api-key": HYBRID_ANALYSIS_API_KEY, "User-Agent": "Falcon Sandbox", "Accept": "application/json"})
+            if r.status_code != 200:
+                return {"error": f"Hybrid Analysis feed failed ({r.status_code})", "items": 0, "added": 0, "updated": 0, "skipped": 0}
+            payload = r.json() or {}
+            data = payload.get("data") if isinstance(payload, dict) else payload
+            items = (data or [])[:max_items] if isinstance(data, list) else []
+            for it in items:
+                # Prefer sha256, then sha1, then md5.
+                value = (it.get("sha256") or it.get("sha1") or it.get("md5") or "").strip()
+                if not value or _classify_ioc(value) not in ("sha256", "sha1", "md5"):
+                    skipped += 1
+                    continue
+                family = (it.get("vx_family") or "").strip() or None
+                verdict = (it.get("verdict") or "").strip() or None
+                threat_name = family or verdict or "Hybrid Analysis submission"
+                tags: List[str] = []
+                if family:
+                    tags.append(f"family:{family}")
+                if verdict:
+                    tags.append(f"verdict:{verdict}")
+                for t in (it.get("tags") or [])[:8]:
+                    ts = str(t).strip()
+                    if ts:
+                        tags.append(ts)
+                sub_type = (it.get("submit_name") or it.get("type") or "").strip()
+                notes_bits = []
+                if it.get("threat_score") is not None:
+                    notes_bits.append(f"threat_score={it.get('threat_score')}")
+                if it.get("threat_level") is not None:
+                    notes_bits.append(f"threat_level={it.get('threat_level')}")
+                if sub_type:
+                    notes_bits.append(f"submit={sub_type[:80]}")
+                notes = "; ".join(notes_bits) or None
+                job_id = it.get("job_id") or it.get("sha256") or ""
+                source = f"Hybrid Analysis · {job_id}" if job_id else "Hybrid Analysis"
+                try:
+                    _, created = await _upsert_ioc(value, threat_name, tags, source, _ha_severity(it), notes)
+                    added += 1 if created else 0
+                    updated += 0 if created else 1
+                except Exception as e:
+                    logger.warning(f"Hybrid Analysis upsert failed for {value}: {e}")
+                    skipped += 1
+    except Exception as e:
+        logger.error(f"Hybrid Analysis sync error: {e}")
+        return {"error": f"Hybrid Analysis sync error: {e}", "items": len(items), "added": added, "updated": updated, "skipped": skipped}
+
+    summary = {"items": len(items), "added": added, "updated": updated, "skipped": skipped, "synced_at": now_iso()}
+    try:
+        await db.sync_meta.update_one({"_id": "hybrid_analysis"}, {"$set": summary}, upsert=True)
+    except Exception:
+        pass
+    logger.info(f"Hybrid Analysis sync complete: {summary}")
+    return summary
+
+
+# ---------------------------------------------------------------------------
+# AbuseIPDB blacklist sync — pulls top abused IPs and upserts them.
+# NOTE: /api/v2/blacklist is a subscriber/paid tier feature on AbuseIPDB.
+# On a free key you'll get HTTP 402/403 and this sync returns a friendly error.
+# ---------------------------------------------------------------------------
+ABUSEIPDB_BLACKLIST_URL = "https://api.abuseipdb.com/api/v2/blacklist"
+ABUSEIPDB_BLACKLIST_MAX = 1000
+ABUSEIPDB_CONFIDENCE_MIN = 90
+
+
+async def _sync_abuseipdb_blacklist(limit: int = ABUSEIPDB_BLACKLIST_MAX, confidence_min: int = ABUSEIPDB_CONFIDENCE_MIN) -> dict:
+    if not ABUSEIPDB_API_KEY:
+        return {"error": "ABUSEIPDB_API_KEY not configured", "items": 0, "added": 0, "updated": 0, "skipped": 0}
+    added = updated = skipped = 0
+    items: List[dict] = []
+    try:
+        async with httpx.AsyncClient(timeout=25, follow_redirects=True) as hc:
+            r = await hc.get(
+                ABUSEIPDB_BLACKLIST_URL,
+                params={"confidenceMinimum": confidence_min, "limit": limit},
+                headers={"Key": ABUSEIPDB_API_KEY, "Accept": "application/json"},
+            )
+            if r.status_code == 402 or r.status_code == 403:
+                return {"error": "AbuseIPDB blacklist requires a paid subscription (Basic/Premium tier)", "items": 0, "added": 0, "updated": 0, "skipped": 0}
+            if r.status_code != 200:
+                return {"error": f"AbuseIPDB blacklist failed ({r.status_code})", "items": 0, "added": 0, "updated": 0, "skipped": 0}
+            payload = r.json() or {}
+            items = payload.get("data") or []
+            for it in items:
+                ip = (it.get("ipAddress") or "").strip()
+                if not ip or _classify_ioc(ip) != "ip":
+                    skipped += 1
+                    continue
+                score = int(it.get("abuseConfidenceScore") or 0)
+                cc = (it.get("countryCode") or "").strip()
+                sev = "critical" if score >= 95 else "high" if score >= 90 else "medium"
+                tags = ["abuseipdb"]
+                if cc:
+                    tags.append(f"country:{cc}")
+                tags.append(f"confidence:{score}")
+                threat_name = f"AbuseIPDB confidence {score}"
+                notes = f"Last reported {it.get('lastReportedAt') or 'unknown'}"
+                try:
+                    _, created = await _upsert_ioc(ip, threat_name, tags, "AbuseIPDB Blacklist", sev, notes)
+                    added += 1 if created else 0
+                    updated += 0 if created else 1
+                except Exception as e:
+                    logger.warning(f"AbuseIPDB upsert failed for {ip}: {e}")
+                    skipped += 1
+    except Exception as e:
+        logger.error(f"AbuseIPDB sync error: {e}")
+        return {"error": f"AbuseIPDB sync error: {e}", "items": len(items), "added": added, "updated": updated, "skipped": skipped}
+
+    summary = {"items": len(items), "added": added, "updated": updated, "skipped": skipped, "synced_at": now_iso()}
+    try:
+        await db.sync_meta.update_one({"_id": "abuseipdb"}, {"$set": summary}, upsert=True)
+    except Exception:
+        pass
+    logger.info(f"AbuseIPDB sync complete: {summary}")
+    return summary
+
+
+# ---------------------------------------------------------------------------
+# Multi-source curated-IOC sync orchestrator (One-click "Sync all sources")
+# ---------------------------------------------------------------------------
+SYNC_SOURCES = [
+    # key,             display name,        can_sync, reason_if_not
+    ("otx",             "AlienVault OTX",    True,  None),
+    ("hybrid_analysis", "Hybrid Analysis",   True,  None),
+    ("abuseipdb",       "AbuseIPDB",         True,  None),
+    ("urlscan",         "URLScan.io",        False, "Bulk 'malicious verdicts' search requires urlscan Pro"),
+    ("virustotal",      "VirusTotal",        False, "Bulk hunting feed requires VT Enterprise tier"),
+    ("talos",           "Cisco Talos",       False, "No public bulk IOC feed available"),
+    ("shodan",          "Shodan",            False, "Not a curated IOC feed (internet scan engine)"),
+]
+
+
+@api_router.get("/iocs/sync-status")
+async def iocs_sync_status():
+    metas = {}
+    async for doc in db.sync_meta.find({}, {"_id": 1, "items": 1, "pulses": 1, "indicators": 1, "added": 1, "updated": 1, "skipped": 1, "synced_at": 1, "error": 1}):
+        metas[doc["_id"]] = {k: v for k, v in doc.items() if k != "_id"}
+    # OTX still has its own doc under otx_meta for backwards-compat.
+    otx_doc = await db.otx_meta.find_one({"_id": "last_sync"}, {"_id": 0})
+    if otx_doc and "otx" not in metas:
+        metas["otx"] = otx_doc
+
+    key_map = {
+        "otx": bool(OTX_API_KEY),
+        "hybrid_analysis": bool(HYBRID_ANALYSIS_API_KEY),
+        "abuseipdb": bool(ABUSEIPDB_API_KEY),
+        "urlscan": bool(URLSCAN_API_KEY) if 'URLSCAN_API_KEY' in globals() else False,
+        "virustotal": bool(VT_API_KEY) if 'VT_API_KEY' in globals() else False,
+        "talos": False,
+        "shodan": False,
+    }
+    sources = []
+    for key, label, can_sync, reason in SYNC_SOURCES:
+        sources.append({
+            "key": key,
+            "label": label,
+            "can_sync": can_sync,
+            "reason": reason,
+            "configured": key_map.get(key, False),
+            "last_sync": metas.get(key),
+        })
+    return {"sources": sources}
+
+
+@api_router.post("/iocs/sync-all")
+async def iocs_sync_all(user: dict = Depends(get_current_user)):
+    """One-click sync across every source that provides a bulk IOC feed.
+    Runs OTX + Hybrid Analysis + AbuseIPDB in parallel. Sources without a
+    public bulk feed (VT / URLScan / Talos / Shodan) are reported as skipped."""
+    tasks = {
+        "otx": _sync_otx_pulses() if OTX_API_KEY else None,
+        "hybrid_analysis": _sync_hybrid_analysis_feed() if HYBRID_ANALYSIS_API_KEY else None,
+        "abuseipdb": _sync_abuseipdb_blacklist() if ABUSEIPDB_API_KEY else None,
+    }
+    active_keys = [k for k, v in tasks.items() if v is not None]
+    results_list = await asyncio.gather(*[tasks[k] for k in active_keys], return_exceptions=True)
+    results: dict = {}
+    total_added = total_updated = 0
+    for k, r in zip(active_keys, results_list):
+        if isinstance(r, Exception):
+            results[k] = {"error": str(r)}
+        else:
+            results[k] = r
+            total_added += int(r.get("added") or 0)
+            total_updated += int(r.get("updated") or 0)
+
+    # Fill in skipped sources so the client can render a complete status.
+    for key, label, can_sync, reason in SYNC_SOURCES:
+        if key in results:
+            continue
+        if not can_sync:
+            results[key] = {"skipped": True, "reason": reason}
+        else:
+            results[key] = {"error": f"{label} is not configured"}
+
+    return {
+        "totals": {"added": total_added, "updated": total_updated},
+        "results": results,
+        "synced_at": now_iso(),
+    }
+
+
+
+
+
+# ---------------------------------------------------------------------------
 # Live external threat feed (CISA Known Exploited Vulnerabilities)
 # ---------------------------------------------------------------------------
 _feed_cache: dict[str, Any] = {"ts": None, "data": None}
@@ -1485,7 +1718,7 @@ async def ioc_ai_summary(payload: AiSummaryInput):
 @api_router.get("/live-feed")
 async def live_feed():
     now = datetime.now(timezone.utc)
-    if _feed_cache["data"] and _feed_cache["ts"] and (now - _feed_cache["ts"]) < timedelta(minutes=30):
+    if _feed_cache["data"] and _feed_cache["ts"] and (now - _feed_cache["ts"]) < timedelta(minutes=5):
         return _feed_cache["data"]
     try:
         async with httpx.AsyncClient(timeout=15) as hc:
@@ -1534,7 +1767,7 @@ _attack_cache: dict[str, Any] = {"ts": None, "data": None}
 async def attack_feed():
     """Real-time attack feed: recent ransomware victims from ransomware.live (cached 20 min)."""
     now = datetime.now(timezone.utc)
-    if _attack_cache["data"] and _attack_cache["ts"] and (now - _attack_cache["ts"]) < timedelta(minutes=20):
+    if _attack_cache["data"] and _attack_cache["ts"] and (now - _attack_cache["ts"]) < timedelta(minutes=5):
         return _attack_cache["data"]
     try:
         async with httpx.AsyncClient(timeout=15, follow_redirects=True) as hc:
@@ -1567,6 +1800,115 @@ async def attack_feed():
         if _attack_cache["data"]:
             return _attack_cache["data"]
         raise HTTPException(status_code=502, detail="Unable to reach live attack feed")
+
+
+# ---------------------------------------------------------------------------
+# Real-time Threat Landscape aggregate — powers the "Threat landscape, right now"
+# dashboard on the marketing landing. Aggregates fresh CISA KEV + ransomware.live
+# + the curated IOC DB + last-sync timestamps into a single payload that the
+# frontend polls every 30 seconds.
+# ---------------------------------------------------------------------------
+def _parse_victim_dt(v: dict) -> Optional[datetime]:
+    for key in ("attackdate", "discovered", "date"):
+        raw = v.get(key)
+        if not raw:
+            continue
+        # ransomware.live returns "YYYY-MM-DD HH:MM:SS.SSS" (no tz) — treat as UTC.
+        for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
+            except ValueError:
+                continue
+    return None
+
+
+@api_router.get("/threat-landscape/live")
+async def threat_landscape_live():
+    """Real-time aggregate for the landing 'Threat landscape' panel.
+    Returns fresh CVE/ransomware/curated-IOC stats + recent activity so the
+    UI can render a truly dynamic dashboard (frontend polls every 30s)."""
+    now = datetime.now(timezone.utc)
+
+    # --- CISA KEV (uses the same 5-min cache as /live-feed)
+    total_cves = 0
+    ransomware_linked = 0
+    newest_cves: List[dict] = []
+    try:
+        feed = await live_feed()  # reuses cache
+        total_cves = int(feed.get("total_count") or 0)
+        ransomware_linked = int(feed.get("ransomware_linked") or 0)
+        newest_cves = (feed.get("items") or [])[:6]
+    except Exception as e:
+        logger.warning(f"landscape/live: CISA fetch failed: {e}")
+
+    # --- Ransomware.live (recent victims, uses 5-min cache)
+    victims_24h = 0
+    newest_victims: List[dict] = []
+    try:
+        atk = await attack_feed()
+        items = atk.get("items") or []
+        cutoff = now - timedelta(hours=24)
+        for v in items:
+            dt = _parse_victim_dt(v)
+            if dt and dt >= cutoff:
+                victims_24h += 1
+        newest_victims = items[:6]
+    except Exception as e:
+        logger.warning(f"landscape/live: ransomware.live fetch failed: {e}")
+
+    # --- Curated IOC database (live count + severity split)
+    total_iocs = await db.iocs.count_documents({}) or 0
+    critical_iocs = await db.iocs.count_documents({"severity": "critical"}) or 0
+
+    # --- Last sync across all sync-meta docs (freshness signal)
+    last_synced_at = None
+    last_synced_source = None
+    try:
+        async for doc in db.sync_meta.find({}, {"_id": 1, "synced_at": 1}):
+            ts = doc.get("synced_at")
+            if ts and (last_synced_at is None or ts > last_synced_at):
+                last_synced_at = ts
+                last_synced_source = doc.get("_id")
+        otx_doc = await db.otx_meta.find_one({"_id": "last_sync"}, {"synced_at": 1})
+        if otx_doc and otx_doc.get("synced_at") and (last_synced_at is None or otx_doc["synced_at"] > last_synced_at):
+            last_synced_at = otx_doc["synced_at"]
+            last_synced_source = "otx"
+    except Exception:
+        pass
+
+    # --- New CVEs added in the last 7 days (approximate "attack surface velocity")
+    cves_last_7d = 0
+    try:
+        week_cutoff = (now - timedelta(days=7)).date().isoformat()
+        for c in newest_cves:
+            if (c.get("dateAdded") or "") >= week_cutoff:
+                cves_last_7d += 1
+        # Extend the count by scanning the full feed (already cached).
+        if _feed_cache.get("data"):
+            for c in (_feed_cache["data"].get("items") or []):
+                if (c.get("dateAdded") or "") >= week_cutoff:
+                    cves_last_7d += 1
+            # We double-counted the newest set above; subtract it back.
+            cves_last_7d -= sum(1 for c in newest_cves if (c.get("dateAdded") or "") >= week_cutoff)
+    except Exception:
+        pass
+
+    return {
+        "updated_at": now.isoformat(),
+        "stats": {
+            "total_cves": total_cves,
+            "ransomware_linked_cves": ransomware_linked,
+            "cves_last_7d": max(cves_last_7d, 0),
+            "victims_24h": victims_24h,
+            "curated_iocs": total_iocs,
+            "critical_iocs": critical_iocs,
+        },
+        "last_synced_at": last_synced_at,
+        "last_synced_source": last_synced_source,
+        "newest_cves": newest_cves,
+        "newest_victims": newest_victims,
+    }
+
 
 
 # ---------------------------------------------------------------------------
