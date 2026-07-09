@@ -14,6 +14,7 @@ const KnowledgeBase = lazy(() => import("@/pages/KnowledgeBase"));
 const BlogPost = lazy(() => import("@/pages/BlogPost"));
 const BlogIndex = lazy(() => import("@/pages/BlogIndex"));
 const CommunityCd = lazy(() => import("@/pages/CommunityCd"));
+const CommunityFeed = lazy(() => import("@/pages/CommunityFeed"));
 
 function RouteFallback() {
   return (
@@ -41,6 +42,7 @@ function App() {
                 <Route path="/blog" element={<BlogIndex />} />
                 <Route path="/blog/:slug" element={<BlogPost />} />
                 <Route path="/community/cd/:topic" element={<CommunityCd />} />
+                <Route path="/community/:source" element={<CommunityFeed />} />
                 <Route path="/admin" element={<Admin />} />
               </Routes>
             </Suspense>

@@ -25,9 +25,11 @@ const OSINT_TOOLS = [
 ];
 
 const CYBERDEFENDERS = [
-  { title: "Blue Team Labs & Threat Investigations", desc: "Curated DFIR writeups & threat investigations from the CyberDefenders community — full article previews rendered on NivX.", tag: "DFIR", url: "/community/cd/dfir" },
-  { title: "Malware Analysis Case Studies", desc: "Step-by-step reverse-engineering of real-world samples with IOCs and TTP mapping, aggregated from CyberDefenders.", tag: "Malware", url: "/community/cd/malware" },
-  { title: "SOC & Threat Hunting Playbooks", desc: "Practical guidance on building detections, triaging alerts and hunting adversaries — CyberDefenders community feed.", tag: "SOC", url: "/community/cd/soc" },
+  { title: "Blue Team Labs & Threat Investigations", desc: "Curated DFIR writeups & threat investigations from the CyberDefenders community — full article previews rendered on NivX.", tag: "DFIR",    url: "/community/cd/dfir"    },
+  { title: "Malware Analysis Case Studies",          desc: "Step-by-step reverse-engineering of real-world samples with IOCs and TTP mapping, aggregated from CyberDefenders.",       tag: "Malware", url: "/community/cd/malware" },
+  { title: "SOC & Threat Hunting Playbooks",         desc: "Practical guidance on building detections, triaging alerts and hunting adversaries — CyberDefenders community feed.",     tag: "SOC",     url: "/community/cd/soc"     },
+  { title: "Cisco Talos Intelligence",               desc: "Latest APT tracking, malware research and 0-day disclosures from Cisco Talos — refreshed hourly.",                        tag: "Talos",   url: "/community/talos"      },
+  { title: "Palo Alto Unit 42",                      desc: "Deep-dive threat research, incident response case studies and vulnerability write-ups from Palo Alto's Unit 42 team.",     tag: "Unit42",  url: "/community/unit42"     },
 ];
 
 const DATE_RANGES = [
@@ -305,7 +307,7 @@ export default function ThreatIntelligence() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
             {CYBERDEFENDERS.map((b, i) => (
               <motion.div
                 key={b.title}

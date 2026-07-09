@@ -203,3 +203,12 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - Compliant approach: metadata + fair-use snippet only, with clear source attribution and outbound-link back to origin (standard aggregator pattern like RSS readers / Google News).
 - Verified end-to-end via screenshot + curl: 15 articles pulled, per-topic filter works, cards open source URLs with target="_blank", topic-switcher chips work. Production build (`CI=true yarn build`) clean.
 
+
+## Latest (2026-07-09, session 25 — Talos + Unit42 RSS feeds)
+- **Added 2 more community feeds** via a generic RSS/Atom parser: **Cisco Talos** (`blog.talosintelligence.com/rss/`) and **Palo Alto Unit 42** (`unit42.paloaltonetworks.com/feed/`). Both return 15 items per fetch, cached 6h.
+- **New backend endpoint** `GET /api/community/feed/{source}` — reads a lightweight `RSS_SOURCES` config dict, fetches, parses `<item>` blocks for title/link/pubDate/description/enclosure/media:content, cleans HTML from summaries, caps snippets at 200 chars, and returns unified metadata cards.
+- **New frontend page** `CommunityFeed.jsx` at `/community/:source` — shared layout for Talos + Unit42 with dark hero, attribution banner, 15-card grid, and cross-feed switcher chips (Talos ↔ Unit42 ↔ CyberDefenders).
+- **Threat Intelligence "From the Community" section** now shows 5 cards (DFIR / Malware / SOC / Talos / Unit42), grid updated to `xl:grid-cols-5` for a clean row on wide screens.
+- Compliant aggregator pattern maintained: metadata + fair-use snippet only, card clicks outbound to source with target="_blank" and clear attribution on the destination page.
+- Verified end-to-end via screenshot + curl: 15 Talos + 15 Unit42 articles rendered natively, all cards outbound to source. Production build (`CI=true yarn build`) clean.
+

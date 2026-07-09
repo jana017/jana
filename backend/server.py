@@ -2656,6 +2656,99 @@ async def root():
     return {"message": "NivX Machines API online"}
 
 
+
+# ---------------------------------------------------------------------------
+# Generic RSS/Atom aggregator — Talos, Unit42, etc. Metadata only (title,
+# summary snippet capped at 200 chars, cover image, publish date, source URL).
+# Card clicks on the frontend open the source article in a new tab.
+# ---------------------------------------------------------------------------
+_RSS_CACHE: dict = {}
+_RSS_TTL = timedelta(hours=6)
+
+RSS_SOURCES = {
+    "talos":  {"name": "Cisco Talos Intelligence", "url": "https://blog.talosintelligence.com/rss/",   "site": "https://blog.talosintelligence.com"},
+    "unit42": {"name": "Palo Alto Unit 42",         "url": "https://unit42.paloaltonetworks.com/feed/", "site": "https://unit42.paloaltonetworks.com"},
+}
+
+
+def _clean_text(s: str) -> str:
+    """Strip HTML tags and CDATA wrappers, collapse whitespace."""
+    if not s:
+        return ""
+    s = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", s, flags=re.DOTALL)
+    s = re.sub(r"<[^>]+>", " ", s)
+    s = s.replace("&amp;", "&").replace("&#8217;", "'").replace("&#8220;", "\u201C").replace("&#8221;", "\u201D").replace("&nbsp;", " ")
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _parse_rss_feed(xml: str, max_items: int = 15) -> list[dict]:
+    """Parse a basic RSS 2.0 or Atom feed into [{slug, url, title, image, date, excerpt}].
+    Snippets capped at 200 chars for fair-use aggregation."""
+    items: list[dict] = []
+    # RSS 2.0 <item>
+    for m in re.finditer(r"<item[^>]*>(.*?)</item>", xml, re.DOTALL | re.IGNORECASE):
+        block = m.group(1)
+        title = _clean_text((re.search(r"<title[^>]*>(.*?)</title>", block, re.DOTALL) or re.match("$^", "")).group(1)) if re.search(r"<title", block) else ""
+        link_m = re.search(r"<link[^>]*>(.*?)</link>", block, re.DOTALL)
+        link = _clean_text(link_m.group(1)) if link_m else ""
+        date_m = re.search(r"<pubDate[^>]*>(.*?)</pubDate>", block, re.DOTALL) or re.search(r"<dc:date[^>]*>(.*?)</dc:date>", block, re.DOTALL)
+        date = _clean_text(date_m.group(1)) if date_m else ""
+        desc_m = re.search(r"<description[^>]*>(.*?)</description>", block, re.DOTALL) or re.search(r"<content:encoded[^>]*>(.*?)</content:encoded>", block, re.DOTALL)
+        desc_html = desc_m.group(1) if desc_m else ""
+        img_m = re.search(r'<enclosure[^>]+url="([^"]+)"', block) or re.search(r'<media:content[^>]+url="([^"]+)"', block) or re.search(r'<media:thumbnail[^>]+url="([^"]+)"', block) or re.search(r'<img[^>]+src="([^"]+)"', desc_html or block)
+        image = img_m.group(1) if img_m else None
+        excerpt = _clean_text(desc_html)[:200].rstrip()
+        if excerpt and not excerpt.endswith("…"):
+            excerpt = excerpt.rstrip(". ") + "…"
+        if title and link:
+            slug = link.rstrip("/").split("/")[-1][:80]
+            # Prefer human date if parseable.
+            display_date = date
+            try:
+                from email.utils import parsedate_to_datetime
+                dt = parsedate_to_datetime(date)
+                display_date = dt.strftime("%b %-d, %Y")
+            except Exception:
+                pass
+            items.append({"slug": slug or f"item-{len(items)}", "url": link, "title": title, "image": image, "date": display_date, "excerpt": excerpt, "category": "Threat Research"})
+            if len(items) >= max_items:
+                break
+    return items
+
+
+@api_router.get("/community/feed/{source}")
+async def community_feed(source: str):
+    """Aggregate a single RSS/Atom threat-intel feed as metadata cards.
+    Returns title, cover image, ~200-char snippet, date, source URL. Cached 6h."""
+    src = RSS_SOURCES.get(source)
+    if not src:
+        raise HTTPException(status_code=404, detail=f"Unknown source '{source}'. Available: {', '.join(RSS_SOURCES)}")
+    now = datetime.now(timezone.utc)
+    cached = _RSS_CACHE.get(source)
+    if cached and (now - cached["ts"]) < _RSS_TTL:
+        articles = cached["data"]
+    else:
+        try:
+            async with httpx.AsyncClient(timeout=20, follow_redirects=True, headers={"User-Agent": "NivX-Aggregator/1.0"}) as hc:
+                r = await hc.get(src["url"])
+                if r.status_code != 200:
+                    raise HTTPException(status_code=502, detail=f"{src['name']} returned HTTP {r.status_code}")
+                articles = _parse_rss_feed(r.text, max_items=15)
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"{src['name']} fetch failed: {e}")
+        _RSS_CACHE[source] = {"ts": now, "data": articles}
+
+    return {
+        "source": src["name"],
+        "site": src["site"],
+        "attribution": f"Content curated from {src['name']}. Click any card to read the full article on the source site.",
+        "count": len(articles),
+        "articles": articles,
+    }
+
+
 app.include_router(api_router)
 
 app.add_middleware(
