@@ -365,3 +365,71 @@ Kept the existing 3700-line `server.py` untouched (zero regression risk); the ne
 - Process-tree / attack-chain visualizer (React Flow) fed by MITRE technique sequence.
 - Custom user-uploaded YARA rules via admin panel.
 - Wire actual href URLs for WhatsApp / Twitter / LinkedIn in Landing Hero (P2 carry-over).
+
+
+## Session 33 (2026-07-09) — Phase 4 Complete
+
+Shipped all 5 Phase 4 items in a single session.
+
+### 1) AI-powered analysis (Claude Sonnet 4.5)
+- `POST /api/cyberlab/ai-analysis` — takes decoded payload + MITRE/rule/IOC context, returns `{summary, sigma_rule, yara_rule}`.
+- Uses `emergentintegrations.llm.chat.LlmChat` with model `claude-sonnet-4-5-20250929`.
+- Strict JSON prompt with markdown-fence-tolerant parser.
+- New frontend `AiPanel.jsx` (below the 3-column area) — purple accent + Claude 4.5 badge, tabs Summary / Sigma / YARA with copy-to-clipboard.
+- File: `/app/backend/cyberlab/ai_analysis.py`.
+
+### 2) Persistent shareable analyses (30-day TTL)
+- `POST /api/cyberlab/share` — writes to `cyberlab_shares` collection with TTL index on `expires_at`.
+- `GET /api/cyberlab/share/{share_id}` — public read (no auth).
+- New route `/cyberlab/share/:shareId` renders read-only `CyberLabShare.jsx` — verdict banner, input/output, decoding chain, MITRE/Rules/IOCs cards, "Analyze your own" CTA.
+- `ShareModal.jsx` in the main lab handles link creation.
+- File: `/app/backend/cyberlab/persistence.py` (Mongo TTL index).
+
+### 3) Custom YARA-lite rules (admin global + session-scoped)
+- Admin (JWT-protected): `GET/POST /api/admin/cyberlab/rules`, `DELETE /api/admin/cyberlab/rules/{id}` — new **CyberLab Rules** tab in Admin panel via `AdminCyberLabRules.jsx`.
+- Session-scoped (anon users): `GET/POST /api/cyberlab/session-rules?session_id=X`, `DELETE /api/cyberlab/session-rules/{id}?session_id=X` — 12-char session_id stored in `localStorage['nivx.cyberlab.sid']`.
+- Both flavors are dynamically merged with the 13 built-in rules on every `analyze` / `auto-decode` call.
+- Validation: string / regex / hex pattern types; severity enum; required name + at least one pattern.
+- New `CustomRuleModal.jsx` in the lab, `AdminCyberLabRules.jsx` in the admin panel.
+
+### 4) Attack-chain visualizer (ReactFlow)
+- Installed `reactflow@11.11.4`.
+- New `AttackChainViewer.jsx` — horizontal DAG: INPUT (cyan) → step nodes (per-category color) → DECODED (emerald) → MITRE technique leaf nodes (per-tactic color).
+- MiniMap, Controls, animated edges. Rendered inside the new **Graph** tab (5th tab) of the Threat Analysis panel.
+
+### 5) Report exports (branded ReportLab PDF + Markdown)
+- `POST /api/cyberlab/export/pdf` — branded A4 PDF with NivX header, colored verdict bar, risk score, pipeline table, MITRE table, rule blocks with severity chips, IOC table, optional AI summary + draft Sigma/YARA rules.
+- `POST /api/cyberlab/export/markdown` — full report as `.md` with anchor links to attack.mitre.org.
+- Wired into `ShareModal` — one-click download of either format.
+- File: `/app/backend/cyberlab/exports.py`.
+
+### Bug fixes / integration issues discovered
+- Fixed `AdminCyberLabRules.jsx` was reading `localStorage['nivx.token']` while `AuthContext` writes `nivx_token`. Aligned key → admin panel now loads without 401.
+- Recommended: centralize token retrieval in a single helper (not blocking, tech-debt).
+
+### Testing
+- 19/19 pytest cases pass (`/app/backend/tests/test_cyberlab_phase4.py` — 10 new, `/app/backend/tests/test_cyberlab.py` — 9, updated for new /rules schema).
+- Testing subagent (iteration_20): backend 100%, frontend 100% after 1 fix. All Phase 4 UI flows validated including real Claude Sonnet 4.5 AI call (~20s).
+
+### Files added / modified this session
+- ADDED  /app/backend/cyberlab/ai_analysis.py, persistence.py, exports.py
+- ADDED  /app/backend/tests/test_cyberlab_phase4.py
+- ADDED  /app/frontend/src/pages/CyberLabShare.jsx
+- ADDED  /app/frontend/src/components/cyberlab/AiPanel.jsx, ShareModal.jsx, CustomRuleModal.jsx, AttackChainViewer.jsx
+- ADDED  /app/frontend/src/components/AdminCyberLabRules.jsx
+- MODIFIED  /app/backend/cyberlab/router.py (all Phase 4 endpoints + shared rule loading in _analyze)
+- MODIFIED  /app/backend/server.py (startup index-ensure hook, cyberlab_admin_router)
+- MODIFIED  /app/backend/requirements.txt (+ reportlab==5.0.0)
+- MODIFIED  /app/backend/.env (+ EMERGENT_LLM_KEY)
+- MODIFIED  /app/backend/tests/test_cyberlab.py (updated /rules schema assertion)
+- MODIFIED  /app/frontend/package.json (+ reactflow)
+- MODIFIED  /app/frontend/src/App.js (new /cyberlab/share/:id route)
+- MODIFIED  /app/frontend/src/lib/cyberlabApi.js (share/export/AI/session-rule helpers)
+- MODIFIED  /app/frontend/src/pages/CyberLab.jsx (AI panel + Share button + Graph tab + add-session-rule button + modals)
+- MODIFIED  /app/frontend/src/pages/Admin.jsx (+ CyberLab Rules tab)
+
+## Backlog (post-Phase 4)
+- P2: Centralize localStorage token retrieval in `lib/auth.js` to prevent future key drift.
+- P2: Wire actual href URLs for WhatsApp / Twitter / LinkedIn in Landing Hero (carry-over).
+- P3: Break down `server.py` (3812 lines) into `routes/services/models/` — cosmetic, not blocking.
+- P3: Process-tree from actual EDR telemetry (currently attack-chain is inferred from MITRE mapping).
