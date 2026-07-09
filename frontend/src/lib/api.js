@@ -1,4 +1,5 @@
 import axios from "axios";
+import { getToken } from "@/lib/auth";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
@@ -6,7 +7,7 @@ export const API = `${BACKEND_URL}/api`;
 export const api = axios.create({ baseURL: API });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("nivx_token");
+  const token = getToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });

@@ -433,3 +433,49 @@ Shipped all 5 Phase 4 items in a single session.
 - P2: Wire actual href URLs for WhatsApp / Twitter / LinkedIn in Landing Hero (carry-over).
 - P3: Break down `server.py` (3812 lines) into `routes/services/models/` — cosmetic, not blocking.
 - P3: Process-tree from actual EDR telemetry (currently attack-chain is inferred from MITRE mapping).
+
+
+## Session 34 (2026-07-09) — P2 auth helper + P3 Sysmon telemetry ingestion
+
+### P2 — Centralized token retrieval
+- New `/app/frontend/src/lib/auth.js` — single source of truth for the `nivx_token` localStorage key with `getToken()`, `setToken()`, `clearToken()`, `authHeaders()`.
+- Migrated all direct `localStorage.getItem/setItem/removeItem("nivx_token")` usages: `context/AuthContext.jsx`, `lib/api.js`, `components/AdminCyberLabRules.jsx`.
+- Prevents future key-drift bugs (like the Phase 4 admin-panel 401 caused by `nivx.token` vs `nivx_token`).
+
+### P3 — Sysmon / EDR telemetry ingestion for real process trees
+Added the ability to feed the attack-chain graph real Sysmon Event ID 1 telemetry instead of the inferred decoding sequence.
+
+**Backend** (`/app/backend/cyberlab/sysmon.py`):
+- Format auto-detection: XML (native `wevtutil` export), JSON (single object / array / NDJSON — supports both raw Sysmon fields and Elastic ECS `process.*` structure), CSV/TSV (auto-sniffed delimiter, aliases like `process.pid` → `processid`).
+- Field aliasing across formats — 12 canonical Sysmon fields (Image, CommandLine, ProcessGuid, ParentProcessGuid, ProcessId, etc.) mapped from 40+ common aliases.
+- Tree builder with ProcessGuid preferred, PID+Image fallback for older logs; BFS depth calculation for layered layout.
+- Per-node MITRE mapping — every process's `CommandLine` is scanned via the existing `mitre.py` matcher, then color-coded (info→emerald, medium→amber, high→orange, critical→red).
+- New endpoint: `POST /api/cyberlab/process-tree` — returns `{nodes, edges, stats: {process_count, edge_count, risk_counts, worst_risk}, format}`.
+
+**Frontend** (`/app/frontend/src/components/cyberlab/ProcessTreeViewer.jsx`):
+- New "Data Source" toggle in the Graph tab: "Decoding Chain" (existing) | "Process Tree (Sysmon / EDR)" (new).
+- Compact input textarea + Parse / Sample / Upload / Clear controls.
+- ReactFlow layered top-down tree with per-node risk coloring, MITRE chips (T-IDs) inline, PID + user + integrity level on hover.
+- Live stats bar (process count, edge count, format, per-risk breakdown chips).
+- Sample Sysmon dump pre-baked (explorer.exe → powershell -e … → vssadmin delete shadows / certutil download).
+
+### Testing
+- `/app/backend/tests/test_cyberlab_sysmon.py` — 6 pytest cases (XML / JSON-ECS / CSV / bad input / empty / NDJSON), all passing in 0.6s.
+- Full backend regression: 25/25 cases pass (`test_cyberlab.py`=9, `test_cyberlab_phase4.py`=10, `test_cyberlab_sysmon.py`=6).
+- Frontend smoke: 4-process XML sample renders as tree with correct T1059.001 / T1490 / T1105 mappings.
+
+### Files touched
+- ADDED  /app/backend/cyberlab/sysmon.py
+- ADDED  /app/backend/tests/test_cyberlab_sysmon.py
+- ADDED  /app/frontend/src/lib/auth.js
+- ADDED  /app/frontend/src/components/cyberlab/ProcessTreeViewer.jsx
+- MODIFIED  /app/backend/cyberlab/router.py (new /process-tree endpoint + sysmon import)
+- MODIFIED  /app/frontend/src/context/AuthContext.jsx  (use lib/auth)
+- MODIFIED  /app/frontend/src/lib/api.js               (use lib/auth)
+- MODIFIED  /app/frontend/src/components/AdminCyberLabRules.jsx (use lib/auth)
+- MODIFIED  /app/frontend/src/pages/CyberLab.jsx (Data Source toggle in Graph tab)
+
+## Backlog remaining
+- P2: Wire real WhatsApp / Twitter / LinkedIn hrefs in Landing Hero (carry-over from earlier).
+- P3: Refactor `server.py` (3812 lines) into `routes/services/models/` — cosmetic, not blocking.
+- P3: OG image generation per `/cyberlab/share/:id` for viral DFIR sharing on Twitter/LinkedIn.

@@ -10,6 +10,7 @@ import Contact from "@/components/Contact";
 import useSeo from "@/lib/useSeo";
 import { listPlugins, autoDecode, runRecipe, analyze } from "@/lib/cyberlabApi";
 import AttackChainViewer from "@/components/cyberlab/AttackChainViewer";
+import ProcessTreeViewer from "@/components/cyberlab/ProcessTreeViewer";
 import AiPanel from "@/components/cyberlab/AiPanel";
 import ShareModal from "@/components/cyberlab/ShareModal";
 import CustomRuleModal from "@/components/cyberlab/CustomRuleModal";
@@ -85,6 +86,7 @@ export default function CyberLab() {
   const [tab, setTab] = useState("mitre");
   const [shareOpen, setShareOpen] = useState(false);
   const [ruleModalOpen, setRuleModalOpen] = useState(false);
+  const [graphMode, setGraphMode] = useState("chain"); // "chain" | "process"
 
   useEffect(() => {
     listPlugins().then(setPlugins).catch((e) => toast.error(`Load plugins: ${e.message}`));
@@ -586,12 +588,39 @@ export default function CyberLab() {
               ) : <div className="text-xs text-slate-500 italic px-2 py-4">No pipeline steps yet.</div>)}
 
               {tab === "graph" && (
-                <AttackChainViewer
-                  input={input}
-                  output={result?.output || ""}
-                  trace={result?.trace || []}
-                  mitre={analysis?.mitre || []}
-                />
+                <div>
+                  {/* Data-Source toggle */}
+                  <div className="mb-3 inline-flex rounded-md border border-slate-800 bg-slate-950 p-0.5">
+                    <button
+                      data-testid="graph-mode-chain"
+                      onClick={() => setGraphMode("chain")}
+                      className={`px-2.5 py-1 text-[10px] font-semibold rounded transition-colors ${
+                        graphMode === "chain"
+                          ? "bg-cyan-500 text-slate-900"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >Decoding Chain</button>
+                    <button
+                      data-testid="graph-mode-process"
+                      onClick={() => setGraphMode("process")}
+                      className={`px-2.5 py-1 text-[10px] font-semibold rounded transition-colors ${
+                        graphMode === "process"
+                          ? "bg-cyan-500 text-slate-900"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >Process Tree (Sysmon / EDR)</button>
+                  </div>
+                  {graphMode === "chain" ? (
+                    <AttackChainViewer
+                      input={input}
+                      output={result?.output || ""}
+                      trace={result?.trace || []}
+                      mitre={analysis?.mitre || []}
+                    />
+                  ) : (
+                    <ProcessTreeViewer />
+                  )}
+                </div>
               )}
             </div>
           </aside>

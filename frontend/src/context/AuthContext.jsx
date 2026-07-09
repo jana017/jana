@@ -1,12 +1,13 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { api, formatApiErrorDetail } from "@/lib/api";
+import { getToken, setToken, clearToken } from "@/lib/auth";
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null); // null=checking, false=guest, obj=auth
   const bootstrap = useCallback(async () => {
-    const token = localStorage.getItem("nivx_token");
+    const token = getToken();
     if (!token) {
       setUser(false);
       return;
@@ -15,7 +16,7 @@ export const AuthProvider = ({ children }) => {
       const { data } = await api.get("/auth/me");
       setUser(data);
     } catch {
-      localStorage.removeItem("nivx_token");
+      clearToken();
       setUser(false);
     }
   }, []);
@@ -27,7 +28,7 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       const { data } = await api.post("/auth/login", { email, password });
-      localStorage.setItem("nivx_token", data.access_token);
+      setToken(data.access_token);
       setUser(data.user);
       return { ok: true };
     } catch (e) {
@@ -36,7 +37,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    localStorage.removeItem("nivx_token");
+    clearToken();
     setUser(false);
   };
 

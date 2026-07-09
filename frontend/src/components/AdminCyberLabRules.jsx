@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Bug, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { authHeaders } from "@/lib/auth";
 
 const API = process.env.REACT_APP_BACKEND_URL;
 const SEVERITIES = ["info", "low", "medium", "high", "critical"];
@@ -16,11 +17,6 @@ const SEV_CHIP = {
   low:      "bg-blue-100 text-blue-700 border-blue-200",
   info:     "bg-slate-100 text-slate-700 border-slate-200",
 };
-
-function authHeaders() {
-  const t = localStorage.getItem("nivx_token");
-  return t ? { Authorization: `Bearer ${t}` } : {};
-}
 
 export default function AdminCyberLabRules() {
   const [rules, setRules] = useState([]);

@@ -37,6 +37,7 @@ from . import rule_scanner
 from . import persistence
 from . import exports
 from . import ai_analysis
+from . import sysmon
 from .plugins import all_plugins
 from .plugins.decoders import _to_best_text
 from .models import (
@@ -172,6 +173,29 @@ async def extract_iocs(payload: dict):
         "by_type": ioc_extract.summarize(iocs),
         "iocs": [i.model_dump() for i in iocs],
     }
+
+
+# ============================================================================
+# Sysmon / EDR process-tree ingestion (P3)
+# ============================================================================
+
+class SysmonRequest(BaseModel):
+    input: str
+    format: Optional[str] = None  # 'xml' | 'json' | 'csv' | None to auto-detect
+
+
+@router.post("/process-tree")
+async def process_tree(req: SysmonRequest):
+    """Parse Sysmon Event ID 1 dumps (XML / JSON / CSV) and return a
+    parent-child process tree with per-process MITRE ATT&CK mapping."""
+    try:
+        tree = sysmon.parse(req.input, format_hint=req.format)
+        return tree
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("process_tree failed")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================================
