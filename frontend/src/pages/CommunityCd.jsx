@@ -47,7 +47,7 @@ export default function CommunityCd() {
         <div className="absolute inset-0 dot-grid opacity-40" aria-hidden="true" />
         <div className="relative mx-auto max-w-7xl px-6">
           <Link
-            to="/threat-intelligence"
+            to="/threat-intelligence#community"
             data-testid="community-back"
             className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400 hover:text-[#2E7DF5] mb-6"
           >

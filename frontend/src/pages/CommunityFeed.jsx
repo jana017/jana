@@ -55,7 +55,7 @@ export default function CommunityFeed() {
       <section className={`pt-28 pb-14 lg:pt-32 bg-[#0A1220] relative overflow-hidden border-b border-slate-800 bg-gradient-to-b ${meta.gradient}`}>
         <div className="absolute inset-0 dot-grid opacity-40" aria-hidden="true" />
         <div className="relative mx-auto max-w-7xl px-6">
-          <Link to="/threat-intelligence" data-testid="feed-back" className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400 hover:text-[#2E7DF5] mb-6">
+          <Link to="/threat-intelligence#community" data-testid="feed-back" className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400 hover:text-[#2E7DF5] mb-6">
             <ArrowLeft className="w-3.5 h-3.5" /> Threat Intelligence
           </Link>
           <div className={`inline-flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1 text-xs font-semibold mb-5 ${meta.tone}`}>

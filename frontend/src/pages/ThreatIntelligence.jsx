@@ -299,7 +299,7 @@ export default function ThreatIntelligence() {
         </div>
       </section>
 
-      <section data-testid="intel-blog" className="py-16 lg:py-24 bg-slate-50">
+      <section id="community" data-testid="intel-blog" className="py-16 lg:py-24 bg-slate-50 scroll-mt-24">
         <div className="mx-auto max-w-7xl px-6">
           <div className="max-w-2xl mb-10">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-[#F5821F] mb-3">
