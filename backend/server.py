@@ -1327,6 +1327,56 @@ async def hybrid_quick_scan_url(payload: HaUrlInput):
     return result
 
 
+class HaSearchInput(BaseModel):
+    value: str
+    limit: int = 15
+
+
+@api_router.post("/hybrid/search-samples")
+async def hybrid_search_samples(payload: HaSearchInput):
+    """Return sandboxed samples on Hybrid Analysis that observed/contacted the
+    given host, domain, IP or URL. Powers the 'Sandboxed samples that contacted
+    this' enrichment panel in the IOC Analyzer."""
+    if not HYBRID_ANALYSIS_API_KEY:
+        raise HTTPException(status_code=503, detail="Hybrid Analysis is not configured")
+    raw = (payload.value or "").strip()
+    if not raw:
+        raise HTTPException(status_code=422, detail="value is required")
+    # Normalize + choose the right HA search term based on IOC kind.
+    from urllib.parse import urlparse
+    normalized = raw
+    kind = _classify_ioc(raw)
+    if kind == "url":
+        # Extract host from URL for a broader match (HA "host" indexes samples that resolved/connected to that host).
+        try:
+            parsed = urlparse(raw)
+            host = (parsed.hostname or "").strip()
+        except Exception:
+            host = ""
+        if not host:
+            raise HTTPException(status_code=422, detail="Invalid URL")
+        params = {"host": host}
+        normalized = host
+        term = "host"
+    elif kind == "ip":
+        params = {"host": raw}
+        term = "host"
+    elif kind == "domain":
+        params = {"domain": raw}
+        term = "domain"
+    else:
+        raise HTTPException(status_code=422, detail="Only IP, domain or URL indicators are supported")
+
+    limit = max(1, min(int(payload.limit or 15), 40))
+    async with httpx.AsyncClient(timeout=25, follow_redirects=True) as hc:
+        result = await _ha_search_terms(hc, params, limit=limit)
+    if result is None:
+        raise HTTPException(status_code=503, detail="Hybrid Analysis is not configured")
+    if result.get("error"):
+        raise HTTPException(status_code=502, detail=f"Hybrid Analysis error: {result['error']}")
+    return {"queried": normalized, "term": term, **result}
+
+
 def _vt_url_id(u: str) -> str:
     import base64
     return base64.urlsafe_b64encode(u.encode("utf-8")).decode("utf-8").strip("=")

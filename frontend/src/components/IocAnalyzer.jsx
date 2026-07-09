@@ -7,6 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import ReputationBadges from "./ReputationBadges";
 import KnownIocBanner from "./KnownIocBanner";
 import IocBulkTable from "./IocBulkTable";
+import HaSandboxSamples from "./HaSandboxSamples";
 
 export default function IocAnalyzer() {
   const { user } = useAuth();
@@ -201,6 +202,7 @@ export default function IocAnalyzer() {
                       {en.tags.map((t) => <span key={t} className="text-xs bg-orange-50 border border-orange-200 text-orange-700 px-2 py-0.5 rounded-full">{t}</span>)}
                     </div>
                   )}
+                  <HaSandboxSamples value={result.value} kindLabel="IP" />
                   <div className="text-xs text-slate-400">Enrichment: {en.sources.join(" · ")}</div>
                 </div>
               )}
@@ -264,6 +266,7 @@ export default function IocAnalyzer() {
                       ))}
                     </div>
                   )}
+                  <HaSandboxSamples value={result.value} kindLabel={result.type === "domain" ? "domain" : "URL"} />
                   <div className="text-xs text-slate-400">Enrichment: {en.sources.join(" · ")}</div>
                 </div>
               )}
