@@ -202,7 +202,7 @@ export default function CyberLab() {
       <div className="pointer-events-none absolute inset-0 -z-0 opacity-[0.03]"
         style={{ backgroundImage: "linear-gradient(#22d3ee 1px, transparent 1px), linear-gradient(90deg, #22d3ee 1px, transparent 1px)", backgroundSize: "56px 56px" }} />
 
-      <main className="relative mx-auto max-w-[1600px] px-4 lg:px-8 py-8">
+      <main className="relative mx-auto max-w-[1600px] px-4 lg:px-8 pt-24 pb-8">
         {/* Header */}
         <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div>

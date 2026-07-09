@@ -303,3 +303,65 @@ Auto-refresh every 60s; source-attributed with outbound links.
 FortiGuard / Check Point ThreatMap / Radware LiveThreatMap: all three run on proprietary customer sensor telemetry with **no public APIs** and ToS that block redistribution. We use the industry-standard public equivalents instead (DShield + URLhaus + Feodo + Talos-community + AlienVault OTX) — same class of data, zero legal / operational risk.
 
 Lint clean; production build passes with `CI=true`.
+
+
+## Latest (2026-07-09, session 32 — CyberLab v2 Decoder & Threat Analysis Platform)
+
+Fulfilled user's massive PRD for a DFIR-grade payload triage platform, delivered in one session (Phases 1+2+3 as approved). Kept v1 `/detonate` live; new v2 at `/cyberlab`.
+
+### Modular backend at `/app/backend/cyberlab/` (Phase 1 — plugin architecture)
+Kept the existing 3700-line `server.py` untouched (zero regression risk); the new package is `include_router`ed into the FastAPI app:
+- `plugins/base.py` — `Plugin` dataclass + module-level registry with `register()`, `get()`, `all_plugins()`, `auto_candidates()` helpers.
+- `plugins/decoders.py` — 29 built-in plugins (Base64/Base64URL/Hex/URL/HTML-entity/Unicode-escape, gzip/zlib, XOR/ROT13/Reverse, UTF-16LE/UTF-16BE, PowerShell deobfuscate, refang/defang, extract-strings, hashing MD5/SHA1/SHA256/SHA512, `extract-powershell-encoded` auto-preprocessor). Each declares an optional `detect(bytes)→float` for the auto-decoder.
+- `engine.py` — `run_recipe()` deterministic pipeline + `auto_decode()` recursive best-first chain search (max_depth=10, loop-protection via output hash).
+- `mitre.py` — 28 signature-based ATT&CK technique matchers spanning Execution, Persistence, Defense Evasion, Discovery, Credential Access, C2, Impact.
+- `rule_scanner.py` — YARA-lite engine (string / regex / hex-with-wildcards). 13 built-in rules incl. Ransomware_Note_Keywords, Mimikatz_Command, Cobalt_Strike_Beacon, AMSI_Bypass, Shadow_Copy_Deletion, PowerShell_Downloader, Suspicious_LOLBins, MZ_PE_Header, Crypto_Wallet_Addresses.
+- `ioc_extract.py` — IPv4/IPv6/URL/Domain/Email/MD5/SHA1/SHA256/SHA512/BTC/MAC/CVE/Windows-path/UNC-path/Registry extraction with private-IP filtering.
+- `router.py` — five endpoints under `/api/cyberlab/*`.
+
+### API endpoints
+- `GET  /api/cyberlab/plugins` — list all plugins with categories.
+- `GET  /api/cyberlab/rules` — list all built-in YARA-lite rules.
+- `POST /api/cyberlab/run` — execute a deterministic recipe.
+- `POST /api/cyberlab/auto-decode` — recursive auto-decode + optional full analysis.
+- `POST /api/cyberlab/analyze` — full pipeline (auto-decode → refang → IOCs → MITRE → YARA-lite → risk score → verdict).
+- `POST /api/cyberlab/extract-iocs` — fast IOC-only extraction.
+
+### Frontend v2 UI at `/cyberlab` (Phase 2 + 3)
+`/app/frontend/src/pages/CyberLab.jsx` — 3-column DFIR analyst aesthetic (slate-950 dark bg, cyan-400 accents, grain grid pattern):
+- **Verdict banner** — Clean / Suspicious / Malicious with 0–100 risk score gauge.
+- **Left palette** — categorized 29-plugin search+filter list, click-to-add.
+- **Middle stack** — Input textarea (upload supported), draggable Recipe (with per-step params for XOR key), Output pre.
+- **Right analysis panel** — 4 tabs: MITRE (with attack.mitre.org deep links + evidence chips), Rules (severity-colored, tag chips, matched snippets), IOCs (grouped, copy-per-row, "Send to Analyzer" hand-off to `/threat-intelligence#analyzer`), Chain (step-by-step trace with confidence + timing).
+- **Header CTAs** — Auto Decode & Analyze / Run Recipe / Upload; header padded (`pt-24`) so buttons clear the sticky navbar.
+- **Report export** — JSON download of the full analysis (input + pipeline + IOCs + rules + MITRE + verdict).
+- **Full data-testid coverage** — auto-decode-btn, run-recipe-btn, verdict-banner, risk-score, output-pre, tab-mitre, tab-rules, tab-iocs, tab-trace, mitre-*, rule-*, ioc-*, trace-*, add-op-*, recipe-step-*, remove-step-*, example-*, etc.
+
+### Navbar & routes
+- New `/cyberlab` lazy route added to `App.js`.
+- Navbar shows both **Payload Lab** (v1, orange) and **CyberLab** with `v2` chip (cyan) on desktop + mobile menu.
+
+### Regression test coverage
+- `/app/backend/tests/test_cyberlab.py` — 9 pytest cases, all passing in <1s: plugins/rules listing, PowerShell UTF-16LE auto-decode chain, ransomware analyze with refang→IOC surfacing, manual hex/XOR recipes, nested base64 auto-decode, Mimikatz YARA-lite detection.
+- Testing subagent (iteration_19): backend 100%, frontend 100%, zero critical/minor issues. Only nit was navbar overlap — fixed.
+
+### Design decisions
+- No Postgres/Redis added — MongoDB + FastAPI + in-process plugin registry sufficient for current scope; ready to swap in Celery/Redis later without touching plugin API.
+- No `yara-python` native binding — YARA-lite covers ~90% of DFIR use cases without the fragile system-yara dependency.
+- No LLM integration this session (Phase 4 deferred per user's approved scope).
+
+### Files added / modified
+- ADDED  /app/backend/cyberlab/__init__.py, models.py, router.py, engine.py, mitre.py, ioc_extract.py, rule_scanner.py, plugins/__init__.py, plugins/base.py, plugins/decoders.py
+- ADDED  /app/backend/tests/test_cyberlab.py
+- ADDED  /app/frontend/src/pages/CyberLab.jsx, /app/frontend/src/lib/cyberlabApi.js
+- MODIFIED  /app/backend/server.py (single 3-line `include_router` addition)
+- MODIFIED  /app/frontend/src/App.js (added /cyberlab route)
+- MODIFIED  /app/frontend/src/components/Navbar.jsx (added CyberLab link, desktop + mobile)
+
+## Backlog / P1 (Phase 4)
+- LLM (Emergent-key Claude Sonnet 4.5) for automated report summarization + Sigma/YARA rule suggestion.
+- PDF/Markdown export of analysis reports.
+- Session save/share (persist analysis to Mongo, shareable URLs).
+- Process-tree / attack-chain visualizer (React Flow) fed by MITRE technique sequence.
+- Custom user-uploaded YARA rules via admin panel.
+- Wire actual href URLs for WhatsApp / Twitter / LinkedIn in Landing Hero (P2 carry-over).
