@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
-import { CheckCircle2, XCircle, Loader2, ExternalLink, KeyRound, Radio, RefreshCw, Save, Trash2, Server } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, ExternalLink, KeyRound, Radio, RefreshCw, Save, Trash2, Server, History, ChevronDown, ChevronUp, Rewind } from "lucide-react";
 import { api } from "@/lib/api";
 
 const SOURCE_BADGE = {
@@ -9,19 +9,49 @@ const SOURCE_BADGE = {
   missing: { text: "Missing",       cls: "bg-red-50 text-red-700 border-red-200" },
 };
 
-function ApiKeyCard({ item, onSave, onClear, onTest }) {
+function ApiKeyCard({ item, onSave, onClear, onTest, onLoadHistory, onApplyHistory }) {
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [applyingId, setApplyingId] = useState(null);
   const badge = SOURCE_BADGE[item.source] || SOURCE_BADGE.missing;
+
+  const refreshHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try { const h = await onLoadHistory(item.name); setHistory(h); }
+    catch (e) { toast.error(e?.response?.data?.detail || "Could not load history"); }
+    finally { setHistoryLoading(false); }
+  }, [item.name, onLoadHistory]);
+
+  const toggleHistory = async () => {
+    const next = !historyOpen;
+    setHistoryOpen(next);
+    if (next && history === null) await refreshHistory();
+  };
+
+  const doApply = async (id) => {
+    if (!confirm("Restore this previously-used key as the active one?")) return;
+    setApplyingId(id);
+    try { await onApplyHistory(item.name, id); await refreshHistory(); toast.success(`${item.label} restored to previous value`); }
+    catch (e) { toast.error(e?.response?.data?.detail || "Apply failed"); }
+    finally { setApplyingId(null); }
+  };
 
   const doSave = async () => {
     const v = value.trim();
     if (!v) { toast.error("Enter a value first"); return; }
     setSaving(true);
-    try { await onSave(item.name, v); setValue(""); toast.success(`${item.label} key updated`); }
+    try {
+      await onSave(item.name, v);
+      setValue("");
+      toast.success(`${item.label} key updated`);
+      if (historyOpen) await refreshHistory();
+    }
     catch (e) { toast.error(e?.response?.data?.detail || "Save failed"); }
     finally { setSaving(false); }
   };
@@ -117,6 +147,45 @@ function ApiKeyCard({ item, onSave, onClear, onTest }) {
           </div>
         )}
       </div>
+
+      <div className="pt-3 border-t border-slate-100">
+        <button
+          data-testid={`api-key-history-toggle-${item.name}`}
+          onClick={toggleHistory}
+          className="w-full inline-flex items-center justify-between text-xs font-semibold text-slate-600 hover:text-[#2E7DF5]"
+        >
+          <span className="inline-flex items-center gap-1.5"><History className="w-3.5 h-3.5" /> Previously used keys</span>
+          {historyOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
+
+        {historyOpen && (
+          <div data-testid={`api-key-history-${item.name}`} className="mt-3 rounded-md border border-slate-200 bg-slate-50 divide-y divide-slate-200 overflow-hidden">
+            {historyLoading && (
+              <div className="px-3 py-3 flex items-center gap-2 text-xs text-slate-500"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading history…</div>
+            )}
+            {!historyLoading && history && history.length === 0 && (
+              <div className="px-3 py-3 text-xs text-slate-500">No previous values yet — this key has never been updated from the admin panel.</div>
+            )}
+            {!historyLoading && history && history.map((h, idx) => (
+              <div key={h.id} data-testid={`api-key-history-row-${item.name}-${idx}`} className="px-3 py-2.5 flex flex-wrap items-center gap-3 bg-white">
+                <code className="font-mono text-xs text-slate-800">{h.masked}</code>
+                {h.is_current && <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">Current</span>}
+                <span className="text-[11px] text-slate-500 flex-1 min-w-0 truncate">
+                  {h.applied_at ? new Date(h.applied_at).toLocaleString() : "—"}{h.applied_by ? ` · ${h.applied_by}` : ""}
+                </span>
+                <button
+                  data-testid={`api-key-history-apply-${item.name}-${idx}`}
+                  onClick={() => doApply(h.id)}
+                  disabled={h.is_current || applyingId === h.id}
+                  className={`inline-flex items-center gap-1 text-xs font-semibold rounded-md px-2.5 py-1 border transition-colors ${h.is_current ? "text-slate-400 border-slate-200 cursor-not-allowed" : "text-[#2E7DF5] border-blue-200 hover:bg-blue-50"}`}
+                >
+                  {applyingId === h.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Rewind className="w-3.5 h-3.5" />} Apply
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -176,6 +245,8 @@ export default function AdminSettings() {
   const saveKey = async (name, value) => { await api.put(`/admin/settings/api-key/${name}`, { value }); await load(); };
   const clearKey = async (name) => { await api.delete(`/admin/settings/api-key/${name}`); await load(); };
   const testKey = async (name) => { const { data } = await api.post(`/admin/settings/api-key/${name}/test`); return data; };
+  const loadHistory = async (name) => { const { data } = await api.get(`/admin/settings/api-key/${name}/history`); return data.history || []; };
+  const applyHistory = async (name, id) => { await api.post(`/admin/settings/api-key/${name}/apply-history/${id}`); await load(); };
   const updateSources = async (enabled) => { await api.put("/admin/settings/community-sources", { enabled }); await load(); };
 
   if (err) return <div className="mx-auto max-w-7xl px-6 py-10 text-sm text-red-600" data-testid="settings-error">{err}</div>;
@@ -195,7 +266,7 @@ export default function AdminSettings() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5" data-testid="settings-api-keys">
         {data.api_keys.map((k) => (
-          <ApiKeyCard key={k.name} item={k} onSave={saveKey} onClear={clearKey} onTest={testKey} />
+          <ApiKeyCard key={k.name} item={k} onSave={saveKey} onClear={clearKey} onTest={testKey} onLoadHistory={loadHistory} onApplyHistory={applyHistory} />
         ))}
       </div>
 

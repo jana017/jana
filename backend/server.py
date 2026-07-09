@@ -2919,12 +2919,74 @@ async def admin_settings_upsert_key(name: str, payload: ApiKeyUpdate, user: dict
     value = (payload.value or "").strip()
     if not value:
         raise HTTPException(status_code=400, detail="Value must not be empty. Use DELETE to clear an override.")
+    now_iso = datetime.now(timezone.utc).isoformat()
     await db.app_settings.update_one(
         {"key": name},
-        {"$set": {"key": name, "value": value, "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": user.get("email")}},
+        {"$set": {"key": name, "value": value, "updated_at": now_iso, "updated_by": user.get("email")}},
         upsert=True,
     )
+    # Append to history (dedupe if identical to the most recent entry to keep the log tidy).
+    last = await db.api_key_history.find_one({"key_name": name}, sort=[("applied_at", -1)])
+    if not last or last.get("value") != value:
+        await db.api_key_history.insert_one({
+            "key_name": name,
+            "value": value,
+            "applied_at": now_iso,
+            "applied_by": user.get("email"),
+        })
     await _load_settings_from_db()  # apply live
+    return {"ok": True, "masked": _mask_key(value), "source": "db"}
+
+
+@api_router.get("/admin/settings/api-key/{name}/history")
+async def admin_settings_key_history(name: str, user: dict = Depends(get_current_user)):
+    """Return the last 20 previously-applied values for this key (masked)."""
+    if name not in _API_KEY_INDEX:
+        raise HTTPException(status_code=404, detail=f"Unknown key: {name}")
+    docs = await db.api_key_history.find({"key_name": name}).sort("applied_at", -1).limit(20).to_list(20)
+    current = globals().get(_API_KEY_INDEX[name]["global_var"]) or ""
+    return {
+        "history": [
+            {
+                "id": str(d["_id"]),
+                "masked": _mask_key(d.get("value", "")),
+                "applied_at": d.get("applied_at"),
+                "applied_by": d.get("applied_by"),
+                "is_current": (d.get("value") == current),
+            }
+            for d in docs
+        ]
+    }
+
+
+@api_router.post("/admin/settings/api-key/{name}/apply-history/{history_id}")
+async def admin_settings_apply_history(name: str, history_id: str, user: dict = Depends(get_current_user)):
+    """Re-apply a previously-used key value to become the active one."""
+    if name not in _API_KEY_INDEX:
+        raise HTTPException(status_code=404, detail=f"Unknown key: {name}")
+    try:
+        oid = ObjectId(history_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid history id")
+    doc = await db.api_key_history.find_one({"_id": oid, "key_name": name})
+    if not doc:
+        raise HTTPException(status_code=404, detail="History entry not found")
+    value = doc.get("value") or ""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.app_settings.update_one(
+        {"key": name},
+        {"$set": {"key": name, "value": value, "updated_at": now_iso, "updated_by": user.get("email")}},
+        upsert=True,
+    )
+    # Log the re-apply as a new history entry so the timeline stays accurate.
+    await db.api_key_history.insert_one({
+        "key_name": name,
+        "value": value,
+        "applied_at": now_iso,
+        "applied_by": user.get("email"),
+        "note": f"re-applied from {doc.get('applied_at')}",
+    })
+    await _load_settings_from_db()
     return {"ok": True, "masked": _mask_key(value), "source": "db"}
 
 

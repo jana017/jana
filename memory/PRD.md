@@ -247,3 +247,13 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - **Frontend**: new `AdminSettings.jsx` component with per-key cards (masked current value + `ACTIVE·DB / ACTIVE·ENV / MISSING` badge + password-typed input + Save + Test connection + "Reset to env" when DB-overridden + "Get your key" outbound link) and a toggle group for community sources. Threat Intelligence page filters `CYBERDEFENDERS` cards by the `enabled-sources` list (defaults to all).
 - **Verified end-to-end**: wrote a fake VT key via API → became DB-sourced; test endpoint hit the real VT API with the fake key → **401 Unauthorised** (proves live rotation actually reroutes real API calls, not just display). Deleting the override reverted to env and the test passed again with the real key. Community toggles persist and apply to the public page.
 - Lint clean (Python + ESLint); production build safe.
+
+
+## Latest (2026-07-09, session 29 — API Key History + one-click Apply)
+- **New: per-key history** tracked in Mongo `api_key_history` collection. Every PUT to `/api/admin/settings/api-key/{name}` snapshots `{key_name, value, applied_at, applied_by}` (dedup vs. most-recent identical value). Data persists indefinitely so admins have a full audit trail of which key was in use when.
+- **New backend endpoints** (admin JWT-protected):
+  - `GET  /api/admin/settings/api-key/{name}/history` → last 20 entries, masked values, `is_current` flag, timestamp, updater.
+  - `POST /api/admin/settings/api-key/{name}/apply-history/{history_id}` → one-click restore of a previous value; the re-apply itself is logged as a fresh history entry (with `note: "re-applied from …"`) so the timeline stays accurate.
+- **Frontend `AdminSettings.jsx`**: each key card gained a "**Previously used keys**" collapsible expander (chevron toggle). Each row shows masked value, `CURRENT` badge if it's the active one, exact date/time (`toLocaleString`), applier email, and an **Apply** button (disabled on the current row; triggers a confirm before restoring). New entries appear after Save without needing a refresh.
+- **Verified end-to-end**: put 2 successive keys → history returned both (newest first, correctly marked current) → Apply on the older one flipped it to active and inserted a new "re-applied" entry → visually confirmed via Playwright: 5 rows rendered with `Apply` buttons, `CURRENT` badge on the right row, formatted timestamp `7/9/2026, 2:43:25 PM · admin@nivxmachines.com`.
+- Persistence in MongoDB is inherent — nothing in-memory. Lint clean (Python + ESLint). Production build safe.
