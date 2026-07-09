@@ -23,8 +23,10 @@ const printableScore = (s) => {
 };
 
 /* Decode a byte array as either UTF-8 or UTF-16LE — whichever yields more
- * printable text. Strips a trailing run of null-bytes (common in Windows
- * fixed-length string fields). */
+ * printable text. Also considers an "ASCII-only" fallback that filters out
+ * nulls and non-ASCII bytes, which repairs *corrupted* UTF-16LE payloads
+ * (common when a PowerShell `-EncodedCommand` was mangled during copy/paste
+ * and one byte got dropped, shifting the alignment and producing CJK glyphs). */
 const bytesToBestText = (bytes) => {
   // Trim trailing NULs
   let end = bytes.length;
@@ -34,9 +36,25 @@ const bytesToBestText = (bytes) => {
   // UTF-16LE requires even byte length; if odd, drop the last byte.
   const evenLen = trimmed.length - (trimmed.length % 2);
   const utf16 = evenLen > 0 ? utf16leDecoder.decode(trimmed.subarray(0, evenLen)) : "";
-  const s8 = printableScore(utf8);
+  // ASCII-only fallback — keep printable ASCII + tab/CR/LF, drop everything else.
+  // Repairs corrupted UTF-16LE where alignment slipped by one byte.
+  let asciiOnly = "";
+  for (let i = 0; i < trimmed.length; i++) {
+    const b = trimmed[i];
+    if (b === 9 || b === 10 || b === 13 || (b >= 32 && b < 127)) asciiOnly += String.fromCharCode(b);
+  }
+  const s8  = printableScore(utf8);
   const s16 = printableScore(utf16);
-  return s16 > s8 + 0.05 ? utf16 : utf8;  // small bias toward UTF-8
+  const sa  = printableScore(asciiOnly);
+  // Detect "corrupted UTF-16LE" — high overall score but with rogue non-Latin
+  // codepoints (CJK / symbols) sprinkled between ASCII. In that case the
+  // ASCII-only fallback recovers the intended string cleanly.
+  const utf16NonLatin = utf16 ? [...utf16].filter((ch) => ch.charCodeAt(0) > 0x02FF).length : 0;
+  const utf16LatinRatio = utf16 ? (utf16.length - utf16NonLatin) / utf16.length : 0;
+  const utf16LooksCorrupt = utf16 && utf16NonLatin > 0 && utf16LatinRatio > 0.6 && sa >= 0.9;
+  if (utf16LooksCorrupt && asciiOnly.length >= utf16.length * 0.8) return asciiOnly;
+  if (sa > Math.max(s8, s16) + 0.1 && asciiOnly.length >= trimmed.length * 0.3) return asciiOnly;
+  return s16 > s8 + 0.05 ? utf16 : utf8;
 };
 
 const bufToHex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
