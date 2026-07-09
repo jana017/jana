@@ -13,6 +13,7 @@ const ThreatIntelligence = lazy(() => import("@/pages/ThreatIntelligence"));
 const KnowledgeBase = lazy(() => import("@/pages/KnowledgeBase"));
 const BlogPost = lazy(() => import("@/pages/BlogPost"));
 const BlogIndex = lazy(() => import("@/pages/BlogIndex"));
+const CommunityCd = lazy(() => import("@/pages/CommunityCd"));
 
 function RouteFallback() {
   return (
@@ -39,6 +40,7 @@ function App() {
                 <Route path="/cybersecurity-101/:slug" element={<KnowledgeBase />} />
                 <Route path="/blog" element={<BlogIndex />} />
                 <Route path="/blog/:slug" element={<BlogPost />} />
+                <Route path="/community/cd/:topic" element={<CommunityCd />} />
                 <Route path="/admin" element={<Admin />} />
               </Routes>
             </Suspense>

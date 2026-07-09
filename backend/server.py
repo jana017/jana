@@ -2554,6 +2554,103 @@ async def intel_feed(page: int = 1, page_size: int = 9, q: str = "", type: str =
         raise HTTPException(status_code=502, detail="Unable to reach Unit42 intel feed")
 
 
+# ---------------------------------------------------------------------------
+# Community aggregator — returns metadata (title, cover image, short snippet,
+# date, source URL) scraped from the CyberDefenders blog. NOTE: this returns
+# ONLY metadata/short snippets. Article bodies are NOT reproduced. Card clicks
+# on the frontend open the source article on cyberdefenders.org directly.
+# ---------------------------------------------------------------------------
+_CD_CACHE: dict = {"ts": None, "data": None}
+_CD_TTL = timedelta(hours=6)
+
+CD_TOPIC_KEYWORDS = {
+    "dfir":    ["forensic", "disk", "memory", "incident", "investigation", "triage", "evidence", "case study", "usb", "bec", "email compromise"],
+    "malware": ["malware", "ransomware", "powershell", "encoded", "fileless", "cross-site", "xss", "phishing", "trojan"],
+    "soc":     ["soc", "hunt", "detection", "alert", "playbook", "mindset", "hacker mindset", "ids", "intrusion detection", "apt", "persistence", "threat intel", "azure", "cloud security"],
+}
+
+
+def _cd_topic_for(title: str, excerpt: str) -> str:
+    text = f"{title} {excerpt}".lower()
+    scores = {t: sum(1 for kw in kws if kw in text) for t, kws in CD_TOPIC_KEYWORDS.items()}
+    top = max(scores, key=scores.get)
+    return top if scores[top] > 0 else "soc"
+
+
+@api_router.get("/community/cd-articles")
+async def community_cd_articles(topic: Optional[str] = None):
+    """Public curator endpoint. Returns cyberdefenders.org blog article
+    metadata (title, cover, snippet, date, url) grouped by topic. Snippet is
+    truncated to <=180 chars (fair-use excerpt). Cached for 6h."""
+    now = datetime.now(timezone.utc)
+    if _CD_CACHE["data"] and _CD_CACHE["ts"] and (now - _CD_CACHE["ts"]) < _CD_TTL:
+        articles = _CD_CACHE["data"]
+    else:
+        try:
+            async with httpx.AsyncClient(timeout=20, follow_redirects=True, headers={"User-Agent": "NivX-Aggregator/1.0"}) as hc:
+                r = await hc.get("https://cyberdefenders.org/blog/")
+                if r.status_code != 200:
+                    raise HTTPException(status_code=502, detail=f"CyberDefenders returned HTTP {r.status_code}")
+                html = r.text
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"CyberDefenders fetch failed: {e}")
+
+        # Extract article cards. Each card block links to /blog/<slug>/ and contains
+        # a featured image (in /media/blog/featured_images/) + a title + a short paragraph.
+        # Extract article cards from the CD blog listing HTML. We only pull metadata
+        # (title, cover, ~180-char snippet, date, source URL) — no article bodies.
+        articles = []
+        seen_slugs: set = set()
+        # Each card is anchored by <a href="/blog/<slug>/"> ... </a>
+        for m in re.finditer(r'<a[^>]+href="(/blog/([a-z0-9\-]+)/)"[^>]*>(.*?)</a>', html, re.DOTALL):
+            path, slug, block = m.group(1), m.group(2), m.group(3)
+            if slug in seen_slugs or slug in ("", "feed"):
+                continue
+            # Skip pagination / non-article links (must contain a card with an <h3>)
+            title_m = re.search(r'<h3[^>]*>([^<]+)</h3>', block)
+            if not title_m:
+                continue
+            seen_slugs.add(slug)
+            title = re.sub(r"\s+", " ", title_m.group(1).replace("&#x27;", "'").replace("&amp;", "&")).strip()
+            img_m = re.search(r'<img[^>]+src="([^"]+)"', block)
+            excerpt_m = re.search(r'<p[^>]*line-clamp-3[^>]*>([^<]+)</p>', block)
+            excerpt_raw = (excerpt_m.group(1) if excerpt_m else "").strip()
+            excerpt = re.sub(r"\s+", " ", excerpt_raw)[:180].rstrip()
+            if excerpt and not excerpt.endswith("…"):
+                excerpt = excerpt.rstrip(". ") + "…"
+            date_m = re.search(r'<time[^>]*>([^<]+)</time>', block)
+            cat_m = re.search(r'data-slot="badge"[^>]*>[^<]*</span>[^<]*<span[^>]*>([^<]+)</span>', block) or \
+                    re.search(r'<span[^>]*capitalize[^>]*>([^<]+)</span>', block)
+            item = {
+                "slug": slug,
+                "url": "https://cyberdefenders.org" + path,
+                "title": title,
+                "image": img_m.group(1) if img_m else None,
+                "date": date_m.group(1).strip() if date_m else None,
+                "category": (cat_m.group(1).strip() if cat_m else "Cybersecurity"),
+                "excerpt": excerpt,
+                "topic": _cd_topic_for(title, excerpt),
+            }
+            articles.append(item)
+            if len(articles) >= 30:
+                break
+
+        _CD_CACHE["ts"] = now
+        _CD_CACHE["data"] = articles
+
+    if topic:
+        t = topic.lower()
+        articles = [a for a in articles if a.get("topic") == t]
+
+    return {
+        "source": "cyberdefenders.org/blog",
+        "attribution": "Content curated from CyberDefenders. Click 'Read on CyberDefenders' to view the full article on the source site.",
+        "count": len(articles),
+        "articles": articles,
+    }
+
+
+
 @api_router.get("/")
 async def root():
     return {"message": "NivX Machines API online"}

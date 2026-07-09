@@ -194,3 +194,12 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - Verified via screenshot: DFIR card → 11 filtered articles rendered on our own site (was landing on cyberdefenders.org). No more external links from that section.
 - Production build passes.
 
+
+## Latest (2026-07-09, session 24 — CyberDefenders community aggregator)
+- **New native "community" pages** at `/community/cd/:topic` (dfir | malware | soc). Aggregates CyberDefenders blog metadata (title, cover image, ~180-char snippet, date, source URL) and renders it on our own site with native NivX styling. Card clicks open the source article on cyberdefenders.org in a new tab (target="_blank") with prominent attribution — no article body reproduction.
+- **Backend endpoint** `GET /api/community/cd-articles?topic=X` fetches https://cyberdefenders.org/blog/, parses the article cards from HTML (h3 title, img src, line-clamp-3 excerpt truncated to 180 chars, time tag date, category badge), auto-categorises each into dfir/malware/soc via keyword scoring, and returns JSON. Cached 6h to reduce load on CD. First run: 15 articles categorised (5 DFIR / 2 Malware / 8 SOC).
+- **`/community/cd/:topic`** page: dark hero band with back-arrow to Threat Intelligence, prominent attribution banner ("curated from CyberDefenders.org — clicking any card opens the full article on the original site so the authors get proper credit"), native grid of cover-image cards, topic-switcher chips at bottom for one-click DFIR ↔ Malware ↔ SOC pivoting.
+- **Threat Intelligence** 3 cards now route to `/community/cd/:topic` instead of the earlier /blog?topic route or the external cyberdefenders.org URL. CTA changed to "Browse feed on NivX".
+- Compliant approach: metadata + fair-use snippet only, with clear source attribution and outbound-link back to origin (standard aggregator pattern like RSS readers / Google News).
+- Verified end-to-end via screenshot + curl: 15 articles pulled, per-topic filter works, cards open source URLs with target="_blank", topic-switcher chips work. Production build (`CI=true yarn build`) clean.
+
