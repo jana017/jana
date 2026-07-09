@@ -588,4 +588,153 @@ for _algo in ("md5", "sha1", "sha256", "sha512"):
     ))
 
 
+# ---------------------------------------------------------------------------
+# JSON pretty / minify
+# ---------------------------------------------------------------------------
+import json as _json
+
+
+def _detect_json(data: bytes) -> float:
+    text = data.decode("utf-8", errors="ignore").lstrip()
+    if not text.startswith(("{", "[")):
+        return 0.0
+    try:
+        _json.loads(text)
+        return 0.9
+    except Exception:
+        return 0.0
+
+
+def _json_pretty(data: bytes, params: Dict[str, Any]) -> bytes:
+    obj = _json.loads(data.decode("utf-8", errors="replace"))
+    indent = int(params.get("indent", 2))
+    return _json.dumps(obj, indent=indent, ensure_ascii=False, sort_keys=False).encode("utf-8")
+
+
+def _json_minify(data: bytes, params: Dict[str, Any]) -> bytes:
+    obj = _json.loads(data.decode("utf-8", errors="replace"))
+    return _json.dumps(obj, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+
+register(Plugin(
+    id="json-pretty",
+    name="JSON Pretty",
+    category="Structured",
+    description="Pretty-print JSON with configurable indent.",
+    run=_json_pretty,
+    detect=_detect_json,
+    params=[{"name": "indent", "type": "number", "default": 2}],
+))
+register(Plugin(
+    id="json-minify",
+    name="JSON Minify",
+    category="Structured",
+    description="Collapse JSON to a single compact line.",
+    run=_json_minify,
+    auto=False,
+))
+
+
+# ---------------------------------------------------------------------------
+# XML pretty-print
+# ---------------------------------------------------------------------------
+import xml.dom.minidom as _minidom
+
+
+def _detect_xml(data: bytes) -> float:
+    text = data.decode("utf-8", errors="ignore").lstrip()
+    if not text.startswith("<"):
+        return 0.0
+    return 0.85 if text.count("<") >= 2 and text.count(">") >= 2 else 0.0
+
+
+def _xml_pretty(data: bytes, params: Dict[str, Any]) -> bytes:
+    text = data.decode("utf-8", errors="replace")
+    try:
+        parsed = _minidom.parseString(text)
+        pretty = parsed.toprettyxml(indent="  ")
+        # minidom emits blank lines — strip them
+        lines = [ln for ln in pretty.splitlines() if ln.strip()]
+        return "\n".join(lines).encode("utf-8")
+    except Exception:
+        return data
+
+
+register(Plugin(
+    id="xml-pretty",
+    name="XML Pretty",
+    category="Structured",
+    description="Pretty-print XML with indentation.",
+    run=_xml_pretty,
+    detect=_detect_xml,
+))
+
+
+# ---------------------------------------------------------------------------
+# CMD deobfuscation
+# ---------------------------------------------------------------------------
+def _cmd_deobfuscate(data: bytes, params: Dict[str, Any]) -> bytes:
+    text = _to_best_text(data)
+    # Remove cmd escape carets
+    text = re.sub(r"\^(.)", r"\1", text)
+    # Collapse simple set-based obfuscation `%X:~0,1%%X:~1,1%` — best-effort not done here;
+    # instead reveal delayed-expansion variables.
+    text = re.sub(r"!([A-Za-z0-9_]+)!", r"%\1%", text)
+    # Strip redundant quotes surrounding tokens like "cmd" "/c" "whoami"
+    text = re.sub(r'"([A-Za-z0-9_./\\:-]+)"', r"\1", text)
+    return text.encode("utf-8", errors="replace")
+
+
+register(Plugin(
+    id="cmd-deobfuscate",
+    name="CMD Deobfuscate",
+    category="Deobfuscation",
+    description="Strip `^` escape carets, unwrap simple `!var!` expansions, remove wrapping quotes.",
+    run=_cmd_deobfuscate,
+    auto=False,
+))
+
+
+# ---------------------------------------------------------------------------
+# JavaScript deobfuscation (light)
+# ---------------------------------------------------------------------------
+def _js_deobfuscate(data: bytes, params: Dict[str, Any]) -> bytes:
+    text = _to_best_text(data)
+    # Collapse string concatenation like 'a'+'b'+'c'
+    text = re.sub(r"['\"]\s*\+\s*['\"]", "", text)
+    # String.fromCharCode(65,66,67) → "ABC"
+    def _fromcc(m):
+        try:
+            codes = [int(x.strip()) for x in m.group(1).split(",") if x.strip()]
+            return '"' + "".join(chr(c) for c in codes if 0 <= c < 0x110000) + '"'
+        except Exception:
+            return m.group(0)
+    text = re.sub(r"String\.fromCharCode\(([0-9,\s]+)\)", _fromcc, text)
+    # unescape("%XX%YY") → decoded
+    def _unescape(m):
+        try:
+            return '"' + unquote_to_bytes(m.group(1)).decode("utf-8", errors="replace") + '"'
+        except Exception:
+            return m.group(0)
+    text = re.sub(r"""unescape\(\s*['"]([^'"]+)['"]\s*\)""", _unescape, text)
+    # \xNN and \uNNNN escapes
+    try:
+        text = codecs.decode(text, "unicode_escape")
+    except Exception:
+        pass
+    # Prettify: split obvious statements
+    text = re.sub(r";\s*(?=\S)", ";\n", text)
+    return text.encode("utf-8", errors="replace")
+
+
+register(Plugin(
+    id="js-deobfuscate",
+    name="JavaScript Deobfuscate",
+    category="Deobfuscation",
+    description="Collapse string concat, resolve fromCharCode() / unescape(), decode \\xNN / \\uNNNN.",
+    run=_js_deobfuscate,
+    auto=False,
+))
+
+
 __all__ = ["_to_best_text"]

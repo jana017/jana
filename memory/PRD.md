@@ -510,3 +510,100 @@ Fixed the broken "Send to Analyzer" flow and rewrote the parser to extract full 
 ### Testing
 - All 6 existing Sysmon pytest cases still pass (`test_cyberlab_sysmon.py`, 0.68s).
 - Live e2e verified: Sysmon XML with process + network + DNS events → 3 forensic rows land in the analyzer with all fields populated → CSV/JSON/MD downloads all present.
+
+
+## Session 36 (2026-07-09) — More log sources + OG image sharing
+
+### P2 — CrowdStrike Falcon + Zeek + tshark ingestion
+Extended `cyberlab/sysmon.py` to normalize additional log sources into the same 34-field forensic schema:
+
+- **CrowdStrike Falcon Event Stream JSON** — recognizes `event_simpleName` values (`ProcessRollup2`, `NetworkConnectIP4`, `NetworkConnectIP6`, `DnsRequest`, `SuspiciousDnsRequest`, `FileWritten`, `AsepValueUpdate`, `ProcessTerminate`, etc.) and maps them to Sysmon-equivalent event IDs. Field aliases added for CrowdStrike naming (`ImageFileName`, `TargetProcessId_decimal`, `LocalAddressIP4`, `RemoteAddressIP4`, `LocalPort`, `RemotePort`, `SHA256HashData`, `DomainName`, `UserSid`, `aid`, ...).
+- **Zeek / Bro TSV logs** (`conn.log`, `dns.log`, `http.log`, `ssl.log`) — new `parse_zeek()` handles `#separator`, `#path`, `#fields` header block; converts Zeek epoch `ts` to ISO-8601; maps `id.orig_h`/`id.resp_h`/`id.orig_p`/`id.resp_p`/`proto`/`service` to canonical fields.
+- **tshark `-T ek` JSON export** — auto-flattens `_source.layers.{ip,tcp,udp,dns,http}` into flat keys before alias mapping. Handles the arrayed nature of tshark values (takes first element).
+- Format detection updated: Zeek recognized by leading `#separator`/`#fields`; tshark & CrowdStrike work through the enhanced JSON parser.
+
+### P3 — Auto-generated OG image per shared analysis
+- New module `cyberlab/og_image.py` — Pillow-based renderer produces 1200×630 PNG with:
+  - Verdict-colored left accent stripe + verdict label pill
+  - Risk-score gauge (0-100) with proportional fill
+  - Summary line (truncates to fit)
+  - Stat blocks: MITRE / Rules / IOCs counts
+  - Top-5 MITRE technique chips
+  - `nivxmachines.com/cyberlab` footer + brand row
+- New endpoint `GET /api/cyberlab/share/{share_id}/og.png` (public, cached 24h). Returns 404 for expired/missing shares.
+- Frontend `useSeo` hook extended with `ogImage`, `ogType`, `twitterCard` params — writes `og:image`, `og:image:width`, `og:image:height`, `og:url`, `twitter:card`, `twitter:image`, `twitter:title`, `twitter:description` meta tags. Backwards-compatible with existing callers.
+- `CyberLabShare.jsx` now sets a rich title (`MALICIOUS · Risk 85 · NivX CyberLab`), description from `analysis.summary`, `og:image` pointing at the dynamic endpoint, and `twitter:card=summary_large_image`. Twitter/LinkedIn/Slack unfurls now render the branded PNG.
+
+### Testing
+- 10/10 pytest pass in 0.73s (`test_cyberlab_sysmon.py` 6 + `test_cyberlab_sources.py` 4 new).
+- Live e2e verified: Falcon JSON → 3 forensic rows (process/network/dns). Zeek TSV → 2 network rows. OG image render → 15KB PNG with correct 1200×630 dims.
+
+### Files added / modified
+- ADDED    /app/backend/cyberlab/og_image.py
+- ADDED    /app/backend/tests/test_cyberlab_sources.py
+- MODIFIED /app/backend/cyberlab/sysmon.py (CrowdStrike + Zeek + tshark aliases and parse_zeek)
+- MODIFIED /app/backend/cyberlab/router.py (og.png endpoint, og_image import)
+- MODIFIED /app/frontend/src/lib/useSeo.js (og:image + twitter card meta writers)
+- MODIFIED /app/frontend/src/pages/CyberLabShare.jsx (dynamic og:image URL)
+
+## Backlog remaining
+- **P2** — Wire real WhatsApp/Twitter/LinkedIn hrefs in Landing Hero (carry-over).
+- **P3** — Refactor `server.py` (3,812 lines) into `routes/services/models/` (cosmetic).
+- **P3** — Timeline mode toggle in Forensic Events table (Gantt-style per host/user).
+
+
+## Session 37 (2026-07-09) — Enterprise SOC completion
+
+Filled the remaining SOC gaps requested in one shot.
+
+### 1) New decoder plugins (`cyberlab/plugins/decoders.py`) — palette now 34 ops
+- **json-pretty / json-minify** — parametric indent, auto-detected when input is valid JSON.
+- **xml-pretty** — xml.dom.minidom pretty-print, auto-detected.
+- **cmd-deobfuscate** — strips `^` escape carets, resolves `!var!` delayed-expansion, unwraps quoted tokens.
+- **js-deobfuscate** — collapses string concatenation, resolves `String.fromCharCode(...)` and `unescape("%XX")`, decodes `\xNN` / `\uNNNN`, splits statements for readability.
+- New category `Structured` for JSON/XML formatters.
+
+### 2) Log source parsers added to `cyberlab/sysmon.py`
+- **CEF** (ArcSight): `CEF:0|Vendor|Product|Version|SigID|Name|Severity|ext…` — full extension key/value parsing with alias translation for `src`, `dst`, `spt`, `dpt`, `proto`, `suser`, `fname`, `fileHash`, `requestUrl`, `rt`.
+- **LEEF** (QRadar): LEEF 1.0 (tab-delimited) + LEEF 2.0 (custom delimiter) — extension parsing + alias translation.
+- **EVTX** (Windows binary event log): `python-evtx` integration. Endpoint accepts base64-encoded EVTX blob (`format: "evtx"`).
+- Format auto-detection extended: leading `CEF:` / `LEEF:` / `#separator` / `#fields` recognized even when preceded by syslog priority prefix.
+
+### 3) AI query generation (Claude Sonnet 4.5) — extended from 3 → 6 outputs
+`POST /api/cyberlab/ai-analysis` now returns:
+- `summary` · `sigma_rule` · `yara_rule` (existing)
+- **`splunk_spl`** — Splunk hunt query with `| stats` + `| where` FP filter
+- **`sentinel_kql`** — Microsoft Sentinel KQL over `DeviceProcessEvents` / `DeviceNetworkEvents` / `DnsEvents`
+- **`cisco_xdr`** — Cisco XDR / SecureX Investigation CQL
+
+Frontend `AiPanel.jsx` upgraded to a **6-tab** view (Summary · Sigma · YARA · Splunk SPL · Sentinel KQL · Cisco XDR) with per-tab copy button. Extracted the shared code into a `RulePane` sub-component.
+
+### 4) Investigation Timeline — new component
+`/app/frontend/src/components/InvestigationTimeline.jsx` — Gantt-style horizontal chronological view:
+- One lane per **host** or **user** (toggle).
+- Event markers colored by risk (info → critical).
+- Action-specific unicode glyphs (▶ process, ↔ network, ? DNS, + file, ⚙ registry, etc.).
+- Hover reveals a full-field card with MITRE technique chips.
+- Time axis with 4 evenly-spaced tick marks; humanized duration span (ms / s / m / h / d).
+
+Wired into `ForensicEventsPanel.jsx` as a **Table | Timeline** toggle above the events grid.
+
+### Testing
+- 17/17 pytest pass in 24s across `test_cyberlab_soc.py` (7 new) + `test_cyberlab_sysmon.py` (6) + `test_cyberlab_sources.py` (4).
+- Verified: CEF single-event → src=10.0.5.20:54321 → dst=185.220.101.42:443 with url extracted. LEEF 2.0 with `^` delimiter → same fields. Real Claude 4.5 AI call generates all 6 hunt-query outputs.
+
+### Files added / modified
+- MODIFIED  /app/backend/cyberlab/plugins/decoders.py (+5 plugins, +Structured category)
+- MODIFIED  /app/backend/cyberlab/sysmon.py (CEF + LEEF + EVTX parsers, extended format detection)
+- MODIFIED  /app/backend/cyberlab/ai_analysis.py (Splunk SPL + Sentinel KQL + Cisco XDR prompts)
+- MODIFIED  /app/backend/cyberlab/router.py (EVTX base64 handling in /process-tree)
+- ADDED     /app/backend/tests/test_cyberlab_soc.py (7 tests)
+- ADDED     /app/frontend/src/components/InvestigationTimeline.jsx
+- MODIFIED  /app/frontend/src/components/ForensicEventsPanel.jsx (Table | Timeline toggle)
+- MODIFIED  /app/frontend/src/components/cyberlab/AiPanel.jsx (6-tab hunt-query view)
+- INSTALLED python-evtx==0.8.1 (+ hexdump)
+
+## Backlog remaining
+- **P2** — Wire real WhatsApp/Twitter/LinkedIn hrefs in Landing Hero (carry-over).
+- **P3** — Refactor `server.py` (3,812 lines) into modular routes/services folders.
+- **P3** — Direct PCAP binary parsing (currently requires tshark `-T ek` preprocessing).

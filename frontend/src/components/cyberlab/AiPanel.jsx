@@ -65,11 +65,14 @@ export default function AiPanel({ input, output, analysis, onGenerated }) {
 
       {data && (
         <>
-          <div className="flex items-center gap-1 mb-2 border-b border-slate-800">
+          <div className="flex items-center gap-1 mb-2 border-b border-slate-800 flex-wrap">
             {[
               { id: "summary", label: "Summary" },
-              { id: "sigma",   label: "Sigma Rule" },
-              { id: "yara",    label: "YARA Rule" },
+              { id: "sigma",   label: "Sigma" },
+              { id: "yara",    label: "YARA" },
+              { id: "spl",     label: "Splunk SPL" },
+              { id: "kql",     label: "Sentinel KQL" },
+              { id: "xdr",     label: "Cisco XDR" },
             ].map((t) => (
               <button
                 key={t.id}
@@ -92,29 +95,28 @@ export default function AiPanel({ input, output, analysis, onGenerated }) {
             </div>
           )}
 
-          {tab === "sigma" && (
-            <div className="relative">
-              <button data-testid="copy-ai-sigma" onClick={() => copy(data.sigma_rule, "Sigma rule")}
-                className="absolute top-2 right-2 text-slate-400 hover:text-white z-10"><Copy className="w-3 h-3" /></button>
-              <pre className="text-[11px] font-mono text-amber-200 bg-slate-950 border border-slate-800 rounded p-3 max-h-96 overflow-auto whitespace-pre-wrap"
-                data-testid="ai-sigma-rule">{data.sigma_rule}</pre>
-            </div>
-          )}
-
-          {tab === "yara" && (
-            <div className="relative">
-              <button data-testid="copy-ai-yara" onClick={() => copy(data.yara_rule, "YARA rule")}
-                className="absolute top-2 right-2 text-slate-400 hover:text-white z-10"><Copy className="w-3 h-3" /></button>
-              <pre className="text-[11px] font-mono text-fuchsia-200 bg-slate-950 border border-slate-800 rounded p-3 max-h-96 overflow-auto whitespace-pre-wrap"
-                data-testid="ai-yara-rule">{data.yara_rule}</pre>
-            </div>
-          )}
+          {tab === "sigma" && <RulePane text={data.sigma_rule} testid="ai-sigma-rule" copyId="copy-ai-sigma" color="text-amber-200" label="Sigma rule" copyFn={copy} />}
+          {tab === "yara" && <RulePane text={data.yara_rule} testid="ai-yara-rule" copyId="copy-ai-yara" color="text-fuchsia-200" label="YARA rule" copyFn={copy} />}
+          {tab === "spl" && <RulePane text={data.splunk_spl} testid="ai-splunk-spl" copyId="copy-ai-spl" color="text-emerald-200" label="Splunk SPL query" copyFn={copy} />}
+          {tab === "kql" && <RulePane text={data.sentinel_kql} testid="ai-sentinel-kql" copyId="copy-ai-kql" color="text-blue-200" label="Sentinel KQL query" copyFn={copy} />}
+          {tab === "xdr" && <RulePane text={data.cisco_xdr} testid="ai-cisco-xdr" copyId="copy-ai-xdr" color="text-cyan-200" label="Cisco XDR query" copyFn={copy} />}
 
           <p className="mt-2 text-[10px] text-slate-500 italic">
-            AI-generated draft rules — always human-review before production deployment.
+            AI-generated draft rules and hunt queries — always human-review before production deployment.
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+function RulePane({ text, testid, copyId, color, label, copyFn }) {
+  return (
+    <div className="relative">
+      <button data-testid={copyId} onClick={() => copyFn(text, label)}
+        className="absolute top-2 right-2 text-slate-400 hover:text-white z-10"><Copy className="w-3 h-3" /></button>
+      <pre className={`text-[11px] font-mono ${color} bg-slate-950 border border-slate-800 rounded p-3 max-h-96 overflow-auto whitespace-pre-wrap`}
+        data-testid={testid}>{text || "(empty — regenerate to try again)"}</pre>
     </div>
   );
 }

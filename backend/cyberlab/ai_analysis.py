@@ -23,7 +23,7 @@ logger = logging.getLogger("cyberlab.ai")
 
 SYSTEM_PROMPT = """You are a senior DFIR (Digital Forensics & Incident Response) analyst.
 You receive a decoded malware payload plus enumerated MITRE ATT&CK techniques,
-YARA-lite rule hits and extracted IOCs. Your job is to produce THREE outputs
+YARA-lite rule hits and extracted IOCs. Your job is to produce SIX outputs
 in strict JSON format:
 
 1. `summary` — 3–5 crisp sentences explaining what the payload does, its likely
@@ -43,8 +43,25 @@ in strict JSON format:
    appropriate `condition`. Do NOT use anything that requires the yara PE
    or math modules — keep it portable.
 
+4. `splunk_spl` — a Splunk SPL hunt query. Target `index=wineventlog`
+   `sourcetype=XmlWinEventLog` or generic firewall / EDR indices. Use
+   Sysmon fields (`EventCode`, `Image`, `CommandLine`, `ParentImage`,
+   `DestinationIp`, `QueryName`). Include one `| stats` clause and one
+   `| where` filter reducing false positives.
+
+5. `sentinel_kql` — a Microsoft Sentinel KQL query using standard tables
+   (`DeviceProcessEvents`, `DeviceNetworkEvents`, `DnsEvents`,
+   `SecurityEvent`). Reference columns `ProcessCommandLine`,
+   `InitiatingProcessFileName`, `RemoteIP`, `RemoteUrl`, `Query`.
+   End with a `project` or `summarize`.
+
+6. `cisco_xdr` — a Cisco XDR CQL / Investigation Query. Reference
+   `observable_type`, `observable_value`, `process_command_line`,
+   `network_connection.destination_ip`, `dns_lookup.hostname`.
+
 Return ONLY valid JSON matching:
-{"summary": "...", "sigma_rule": "...", "yara_rule": "..."}
+{"summary": "...", "sigma_rule": "...", "yara_rule": "...",
+ "splunk_spl": "...", "sentinel_kql": "...", "cisco_xdr": "..."}
 
 No prose before/after the JSON. No markdown code fences."""
 
@@ -125,4 +142,7 @@ def _parse_response(text: str) -> Dict[str, Any]:
         "summary": data.get("summary", "").strip(),
         "sigma_rule": data.get("sigma_rule", "").strip(),
         "yara_rule": data.get("yara_rule", "").strip(),
+        "splunk_spl": data.get("splunk_spl", "").strip(),
+        "sentinel_kql": data.get("sentinel_kql", "").strip(),
+        "cisco_xdr": data.get("cisco_xdr", "").strip(),
     }

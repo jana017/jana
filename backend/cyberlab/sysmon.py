@@ -43,43 +43,89 @@ from . import mitre
 # Field aliases — map source-log keys (Sysmon, ECS, custom) to canonical names
 # ---------------------------------------------------------------------------
 FIELD_ALIASES = {
-    "processguid":       ["processguid", "process.entity_id", "process_guid", "guid"],
-    "parentprocessguid": ["parentprocessguid", "process.parent.entity_id", "parent_process_guid", "parentguid"],
-    "processid":         ["processid", "process.pid", "pid"],
+    "processguid":       ["processguid", "process.entity_id", "process_guid", "guid",
+                          "targetprocessid_decimal", "contextprocessid_decimal"],
+    "parentprocessguid": ["parentprocessguid", "process.parent.entity_id", "parent_process_guid",
+                          "parentguid", "parentprocessid_decimal"],
+    "processid":         ["processid", "process.pid", "pid", "rawprocessid_decimal"],
     "parentprocessid":   ["parentprocessid", "process.parent.pid", "parent_pid", "ppid"],
-    "image":             ["image", "process.executable", "process_image", "executable"],
-    "parentimage":       ["parentimage", "process.parent.executable", "parent_image", "parent_executable"],
-    "commandline":       ["commandline", "process.command_line", "process_command_line", "cmd", "cmdline"],
+    "image":             ["image", "process.executable", "process_image", "executable",
+                          "imagefilename", "targetprocessimagefilename"],
+    "parentimage":       ["parentimage", "process.parent.executable", "parent_image",
+                          "parent_executable", "parentimagefilename"],
+    "commandline":       ["commandline", "process.command_line", "process_command_line", "cmd",
+                          "cmdline", "commandline_decimal"],
     "parentcommandline": ["parentcommandline", "process.parent.command_line", "parent_command_line"],
-    "user":              ["user", "user.name", "process.user.name", "username"],
-    "utctime":           ["utctime", "@timestamp", "timestamp", "eventtime", "creationutctime"],
+    "user":              ["user", "user.name", "process.user.name", "username", "userprincipal", "usersid"],
+    "utctime":           ["utctime", "@timestamp", "timestamp", "eventtime", "creationutctime",
+                          "processstarttime", "endpointtime"],
     "hashes":            ["hashes", "hash"],
-    "hashmd5":           ["md5", "process.hash.md5", "file.hash.md5"],
+    "hashmd5":           ["md5", "process.hash.md5", "file.hash.md5", "md5hashdata"],
     "hashsha1":          ["sha1", "process.hash.sha1", "file.hash.sha1"],
-    "hashsha256":        ["sha256", "process.hash.sha256", "file.hash.sha256"],
-    "parenthash":        ["parenthashes", "parenthash", "parent.hash.sha256"],
+    "hashsha256":        ["sha256", "process.hash.sha256", "file.hash.sha256", "sha256hashdata"],
+    "parenthash":        ["parenthashes", "parenthash", "parent.hash.sha256",
+                          "parentsha256hashdata", "parentmd5hashdata"],
     "integritylevel":    ["integritylevel", "process.integrity_level"],
     "originalfilename":  ["originalfilename", "process.pe.original_file_name"],
-    "hostname":          ["computer", "hostname", "host.name", "host.hostname"],
-    # Network
-    "srcip":             ["sourceip", "src_ip", "source.ip", "source.address"],
-    "dstip":             ["destinationip", "dest_ip", "dst_ip", "destination.ip", "destination.address"],
-    "srcport":           ["sourceport", "src_port", "source.port"],
-    "dstport":           ["destinationport", "dest_port", "dst_port", "destination.port"],
-    "protocol":          ["protocol", "network.protocol", "network.transport"],
+    "hostname":          ["computer", "hostname", "host.name", "host.hostname", "aid", "computername"],
+    # Network — includes CrowdStrike + Zeek + tshark aliases
+    "srcip":             ["sourceip", "src_ip", "source.ip", "source.address", "localaddressip4",
+                          "id.orig_h", "ip.src"],
+    "dstip":             ["destinationip", "dest_ip", "dst_ip", "destination.ip", "destination.address",
+                          "remoteaddressip4", "id.resp_h", "ip.dst"],
+    "srcport":           ["sourceport", "src_port", "source.port", "localport",
+                          "id.orig_p", "tcp.srcport", "udp.srcport"],
+    "dstport":           ["destinationport", "dest_port", "dst_port", "destination.port", "remoteport",
+                          "id.resp_p", "tcp.dstport", "udp.dstport"],
+    "protocol":          ["protocol", "network.protocol", "network.transport", "proto",
+                          "connectionprotocol", "service"],
     # DNS
-    "queryname":         ["queryname", "dns.question.name", "dns_query"],
-    "queryresults":      ["queryresults", "dns.answers.data", "dns_answer"],
+    "queryname":         ["queryname", "dns.question.name", "dns_query",
+                          "domainname", "query", "dns.qry.name"],
+    "queryresults":      ["queryresults", "dns.answers.data", "dns_answer",
+                          "dns.resp.name", "answer"],
     # File / URL / Registry
-    "targetfilename":    ["targetfilename", "file.path", "file_path", "filename"],
-    "targetobject":      ["targetobject", "registry.path", "registry_key"],
-    "details":           ["details", "registry.data.strings", "registry_value"],
-    "url":               ["url", "url.full", "url.original"],
-    "domain":            ["domain", "url.domain", "dns.question.registered_domain"],
-    # Event-type indicators
-    "eventid":           ["eventid", "winlog.event_id", "event.code", "event.id"],
+    "targetfilename":    ["targetfilename", "file.path", "file_path", "filename",
+                          "targetfilename_", "http.file_data"],
+    "targetobject":      ["targetobject", "registry.path", "registry_key", "registrykeyname"],
+    "details":           ["details", "registry.data.strings", "registry_value", "registryvaluename"],
+    "url":               ["url", "url.full", "url.original", "http.host", "httpurl"],
+    "domain":            ["domain", "url.domain", "dns.question.registered_domain", "http.host"],
+    # Event-type indicators (Sysmon EID / CrowdStrike event_simpleName / Zeek log type)
+    "eventid":           ["eventid", "winlog.event_id", "event.code", "event.id",
+                          "event_simpleName", "eventsimplename", "_type"],
     "eventaction":       ["eventaction", "event.action", "action"],
     "eventcategory":     ["eventcategory", "event.category"],
+}
+
+
+# CrowdStrike Falcon `event_simpleName` → Sysmon-equivalent event id
+CROWDSTRIKE_ACTION_MAP = {
+    "ProcessRollup2":              1,
+    "SyntheticProcessRollup2":     1,
+    "NetworkConnectIP4":           3,
+    "NetworkConnectIP6":           3,
+    "NetworkListenIP4":            3,
+    "DnsRequest":                  22,
+    "FileWritten":                 11,
+    "FileOpenNetworkWrite":        11,
+    "PeFileWritten":               11,
+    "AsepValueUpdate":             13,
+    "RegSystemConfigValueUpdate":  13,
+    "ProcessBlocked":              5,
+    "ProcessTerminate":            5,
+    "ImageHash":                   1,
+    "SuspiciousDnsRequest":        22,
+}
+
+
+# Zeek log types → event id
+ZEEK_LOG_TYPES = {
+    "conn": 3,   # network
+    "dns":  22,  # DNS
+    "http": 3,
+    "ssl":  3,
+    "files": 11,
 }
 
 
@@ -128,6 +174,17 @@ def detect_format(text: str) -> str:
         return "unknown"
     if stripped.startswith("<"):
         return "xml"
+    if stripped.startswith("#separator") or stripped.startswith("#fields"):
+        return "zeek"
+    if stripped.startswith("CEF:"):
+        return "cef"
+    if stripped.startswith("LEEF:"):
+        return "leef"
+    # CEF/LEEF often preceded by syslog priority "<134>Aug 15 10:00:00 host CEF:0|..."
+    if re.search(r"\bCEF:\d+\|", stripped[:200]):
+        return "cef"
+    if re.search(r"\bLEEF:[\d.]+\|", stripped[:200]):
+        return "leef"
     if stripped.startswith(("{", "[")):
         return "json"
     lines = [ln for ln in text.splitlines() if ln.strip()]
@@ -144,6 +201,194 @@ def detect_format(text: str) -> str:
         except Exception:
             pass
     return "unknown"
+
+
+def parse_cef(text: str) -> List[Dict[str, Any]]:
+    """Parse ArcSight CEF (Common Event Format) messages.
+    Format: `CEF:0|Vendor|Product|Version|SigID|Name|Severity|ext1=val ext2=val ...`
+    """
+    events: List[Dict[str, Any]] = []
+    for line in text.splitlines():
+        line = line.strip()
+        # Strip syslog priority + timestamp prefix if present
+        m = re.search(r"CEF:\d+\|(.+)", line)
+        if not m:
+            continue
+        rest = m.group(1)
+        # Split header (7 pipe-delimited fields) — pipes inside extension are ` \|`
+        parts = re.split(r"(?<!\\)\|", rest, maxsplit=6)
+        if len(parts) < 7:
+            continue
+        vendor, product, version, sig_id, name, severity, ext = parts
+        raw: Dict[str, Any] = {
+            "eventid": sig_id,
+            "eventaction": name,
+            "eventcategory": product,
+            "hostname": vendor,
+        }
+        # Extension: `key=value key2=value with spaces` (spaces allowed in values;
+        # keys are always alnum). Parse right-to-left greedily.
+        for tok in re.finditer(r"(\w+)=((?:[^=]|=(?!\w+=))*?)(?=\s+\w+=|$)", ext):
+            raw[tok.group(1)] = tok.group(2).strip()
+        # CEF field-name shorthands → canonical aliases we already know
+        alias_translation = {
+            "src": "srcip", "dst": "dstip", "spt": "srcport", "dpt": "dstport",
+            "proto": "protocol", "shost": "hostname",
+            "suser": "user", "duser": "user",
+            "fname": "targetfilename", "filePath": "targetfilename", "filename": "targetfilename",
+            "fileHash": "hashsha256", "sha256": "hashsha256", "md5": "hashmd5", "sha1": "hashsha1",
+            "requestUrl": "url", "request": "url",
+            "dhost": "hostname",
+            "dvchost": "hostname",
+            "rt": "utctime", "start": "utctime",
+        }
+        for k, canon in alias_translation.items():
+            if k in raw:
+                raw[canon] = raw.pop(k)
+        raw["severity"] = severity
+        mapped = _map_fields(raw)
+        mapped["eventid"] = sig_id or "0"
+        events.append(mapped)
+    return events
+
+
+def parse_leef(text: str) -> List[Dict[str, Any]]:
+    """Parse IBM QRadar LEEF (Log Event Extended Format) messages.
+    LEEF 1.0: `LEEF:1.0|Vendor|Product|Version|EventID|key1=val1\\tkey2=val2`
+    LEEF 2.0: `LEEF:2.0|Vendor|Product|Version|EventID|delimiter|key1=val1<delim>key2=val2`
+    """
+    events: List[Dict[str, Any]] = []
+    for line in text.splitlines():
+        line = line.strip()
+        m = re.search(r"LEEF:([\d.]+)\|(.+)", line)
+        if not m:
+            continue
+        version = m.group(1)
+        rest = m.group(2)
+        parts = rest.split("|", 5 if version.startswith("2") else 4)
+        if len(parts) < 5:
+            continue
+        vendor = parts[0]
+        product = parts[1]
+        # skip parts[2] (version), parts[3] (eventid)
+        event_id = parts[3]
+        if version.startswith("2"):
+            delim = parts[4] or "\t"
+            ext = parts[5] if len(parts) > 5 else ""
+        else:
+            delim = "\t"
+            ext = parts[4]
+        raw: Dict[str, Any] = {"eventid": event_id, "hostname": vendor, "eventcategory": product}
+        for token in ext.split(delim):
+            if "=" in token:
+                k, v = token.split("=", 1)
+                raw[k.strip()] = v.strip()
+        alias_translation = {
+            "src": "srcip", "dst": "dstip", "srcPort": "srcport", "dstPort": "dstport",
+            "proto": "protocol", "identSrc": "user", "usrName": "user",
+            "fileName": "targetfilename", "fileHash": "hashsha256",
+            "url": "url", "domain": "domain", "devTime": "utctime",
+        }
+        for k, canon in alias_translation.items():
+            if k in raw:
+                raw[canon] = raw.pop(k)
+        mapped = _map_fields(raw)
+        mapped["eventid"] = event_id or "0"
+        events.append(mapped)
+    return events
+
+
+def parse_evtx(data: bytes) -> List[Dict[str, Any]]:
+    """Parse Windows binary EVTX files via python-evtx.
+    Called only when `format` == 'evtx' and `data` is base64 bytes.
+    """
+    try:
+        from Evtx.Evtx import Evtx  # noqa: F401
+    except ImportError as e:
+        raise ValueError(
+            "EVTX parsing requires python-evtx. Install with `pip install python-evtx`. "
+            f"Error: {e}"
+        )
+    import Evtx.Evtx as evtx_mod
+    import io as _io
+
+    events: List[Dict[str, Any]] = []
+    # python-evtx works on files; write bytes to a temp path
+    import tempfile
+    with tempfile.NamedTemporaryFile(delete=True, suffix=".evtx") as tmp:
+        tmp.write(data)
+        tmp.flush()
+        with evtx_mod.Evtx(tmp.name) as log:
+            for record in log.records():
+                try:
+                    xml_str = record.xml()
+                except Exception:
+                    continue
+                # Reuse XML parser for a single record
+                for ev in parse_xml(xml_str):
+                    events.append(ev)
+    return events
+
+
+def parse_zeek(text: str) -> List[Dict[str, Any]]:
+    """Parse Zeek/Bro TSV logs — conn.log / dns.log / http.log / ssl.log.
+    The header block starts with lines like `#fields`, `#types`, `#separator`.
+    """
+    lines = text.splitlines()
+    fields: List[str] = []
+    sep = "\t"
+    log_type = None
+    data_lines: List[str] = []
+    for ln in lines:
+        if not ln.strip():
+            continue
+        if ln.startswith("#separator"):
+            # e.g. "#separator \\x09"
+            m = re.match(r"#separator\s+(.+)", ln)
+            if m:
+                s = m.group(1)
+                if s.startswith("\\x"):
+                    try:
+                        sep = bytes.fromhex(s[2:]).decode("latin-1")
+                    except ValueError:
+                        sep = "\t"
+                else:
+                    sep = s
+        elif ln.startswith("#path"):
+            m = re.match(r"#path\s+(\S+)", ln)
+            if m:
+                log_type = m.group(1)
+        elif ln.startswith("#fields"):
+            fields = ln.replace("#fields", "").strip().split(sep)
+        elif ln.startswith("#"):
+            continue
+        else:
+            data_lines.append(ln)
+
+    if not fields:
+        return []
+
+    event_id = ZEEK_LOG_TYPES.get(log_type, 3)
+    events: List[Dict[str, Any]] = []
+    for row in data_lines:
+        parts = row.split(sep)
+        if len(parts) != len(fields):
+            continue
+        raw = dict(zip(fields, parts))
+        # Zeek uses "-" for empty
+        raw = {k: v for k, v in raw.items() if v not in ("-", "")}
+        raw["eventid"] = event_id
+        # Map: 'ts' → utctime
+        if "ts" in raw and "utctime" not in raw:
+            try:
+                epoch = float(raw["ts"])
+                raw["utctime"] = datetime.fromtimestamp(epoch, tz=timezone.utc).isoformat()
+            except (ValueError, TypeError):
+                pass
+        mapped = _map_fields(raw)
+        mapped["eventid"] = str(event_id)
+        events.append(mapped)
+    return events
 
 
 def _flatten_json(obj: Any, prefix: str = "") -> Dict[str, Any]:
@@ -209,8 +454,22 @@ def parse_json(text: str) -> List[Dict[str, Any]]:
     for d in docs:
         if not isinstance(d, dict):
             continue
+        # tshark `-T ek` output nests real fields inside `_source.layers.*`.
+        if "layers" in d.get("_source", {}) if isinstance(d.get("_source"), dict) else False:
+            d = {"_source_layers_" + k: v for k, v in d["_source"]["layers"].items()}
+            # Also flatten one level deeper for common protocols
+            for k, v in list(d.items()):
+                if isinstance(v, dict):
+                    for kk, vv in v.items():
+                        d[kk] = vv if not isinstance(vv, list) else (vv[0] if vv else "")
+                elif isinstance(v, list) and v:
+                    d[k] = v[0]
         flat = _flatten_json(d)
         mapped = _map_fields(flat)
+        # CrowdStrike Falcon event streams: event_simpleName drives EventID.
+        simple = flat.get("event_simpleName") or flat.get("EventSimpleName")
+        if simple and simple in CROWDSTRIKE_ACTION_MAP:
+            mapped["eventid"] = str(CROWDSTRIKE_ACTION_MAP[simple])
         # Best-effort EventID extraction
         if "eventid" not in mapped:
             for k in ("winlog.event_id", "event.code", "event.id", "EventID"):
@@ -503,11 +762,17 @@ def parse(text: str, format_hint: Optional[str] = None) -> Dict[str, Any]:
         raw_events = parse_json(text)
     elif fmt == "csv":
         raw_events = parse_csv(text)
+    elif fmt == "zeek":
+        raw_events = parse_zeek(text)
+    elif fmt == "cef":
+        raw_events = parse_cef(text)
+    elif fmt == "leef":
+        raw_events = parse_leef(text)
     else:
         raise ValueError(
-            "Unrecognized format. Provide Sysmon XML, JSON (Winlogbeat/ECS/EDR), "
-            "or CSV/TSV with a header row containing standard fields "
-            "(Image, CommandLine, ProcessGuid, ParentProcessGuid, SourceIp, DestinationIp, ...)."
+            "Unrecognized format. Provide Sysmon XML, JSON (Winlogbeat/ECS/EDR/CrowdStrike/tshark-EK), "
+            "Zeek TSV (conn/dns/http), CEF (ArcSight), LEEF (QRadar), EVTX (base64), "
+            "or CSV/TSV with a header row (Image, CommandLine, ProcessGuid, ParentProcessGuid, SourceIp, DestinationIp, ...)."
         )
     forensic = [_normalize_event(e) for e in raw_events if e.get("image") or e.get("commandline") or e.get("targetfilename") or e.get("targetobject") or e.get("dstip") or e.get("queryname")]
     if not forensic:

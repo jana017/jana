@@ -37,9 +37,19 @@ export default function CyberLabShare() {
   const { shareId } = useParams();
   const [state, setState] = useState({ loading: true, data: null, error: null });
 
+  const backendUrl = process.env.REACT_APP_BACKEND_URL;
+  const shareUrl = typeof window !== "undefined" ? window.location.href : "";
+  const ogImageUrl = `${backendUrl}/api/cyberlab/share/${shareId}/og.png`;
+
   useSeo({
-    title: "Shared analysis · NivX CyberLab",
-    description: "Public shared CyberLab analysis report.",
+    title: state.data
+      ? `${(state.data.payload?.analysis?.verdict || "Analysis").toUpperCase()} · Risk ${state.data.payload?.analysis?.risk_score || 0} · NivX CyberLab`
+      : "Shared analysis · NivX CyberLab",
+    description: state.data?.payload?.analysis?.summary || "Public shared CyberLab analysis report — decoded payload, MITRE ATT&CK mapping, YARA hits, IOCs and risk score.",
+    canonical: shareUrl,
+    ogImage: ogImageUrl,
+    ogType: "article",
+    twitterCard: "summary_large_image",
   });
 
   useEffect(() => {

@@ -38,6 +38,7 @@ from . import persistence
 from . import exports
 from . import ai_analysis
 from . import sysmon
+from . import og_image
 from .plugins import all_plugins
 from .plugins.decoders import _to_best_text
 from .models import (
@@ -181,14 +182,34 @@ async def extract_iocs(payload: dict):
 
 class SysmonRequest(BaseModel):
     input: str
-    format: Optional[str] = None  # 'xml' | 'json' | 'csv' | None to auto-detect
+    format: Optional[str] = None  # 'xml' | 'json' | 'csv' | 'zeek' | 'cef' | 'leef' | 'evtx' (base64)
 
 
 @router.post("/process-tree")
 async def process_tree(req: SysmonRequest):
-    """Parse Sysmon Event ID 1 dumps (XML / JSON / CSV) and return a
-    parent-child process tree with per-process MITRE ATT&CK mapping."""
+    """Parse Sysmon / EDR / SIEM logs (XML / JSON / CSV / Zeek / CEF / LEEF / EVTX-base64)
+    into a parent-child process tree + normalized 34-field forensic records."""
     try:
+        if req.format == "evtx":
+            import base64
+            try:
+                data = base64.b64decode(req.input, validate=False)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"EVTX input must be base64-encoded: {e}")
+            raw_events = sysmon.parse_evtx(data)
+            forensic = [sysmon._normalize_event(e) for e in raw_events if e]
+            proc = [e for e in forensic if e["event_id"] == 1]
+            tree = sysmon.build_tree(proc) if proc else {"nodes": [], "edges": [], "stats": {"process_count": 0, "edge_count": 0, "risk_counts": {}, "worst_risk": "info"}}
+            by_action = {}
+            for e in forensic:
+                by_action[e["action"]] = by_action.get(e["action"], 0) + 1
+            return {
+                "format": "evtx",
+                "forensic_events": forensic,
+                "iocs": sysmon.extract_iocs_from_events(forensic),
+                "nodes": tree["nodes"], "edges": tree["edges"],
+                "stats": {**tree["stats"], "event_count": len(forensic), "by_action": by_action},
+            }
         tree = sysmon.parse(req.input, format_hint=req.format)
         return tree
     except ValueError as e:
@@ -252,6 +273,27 @@ async def get_share(share_id: str):
     if not doc:
         raise HTTPException(status_code=404, detail="Share not found or expired")
     return doc
+
+
+@router.get("/share/{share_id}/og.png")
+async def get_share_og_image(share_id: str):
+    """Auto-generated 1200x630 OG image for viral DFIR sharing."""
+    doc = await persistence.get_share(share_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Share not found or expired")
+    try:
+        png = og_image.render(doc["payload"])
+    except Exception as e:
+        logger.exception("og image render failed")
+        raise HTTPException(status_code=500, detail=str(e))
+    return Response(
+        content=png,
+        media_type="image/png",
+        headers={
+            "Cache-Control": "public, max-age=86400",  # 1 day
+            "Content-Disposition": f'inline; filename="cyberlab-share-{share_id}.png"',
+        },
+    )
 
 
 @router.post("/export/pdf")
