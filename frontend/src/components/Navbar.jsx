@@ -30,7 +30,7 @@ export default function Navbar() {
   useEffect(() => {
     const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 800));
     const handle = idle(() => {
-      ["/blog", "/threat-intelligence", "/cybersecurity-101", "/admin"].forEach(prefetchRoute);
+      ["/blog", "/threat-intelligence", "/cybersecurity-101", "/detonate", "/admin"].forEach(prefetchRoute);
     });
     return () => {
       if (window.cancelIdleCallback) window.cancelIdleCallback(handle);
