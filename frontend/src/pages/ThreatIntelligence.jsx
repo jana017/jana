@@ -7,7 +7,7 @@ import IntelReader from "@/components/IntelReader";
 import IocAnalyzer from "@/components/IocAnalyzer";
 import ThreatIntelOverview from "@/components/ThreatIntelOverview";
 import IocDatabase from "@/components/IocDatabase";
-import HaUrlQuickScan from "@/components/HaUrlQuickScan";
+import HaAnalyzer from "@/components/HaAnalyzer";
 import { FileText, ExternalLink, ShieldAlert, BookOpen, ArrowRight, Search, Globe, Database } from "lucide-react";
 import useSeo from "@/lib/useSeo";
 
@@ -140,7 +140,7 @@ export default function ThreatIntelligence() {
           <IocAnalyzer />
 
           <div className="mb-8">
-            <HaUrlQuickScan />
+            <HaAnalyzer />
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">

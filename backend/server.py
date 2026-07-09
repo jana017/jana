@@ -1377,6 +1377,63 @@ async def hybrid_search_samples(payload: HaSearchInput):
     return {"queried": normalized, "term": term, **result}
 
 
+class HaLookupInput(BaseModel):
+    value: str
+    limit: int = 12
+
+
+@api_router.post("/hybrid/lookup")
+async def hybrid_lookup(payload: HaLookupInput):
+    """Universal Hybrid Analysis lookup — auto-classifies the input and routes to
+    the right HA endpoint. Powers the on-page 'HA IOC Analyzer' so a single
+    input box can handle URLs, file hashes, IPs and domains.
+
+    Returns a unified envelope: {kind, value, result: {...}} where the shape of
+    `result` depends on `kind`:
+      - url:            {verdict, malicious_scanners, total_scanners, scanners[], report_url, reports_count}
+      - sha256/sha1/md5:{found, verdict, threat_score, vx_family, classification[], reports, url, submitted_at}
+      - ip / domain:    {count, malicious, families[], samples[]}
+    """
+    if not HYBRID_ANALYSIS_API_KEY:
+        raise HTTPException(status_code=503, detail="Hybrid Analysis is not configured")
+    raw = (payload.value or "").strip()
+    if not raw:
+        raise HTTPException(status_code=422, detail="value is required")
+
+    kind = _classify_ioc(raw)
+    async with httpx.AsyncClient(timeout=35, follow_redirects=True) as hc:
+        if kind == "url":
+            result = await _ha_quick_scan_url(hc, raw, "all")
+            if result.get("error"):
+                raise HTTPException(status_code=502, detail=f"Hybrid Analysis error: {result['error']}")
+            return {"kind": "url", "value": raw, "result": result}
+
+        if kind in ("sha256", "sha1", "md5"):
+            result = await _ha_hash_lookup(hc, raw)
+            if not result:
+                raise HTTPException(status_code=503, detail="Hybrid Analysis is not configured")
+            if result.get("skipped"):
+                # HA overview only supports SHA256 — surface that clearly.
+                raise HTTPException(status_code=422, detail=f"Hybrid Analysis /overview supports SHA256 only. You provided a {kind.upper()}. Provide the SHA256 (or run VT/URLScan via the OSINT analyzer above).")
+            if result.get("error"):
+                raise HTTPException(status_code=502, detail=f"Hybrid Analysis error: {result['error']}")
+            return {"kind": kind, "value": raw, "result": result}
+
+        if kind in ("ip", "domain"):
+            from urllib.parse import urlparse  # noqa: F401 (kept for symmetry / future)
+            params = {"host": raw} if kind == "ip" else {"domain": raw}
+            limit = max(1, min(int(payload.limit or 12), 40))
+            result = await _ha_search_terms(hc, params, limit=limit)
+            if result is None:
+                raise HTTPException(status_code=503, detail="Hybrid Analysis is not configured")
+            if result.get("error"):
+                raise HTTPException(status_code=502, detail=f"Hybrid Analysis error: {result['error']}")
+            return {"kind": kind, "value": raw, "result": result}
+
+        raise HTTPException(status_code=422, detail=f"Unsupported IOC type ({kind or 'unknown'}). Provide a URL, SHA256/SHA1/MD5 hash, IP address, or domain.")
+
+
+
 def _vt_url_id(u: str) -> str:
     import base64
     return base64.urlsafe_b64encode(u.encode("utf-8")).decode("utf-8").strip("=")

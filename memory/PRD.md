@@ -140,3 +140,16 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - **App.js**: registered `/blog` route with lazy-loaded `BlogIndex`.
 - **Deployment fix**: two `react-hooks/exhaustive-deps` warnings (LiveThreatLandscape.jsx line 26, LiveThreatMap.jsx line 112) were breaking production CI builds (`CI=true yarn build` treats warnings as errors). Both silenced with targeted eslint-disable comments and documented reasoning inline. `yarn build` now completes cleanly.
 - Verified end-to-end via screenshot: home has no blog section; `/blog` shows 16 articles with LOLBAs featured; nav Blog → /blog; article page → back → /blog listing.
+
+
+## Latest (2026-07-09, session 18 — Hybrid Analysis universal IOC analyzer)
+- **HA panel now accepts all IOC types.** Renamed "URL Quick Scan" → **"Hybrid Analysis · IOC Analyzer"** (`HaAnalyzer.jsx`, replaces `HaUrlQuickScan.jsx`). Single input auto-classifies and routes to the right HA endpoint:
+  - **URL** → `POST /api/v2/quick-scan/url` → verdict pill + scanner tally + per-scanner rows.
+  - **SHA-256** → `GET /api/v2/overview/{sha256}` → verdict + family + threat score + classification tags + filename/size/type + report link.
+  - **IP** → `POST /api/v2/search/terms {host:...}` → sandbox linkage panel (N total samples · N malicious · top vx_families · per-sample rows).
+  - **Domain** → same as IP but with `{domain:...}`.
+  - **SHA-1 / MD5** → 422 with actionable error: "Hybrid Analysis /overview supports SHA256 only. Provide the SHA256 (or run VT/URLScan via the OSINT analyzer above)."
+- New backend endpoint `POST /api/hybrid/lookup` (unified envelope `{kind, value, result}`) — reuses the existing `_ha_quick_scan_url`, `_ha_hash_lookup`, `_ha_search_terms` helpers.
+- Result view adapts to the IOC kind: URL renders scanner table, hash renders overview card, IP/domain renders sandbox-linkage list. Kind pill above every result for quick recognition.
+- All 5 code paths verified via curl + screenshot: URL "No threat", SHA-256 "not found", MD5 clean error message, IP 50 samples/18 malicious, domain 50/17.
+- Production build (`CI=true yarn build`) clean.
