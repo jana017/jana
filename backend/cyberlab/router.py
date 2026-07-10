@@ -40,6 +40,7 @@ from . import ai_analysis
 from . import sysmon
 from . import og_image
 from . import risk_reasons as risk_reasons_mod
+from . import repair as repair_mod
 from .plugins import all_plugins
 from .plugins.decoders import _to_best_text
 from .models import (
@@ -142,6 +143,26 @@ async def auto_decode(req: AutoDecodeRequest, session_id: Optional[str] = None):
     except Exception as e:
         logger.exception("auto_decode failed")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Refine / Repair — deterministic, offline-safe (no LLM)
+# ---------------------------------------------------------------------------
+class RefineRequest(BaseModel):
+    input: str = Field(..., description="Raw payload text to sanitize.")
+
+
+@router.post("/refine")
+async def refine_payload(req: RefineRequest):
+    """Run a chain of deterministic repairs (Unicode normalization, base64
+    padding, CMD caret strip, email quote removal, ...) and return the
+    cleaned text plus an audit list of what changed.
+
+    This endpoint does NOT call any LLM and has no external dependencies
+    beyond the Python standard library — it continues to work identically
+    if NivX Machines is transferred to another VPS.
+    """
+    return repair_mod.refine_to_dict(req.input or "")
 
 
 @router.post("/analyze", response_model=AnalysisReport)

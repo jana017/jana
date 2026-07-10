@@ -28,6 +28,10 @@ async function req(path, opts = {}) {
 }
 
 export const listPlugins = () => req("/plugins");
+
+/** Refine — deterministic, offline-safe input repair (no LLM). */
+export const refinePayload = (input) =>
+  req("/refine", { method: "POST", body: JSON.stringify({ input }) });
 export const listRules = (sessionId) => req(sessionId ? `/rules?session_id=${sessionId}` : "/rules");
 
 export const runRecipe = (input, recipe) =>

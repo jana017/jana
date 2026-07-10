@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import {
   Search, X, ChevronUp, ChevronDown, Copy, Trash2, Download, Upload, Sparkles,
   ShieldAlert, ShieldCheck, Zap, Play, Beaker, Bug, Fingerprint, Network,
-  FileWarning, RefreshCw, Layers, Radar, Target, Cpu, Share2, Plus,
+  FileWarning, RefreshCw, Layers, Radar, Target, Cpu, Share2, Plus, Wrench,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Contact from "@/components/Contact";
@@ -18,6 +18,7 @@ import AutoInvestigateProgress from "@/components/cyberlab/AutoInvestigateProgre
 import VerdictBanner from "@/components/cyberlab/VerdictBanner";
 import EnrichedIocsPanel from "@/components/cyberlab/EnrichedIocsPanel";
 import PowerShellBadge from "@/components/cyberlab/PowerShellBadge";
+import TroubleshootButton from "@/components/cyberlab/TroubleshootButton";
 
 const CATEGORY_STYLE = {
   Encoding:      { chip: "bg-blue-500/10 text-blue-300 border-blue-500/30",         dot: "bg-blue-400" },
@@ -157,8 +158,13 @@ export default function CyberLab() {
   //    1. detect-format      2. auto-decode | parse-log
   //    3. threat analysis    4. AI analysis (Claude 4.5)
   //    5. render (graph + timeline)
-  const runAutoInvestigate = useCallback(async () => {
-    if (!input.trim()) { toast.error("Paste a payload first"); return; }
+  const runAutoInvestigate = useCallback(async (overrideInput) => {
+    // Optional override lets Troubleshoot pass the freshly-refined text
+    // before React commits the setInput() state update.
+    const payload = typeof overrideInput === "string" && overrideInput.trim()
+      ? overrideInput
+      : input;
+    if (!payload.trim()) { toast.error("Paste a payload first"); return; }
     setInvestigateBusy(true);
     setResult(null);
     setAi(null);
@@ -186,7 +192,7 @@ export default function CyberLab() {
       // Stage 1 — detect
       markStage("detect", { status: "running" });
       const t0 = performance.now();
-      const detect = await detectFormat(input);
+      const detect = await detectFormat(payload);
       markStage("detect", {
         status: "ok",
         duration_ms: performance.now() - t0,
@@ -200,7 +206,7 @@ export default function CyberLab() {
         swapStage("auto-decode", "parse-log");
         markStage("parse-log", { status: "running" });
         const t1 = performance.now();
-        const tree = await processTree(input, detect.format);
+        const tree = await processTree(payload, detect.format);
         markStage("parse-log", {
           status: "ok",
           duration_ms: performance.now() - t1,
@@ -244,7 +250,7 @@ export default function CyberLab() {
         // Payload path — recursive decode + analysis
         markStage("auto-decode", { status: "running" });
         const t1 = performance.now();
-        const dec = await autoDecode(input, { include_analysis: true, max_depth: 10 });
+        const dec = await autoDecode(payload, { include_analysis: true, max_depth: 10 });
         markStage("auto-decode", {
           status: "ok",
           duration_ms: performance.now() - t1,
@@ -276,7 +282,7 @@ export default function CyberLab() {
       const t3 = performance.now();
       try {
         const aiPayload = {
-          input,
+          input: payload,
           output: output || "",
           analysis: {
             mitre: analysis.mitre || [],
@@ -528,6 +534,13 @@ export default function CyberLab() {
               {running ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
               Run Recipe
             </button>
+            <TroubleshootButton
+              input={input}
+              setInput={setInput}
+              clearResults={() => { setResult(null); setAi(null); setProcessTreeData(null); }}
+              reinvestigate={runAutoInvestigate}
+              disabled={investigateBusy || autoBusy || running}
+            />
             <button
               data-testid="share-export-btn"
               onClick={() => setShareOpen(true)}
