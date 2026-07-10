@@ -27,6 +27,21 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - Full redesign: light corporate enterprise theme (Outfit/Inter/IBM Plex Mono).
 - Tests: backend 13/13, frontend 100%.
 
+## Implemented (2026-02-XX — EDR/SIEM Webhook Push)
+- New backend module `/app/backend/webhooks/` (models, presets, delivery, router).
+- 8 curated presets: Custom, Splunk HEC, Microsoft Sentinel Logic App, Elastic Security Rules API, CrowdStrike Falcon Custom IOA, Slack, Discord, Microsoft Teams — each with correct payload template + docs link.
+- Admin CRUD at `/admin` → "EDR / SIEM" tab: create/edit/delete webhooks, click-to-test button, delivery audit log (last 100 pushes with HTTP status, attempts, error) with refresh.
+- Secret header masking: Authorization/token/key/secret values shown as `***` in list responses; PATCH preserves the real value if `***` is re-submitted.
+- One-click "Push to SIEM" button in NivX Forge AI panel — dropdown of enabled webhooks; ships the current Sigma/YARA/IOCs (or full bundle) to the selected endpoint.
+- Delivery worker with retry (3 attempts, 1s/3s backoff on 5xx/429/timeouts; no retry on 4xx). Trims history to last 100.
+- Template engine: safe Jinja-subset (`{{ var }}` and `{{ var|title/upper/lower }}`) — never uses real Jinja to avoid sandbox escape. Vars: `verdict`, `risk_score`, `severity_word`, `ioc_count`, `mitre_count`, `has_sigma/yara`, `sent_at`, `discord_color`, and JSON-safe `*_json` variants for `summary`, `sigma_rule`, `yara_rule`, `iocs`, `mitre`, `splunk_spl`, `sentinel_kql`, `cisco_xdr`.
+- Content modes: `bundle_iocs` (lean — Sigma+YARA+IOCs) and `bundle_full` (everything including generated queries).
+- Endpoints: `GET/POST/PATCH/DELETE /api/webhooks`, `POST /api/webhooks/{id}/test`, `POST /api/webhooks/push`, `GET /api/webhooks/deliveries`, `POST /api/webhooks/deliveries/{id}/retry`, `GET /api/webhooks/presets`.
+- 11 new pytest cases (`tests/test_webhooks.py`) — all pass. Added `/app/backend/conftest.py` for stable pytest module resolution.
+- Testing agent (iteration_22): 100% backend + frontend pass, zero issues.
+
+
+
 ## Implemented (2026-02-XX — Decoder Robustness Pass)
 - Added `extract-notepad-session` plugin: decodes Windows 11 Notepad `/SESSION:<base64>` args → recovers persisted file paths from UTF-16LE payload (skips session-id junk prefix + null padding).
 - Added `extract-fromb64string` plugin: extracts inline `[Convert]::FromBase64String("...")` / `[System.Convert]::…` blobs (fileless PS staging).
