@@ -108,19 +108,33 @@ async def generate_ai_analysis(
     iocs: List[Dict[str, Any]],
     verdict: str,
     risk: int,
+    model: str = "claude",
 ) -> Dict[str, Any]:
-    """Call Claude Sonnet 4.5 and parse its JSON response."""
+    """Call the selected LLM and parse its JSON response.
+
+    `model` ∈ {"claude", "gpt", "gemini"} — routes to Claude Sonnet 4.6,
+    GPT 5.4, or Gemini 3.1 Pro respectively. All three share the same
+    Emergent LLM key so no config change is needed to switch providers.
+    """
+    MODEL_MAP = {
+        "claude": ("anthropic", "claude-sonnet-4-6"),
+        "gpt":    ("openai",    "gpt-5.4"),
+        "gemini": ("gemini",    "gemini-3.1-pro-preview"),
+    }
+    provider, model_name = MODEL_MAP.get((model or "claude").lower(), MODEL_MAP["claude"])
     chat = LlmChat(
         api_key=_key(),
         session_id=f"cyberlab-{uuid.uuid4().hex[:12]}",
         system_message=SYSTEM_PROMPT,
-    ).with_model("anthropic", "claude-sonnet-4-5-20250929")
+    ).with_model(provider, model_name)
 
     prompt = _build_user_prompt(decoded_output, mitre, rules, iocs, verdict, risk)
-    logger.info("cyberlab.ai request: verdict=%s risk=%s mitre=%d rules=%d iocs=%d",
-                verdict, risk, len(mitre), len(rules), len(iocs))
+    logger.info("cyberlab.ai request: model=%s(%s) verdict=%s risk=%s mitre=%d rules=%d iocs=%d",
+                provider, model_name, verdict, risk, len(mitre), len(rules), len(iocs))
     response_text = await chat.send_message(UserMessage(text=prompt))
-    return _parse_response(response_text)
+    result = _parse_response(response_text)
+    result["_model"] = f"{provider}/{model_name}"
+    return result
 
 
 def _parse_response(text: str) -> Dict[str, Any]:

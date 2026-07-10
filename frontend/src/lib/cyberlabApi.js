@@ -78,7 +78,6 @@ export const extractIocs = (input) =>
 // Phase 4
 export const runAiAnalysis = (payload) =>
   req("/ai-analysis", { method: "POST", body: JSON.stringify(payload) });
-
 export const createShare = (payload) =>
   req("/share", { method: "POST", body: JSON.stringify(payload) });
 

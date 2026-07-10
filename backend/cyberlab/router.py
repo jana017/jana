@@ -503,6 +503,7 @@ class AiRequest(BaseModel):
     input: str
     output: str
     analysis: dict
+    model: Optional[str] = "claude"  # "claude" | "gpt" | "gemini"
 
 
 @router.post("/ai-analysis")
@@ -517,6 +518,7 @@ async def ai_endpoint(req: AiRequest):
             iocs=analysis.get("iocs", []),
             verdict=analysis.get("verdict", "clean"),
             risk=analysis.get("risk_score", 0),
+            model=req.model or "claude",
         )
         return result
     except Exception as e:

@@ -7,10 +7,17 @@ import { toast } from "sonner";
 import { Brain, Copy, RefreshCw, Sparkles } from "lucide-react";
 import { runAiAnalysis } from "@/lib/cyberlabApi";
 
+const MODEL_LABELS = {
+  claude: "Claude Sonnet 4.6",
+  gpt:    "GPT 5.4",
+  gemini: "Gemini 3.1 Pro",
+};
+
 export default function AiPanel({ input, output, analysis, ai, onGenerated }) {
   const [busy, setBusy] = useState(false);
   const [data, setData] = useState(ai || null);
   const [tab, setTab] = useState("summary");
+  const [model, setModel] = useState("claude");
 
   // Sync when the parent's Auto Investigate orchestrator generates AI content
   // — otherwise this panel would keep showing "Generate" even after the pipe
@@ -23,10 +30,10 @@ export default function AiPanel({ input, output, analysis, ai, onGenerated }) {
     if (!output && !input) { toast.error("No decoded output to analyze."); return; }
     setBusy(true);
     try {
-      const res = await runAiAnalysis({ input, output, analysis });
+      const res = await runAiAnalysis({ input, output, analysis, model });
       setData(res);
       onGenerated?.(res);
-      toast.success("AI analysis complete");
+      toast.success(`AI analysis complete · ${MODEL_LABELS[model]}`);
     } catch (e) {
       toast.error(`AI failed: ${e.message.slice(0, 100)}`);
     } finally { setBusy(false); }
@@ -39,23 +46,47 @@ export default function AiPanel({ input, output, analysis, ai, onGenerated }) {
 
   return (
     <div className="rounded-xl border border-purple-500/30 bg-gradient-to-br from-purple-500/5 to-slate-900/60 p-4" data-testid="ai-panel">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <Brain className="w-4 h-4 text-purple-400" />
           <h3 className="text-sm font-semibold text-white">AI Analyst</h3>
-          <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/30">
-            Claude Sonnet 4.5
+          <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/30" data-testid="ai-model-label">
+            {MODEL_LABELS[model]}
           </span>
         </div>
-        <button
-          data-testid="run-ai-btn"
-          onClick={generate}
-          disabled={busy}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-purple-500 hover:bg-purple-400 text-white text-xs font-semibold disabled:opacity-50 transition-colors"
-        >
-          {busy ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-          {data ? "Regenerate" : "Generate summary + draft rules"}
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="inline-flex items-center gap-0.5 rounded-md border border-slate-700 bg-slate-900 p-0.5" data-testid="ai-model-selector">
+            {[
+              { v: "claude", l: "Claude", h: "Anthropic Claude Sonnet 4.6 — deep reasoning" },
+              { v: "gpt",    l: "GPT",    h: "OpenAI GPT 5.4 — versatile, well-rounded" },
+              { v: "gemini", l: "Gemini", h: "Google Gemini 3.1 Pro — fast + long context" },
+            ].map((m) => (
+              <button
+                key={m.v}
+                data-testid={`ai-model-${m.v}`}
+                onClick={() => setModel(m.v)}
+                disabled={busy}
+                title={m.h}
+                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest transition-colors ${
+                  model === m.v
+                    ? "bg-purple-500/25 text-purple-200"
+                    : "text-slate-500 hover:text-slate-300"
+                } disabled:opacity-40`}
+              >
+                {m.l}
+              </button>
+            ))}
+          </div>
+          <button
+            data-testid="run-ai-btn"
+            onClick={generate}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-purple-500 hover:bg-purple-400 text-white text-xs font-semibold disabled:opacity-50 transition-colors"
+          >
+            {busy ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+            {data ? "Regenerate" : "Generate summary + draft rules"}
+          </button>
+        </div>
       </div>
 
       {!data && !busy && (
