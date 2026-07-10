@@ -15,9 +15,42 @@ from .models import RecipeStep, StepResult
 SEVERITY_SCORE = {"info": 5, "low": 10, "medium": 25, "high": 50, "critical": 80}
 
 
+# ---------------------------------------------------------------------------
+# Input sanitization — normalize typographic punctuation that email clients,
+# Word, PDFs, and rich-text editors silently substitute for ASCII forms.
+# Without this the extractor regexes (`-enc`, `-e`, etc.) miss payloads that
+# users paste from real-world contexts (phishing emails, reports).
+# ---------------------------------------------------------------------------
+_UNICODE_PUNCT_MAP = str.maketrans({
+    # All dash-like chars → ASCII hyphen-minus
+    "\u2010": "-",  # hyphen
+    "\u2011": "-",  # non-breaking hyphen
+    "\u2012": "-",  # figure dash
+    "\u2013": "-",  # en dash
+    "\u2014": "-",  # em dash
+    "\u2015": "-",  # horizontal bar
+    "\u2212": "-",  # minus sign
+    "\uFE58": "-",  # small em dash
+    "\uFE63": "-",  # small hyphen-minus
+    "\uFF0D": "-",  # fullwidth hyphen-minus
+    # Smart quotes → ASCII quotes (breaks quoted -enc "…" too)
+    "\u2018": "'", "\u2019": "'", "\u201A": "'", "\u201B": "'",
+    "\u201C": '"', "\u201D": '"', "\u201E": '"', "\u201F": '"',
+    # Non-breaking + narrow spaces → regular space
+    "\u00A0": " ", "\u2009": " ", "\u200A": " ", "\u202F": " ",
+    # Zero-width chars → strip
+    "\u200B": "", "\u200C": "", "\u200D": "", "\uFEFF": "",
+})
+
+
+def _normalize_input(text: str) -> str:
+    """Fold typographic Unicode punctuation to ASCII equivalents."""
+    return text.translate(_UNICODE_PUNCT_MAP)
+
+
 def run_recipe(input_text: str, recipe: List[RecipeStep]) -> Tuple[bytes, List[StepResult]]:
     """Execute a recipe deterministically. Returns (final_bytes, trace)."""
-    current = input_text.encode("utf-8", errors="replace")
+    current = _normalize_input(input_text).encode("utf-8", errors="replace")
     trace: List[StepResult] = []
     for step in recipe:
         if step.disabled:
@@ -60,7 +93,7 @@ def auto_decode(input_text: str, max_depth: int = 8) -> Tuple[bytes, List[StepRe
     """Recursively pick the plugin with the highest detect() score and apply it.
     Stops when no plugin scores above threshold, output stops improving, or
     max_depth is reached."""
-    current = input_text.encode("utf-8", errors="replace")
+    current = _normalize_input(input_text).encode("utf-8", errors="replace")
     trace: List[StepResult] = []
     seen_outputs = {_hash_bytes(current)}
     for _ in range(max_depth):

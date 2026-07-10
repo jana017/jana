@@ -426,6 +426,18 @@ register(Plugin(
     detect=_detect_utf16le,
 ))
 
+def _looks_utf16be(data: bytes) -> bool:
+    if len(data) < 6:
+        return False
+    sample = min(len(data), 200)
+    zeros = sum(1 for i in range(0, sample, 2) if data[i] == 0)
+    return zeros / max(1, sample // 2) >= 0.6
+
+
+def _detect_utf16be(data: bytes) -> float:
+    return 0.92 if _looks_utf16be(data) else 0.0
+
+
 register(Plugin(
     id="utf16be-decode",
     name="UTF-16BE Decode",
@@ -436,7 +448,7 @@ register(Plugin(
         .decode("utf-16be", errors="replace")
         .encode("utf-8", errors="replace")
     ),
-    auto=False,
+    detect=_detect_utf16be,
 ))
 
 
@@ -444,7 +456,7 @@ register(Plugin(
 # PowerShell -EncodedCommand extractor (auto-triggered pre-processor)
 # ---------------------------------------------------------------------------
 _PS_ENC_RE = re.compile(
-    r"(?:powershell|pwsh)(?:\.exe)?[^\r\n]*?\s-e(?:c|nc|ncodedcommand)?\s+([A-Za-z0-9+/=]{8,})",
+    r"(?:powershell|pwsh)(?:\.exe)?[^\r\n]*?\s-e(?:c|nc|ncodedcommand)?\s+['\"]?([A-Za-z0-9+/=]{8,})['\"]?",
     re.IGNORECASE,
 )
 

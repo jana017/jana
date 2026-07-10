@@ -27,6 +27,17 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - Full redesign: light corporate enterprise theme (Outfit/Inter/IBM Plex Mono).
 - Tests: backend 13/13, frontend 100%.
 
+## Fixed (2026-02-XX — Copy-Paste Corruption + UTF-16BE)
+- **Root cause of user's screenshot bug**: their pasted payload came from a rich-text source (Word/PDF/email) that auto-formatted ASCII `-` into en-dash (`\u2013`). Every flag-based regex (`-enc`, `-e`, `-EncodedCommand`, `/SESSION:`) missed the payload, and the tool fell back to blind base64+utf16le → CJK glyphs.
+- **Fix (backend)** `/app/backend/cyberlab/engine.py`: new `_normalize_input()` folds all typographic Unicode dashes (U+2010..U+2015, U+2212, U+FF0D), smart quotes (U+2018..U+201F), non-breaking + narrow spaces (U+00A0, U+2009, U+200A, U+202F), and zero-width chars (U+200B..U+200D, U+FEFF) to ASCII. Applied at the entry of `run_recipe` and `auto_decode` — every plugin benefits automatically.
+- **Fix (frontend)** `/app/frontend/src/lib/psDecoder.js`: mirror `normalizeInput()` in the browser so the "PowerShell Payload Detected" badge fires for pasted-from-Word commands too.
+- **UTF-16BE auto-detect**: enabled `detect()` on the existing `utf16be-decode` plugin. Some cross-platform `pwsh -enc` payloads are Big Endian — now chain automatically after base64.
+- **Quoted b64**: PS extractor regex now accepts optional `'…'` / `"…"` around the payload.
+- **13 new pytest cases** in `tests/test_unicode_input_normalization.py` (all 8 dash variants, curly quotes, NBSP, zero-width chars, UTF-16BE detection). 147/147 pytest tests pass.
+- **Verified via live API** with the user's exact en-dash payload → now yields `Wwhoami; ipconfig /all; [System...` (was pure CJK garbage before).
+
+
+
 ## Implemented (2026-02-XX — Frontend PowerShell Badge + Client Decoder)
 - **`/app/frontend/src/lib/psDecoder.js`**: pure-browser PowerShell decoder.
   - Regex detects `-e`, `-en`, `-enc`, `-EncodedCommand` (any case, PS 5 + PS 7 `pwsh`, quoted/unquoted, URL-safe base64, missing padding).

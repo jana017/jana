@@ -22,13 +22,40 @@
 const PS_ENC_RE =
   /(?:powershell|pwsh)(?:\.exe)?[^\r\n]*?\s-e(?:c|nc|ncodedcommand)?\s+['"]?([A-Za-z0-9+/=_-]{8,})['"]?/i;
 
+// -----------------------------------------------------------------------------
+// Input normalization — fold typographic punctuation (en-dash, em-dash, curly
+// quotes, non-breaking space, zero-width chars) that email clients / Word /
+// PDFs / rich-text editors silently substitute for ASCII. Without this, an
+// analyst pasting a `powershell –enc …` command (with an en-dash) from a
+// phishing email would be invisible to every flag-based extractor.
+// -----------------------------------------------------------------------------
+const UNICODE_PUNCT_MAP = {
+  // dashes → ASCII hyphen-minus
+  "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-", "\u2014": "-",
+  "\u2015": "-", "\u2212": "-", "\uFE58": "-", "\uFE63": "-", "\uFF0D": "-",
+  // smart quotes → ASCII
+  "\u2018": "'", "\u2019": "'", "\u201A": "'", "\u201B": "'",
+  "\u201C": '"', "\u201D": '"', "\u201E": '"', "\u201F": '"',
+  // NBSP + narrow spaces → regular space
+  "\u00A0": " ", "\u2009": " ", "\u200A": " ", "\u202F": " ",
+  // zero-width chars → strip
+  "\u200B": "", "\u200C": "", "\u200D": "", "\uFEFF": "",
+};
+
+export function normalizeInput(text) {
+  if (!text || typeof text !== "string") return "";
+  let out = "";
+  for (const ch of text) out += UNICODE_PUNCT_MAP[ch] ?? ch;
+  return out;
+}
+
 /**
  * Return true when the input contains a PowerShell -enc/-e/-EncodedCommand
  * argument followed by a base64-looking payload.
  */
 export function isPowerShellPayload(text) {
   if (!text || typeof text !== "string") return false;
-  return PS_ENC_RE.test(text);
+  return PS_ENC_RE.test(normalizeInput(text));
 }
 
 /**
@@ -37,7 +64,7 @@ export function isPowerShellPayload(text) {
  */
 export function extractPowerShellBase64(text) {
   if (!text || typeof text !== "string") return null;
-  const m = text.match(PS_ENC_RE);
+  const m = normalizeInput(text).match(PS_ENC_RE);
   return m ? m[1] : null;
 }
 
