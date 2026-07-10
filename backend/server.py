@@ -221,6 +221,12 @@ class IocRecord(BaseModel):
     severity: str = "medium"
     notes: Optional[str] = None
     created_at: str = Field(default_factory=now_iso)
+    # OSINT auto-ingest fields (populated when this IOC is added/updated from
+    # a live OSINT investigation via _auto_ingest_from_osint).
+    risk_score: Optional[int] = None                # 0-100 deterministic score
+    auto_added: bool = False                        # True when originally added by auto-ingest
+    osint_summary: Optional[dict] = None            # structured verdict snapshot
+    last_reputation_at: Optional[str] = None
 
 
 class IocBulkCreate(BaseModel):
@@ -2142,6 +2148,233 @@ async def _resolve_host(hc: httpx.AsyncClient, host: str) -> Optional[str]:
     return None
 
 
+# ---------------------------------------------------------------------------
+# OSINT Auto-Ingest — when an investigation lookup surfaces malicious/suspicious
+# reputation across VT / AbuseIPDB / urlscan / Hybrid Analysis / MalwareBazaar
+# / CIRCL, the IOC is automatically upserted into the curated `iocs` collection
+# with a deterministic risk score, severity, threat-name and structured
+# reputation snapshot. No LLM involvement — purely rule-based, idempotent.
+# ---------------------------------------------------------------------------
+
+def _compute_verdict_and_score(kind: str, enrichment: Optional[dict], reputation: Optional[dict]) -> dict:
+    """Return {verdict, risk_score, severity, threat_name, tags, summary, notes}
+    for the given lookup result. verdict ∈ {clean, suspicious, malicious}."""
+    reputation = reputation or {}
+    enrichment = enrichment or {}
+    score = 0
+    tags: List[str] = []
+    reason_bits: List[str] = []
+    threat_name: Optional[str] = None
+    summary: dict = {"signals": {}}
+
+    # --- VirusTotal (all kinds) -------------------------------------------
+    vt = reputation.get("vt") or {}
+    vt_stats = vt.get("stats") or {}
+    vt_mal = int(vt_stats.get("malicious") or 0)
+    vt_susp = int(vt_stats.get("suspicious") or 0)
+    if vt_mal or vt_susp:
+        score += min(60, vt_mal * 3 + vt_susp)
+        tags.append(f"vt:{vt_mal}m/{vt_susp}s")
+        reason_bits.append(f"VT {vt_mal} malicious / {vt_susp} suspicious")
+        summary["signals"]["virustotal"] = {"malicious": vt_mal, "suspicious": vt_susp,
+                                            "harmless": int(vt_stats.get("harmless") or 0),
+                                            "undetected": int(vt_stats.get("undetected") or 0)}
+        names = vt.get("popular_threat_names") or vt.get("threat_names") or []
+        if isinstance(names, list) and names:
+            threat_name = threat_name or str(names[0])[:80]
+
+    # --- AbuseIPDB (ip only) ----------------------------------------------
+    ab = reputation.get("abuseipdb") or {}
+    ab_conf = int(ab.get("abuseConfidenceScore") or ab.get("abuse_confidence") or 0)
+    if ab_conf:
+        score += int(ab_conf * 0.4)
+        tags.append(f"abuseipdb:{ab_conf}")
+        reason_bits.append(f"AbuseIPDB {ab_conf}%")
+        summary["signals"]["abuseipdb"] = {"confidence": ab_conf,
+                                           "total_reports": ab.get("totalReports") or ab.get("total_reports")}
+
+    # --- urlscan (domain / url) — verdict can be at enrichment root or nested
+    us_verdict = ""
+    if isinstance(enrichment, dict):
+        us_verdict = (enrichment.get("verdict") or "").lower()
+        if not us_verdict:
+            us = enrichment.get("urlscan")
+            if isinstance(us, dict):
+                us_verdict = (us.get("verdict") or "").lower()
+    if us_verdict == "malicious":
+        score += 40
+        tags.append("urlscan:malicious")
+        reason_bits.append("urlscan verdict: malicious")
+    elif us_verdict == "suspicious":
+        score += 20
+        tags.append("urlscan:suspicious")
+        reason_bits.append("urlscan verdict: suspicious")
+    if us_verdict:
+        summary["signals"]["urlscan"] = {"verdict": us_verdict}
+
+    # --- Hybrid Analysis (hash / url) -------------------------------------
+    ha = reputation.get("hybrid_analysis")
+    if isinstance(ha, dict):
+        ha_verdict = (ha.get("verdict") or "").lower()
+        ha_score = ha.get("threat_score")
+        ha_family = ha.get("vx_family") or ha.get("family")
+        ha_mscan = int(ha.get("malicious_scanners") or 0)
+        if ha_verdict == "malicious" or (isinstance(ha_score, int) and ha_score >= 80):
+            score += 40
+            tags.append("ha:malicious")
+            reason_bits.append(f"Hybrid Analysis: malicious ({ha_score if ha_score is not None else 'n/a'})")
+        elif ha_verdict == "suspicious" or ha_mscan >= 1 or (isinstance(ha_score, int) and ha_score >= 50):
+            score += 20
+            tags.append("ha:suspicious")
+            reason_bits.append("Hybrid Analysis: suspicious")
+        if ha_family and not threat_name:
+            threat_name = str(ha_family)[:80]
+        if ha_verdict or ha_score:
+            summary["signals"]["hybrid_analysis"] = {"verdict": ha_verdict or None,
+                                                     "threat_score": ha_score,
+                                                     "family": ha_family,
+                                                     "malicious_scanners": ha_mscan or None}
+
+    # --- MalwareBazaar (hash only, known-bad DB) --------------------------
+    mb = reputation.get("malwarebazaar")
+    if isinstance(mb, dict) and (mb.get("found") or mb.get("query_status") == "ok"):
+        score += 50
+        tags.append("malwarebazaar")
+        family = mb.get("signature") or mb.get("family")
+        if family and not threat_name:
+            threat_name = str(family)[:80]
+        reason_bits.append(f"MalwareBazaar: {family or 'known sample'}")
+        summary["signals"]["malwarebazaar"] = {"signature": mb.get("signature"),
+                                               "family": mb.get("family"),
+                                               "file_type": mb.get("file_type")}
+
+    # --- CIRCL hashlookup (hash) ------------------------------------------
+    if isinstance(enrichment, dict) and enrichment.get("kind") == "hash":
+        if enrichment.get("known_malicious"):
+            score += 80
+            tags.append("circl:known-malicious")
+            reason_bits.append("CIRCL: known-malicious")
+            summary["signals"]["circl"] = {"known_malicious": True,
+                                           "source_label": enrichment.get("source_label")}
+
+    score = max(0, min(100, int(score)))
+
+    # Deterministic verdict + severity mapping
+    if score >= 70:
+        verdict, severity = "malicious", "critical" if score >= 85 else "high"
+    elif score >= 30:
+        verdict, severity = "suspicious", "medium"
+    elif score >= 15:
+        verdict, severity = "suspicious", "low"
+    else:
+        verdict, severity = "clean", "low"
+
+    if not threat_name and reason_bits:
+        threat_name = f"OSINT: {reason_bits[0]}"[:80]
+
+    summary["verdict"] = verdict
+    summary["risk_score"] = score
+    summary["reason_bits"] = reason_bits
+
+    return {
+        "verdict": verdict,
+        "risk_score": score,
+        "severity": severity,
+        "threat_name": threat_name,
+        "tags": tags,
+        "summary": summary,
+        "notes": ("Auto-ingested from OSINT: " + "; ".join(reason_bits))[:280] if reason_bits else None,
+    }
+
+
+async def _auto_ingest_from_osint(value: str, kind: str, enrichment: Optional[dict], reputation: Optional[dict]) -> Optional[dict]:
+    """If OSINT verdict is suspicious/malicious, upsert the IOC into the curated
+    DB with reputation-derived fields. Idempotent; analyst-authored records keep
+    their metadata but still get a refreshed risk_score + osint_summary.
+    Returns the persisted record snapshot (or None when clean/unrecognized)."""
+    if kind == "unknown":
+        return None
+    computed = _compute_verdict_and_score(kind, enrichment, reputation)
+    if computed["verdict"] not in ("suspicious", "malicious"):
+        return None
+
+    key = _ioc_key(value)
+    now = now_iso()
+    try:
+        existing = await db.iocs.find_one({"key": key}, {"_id": 0})
+    except Exception:
+        existing = None
+
+    # Deduped, stable-order tag list derived from reputation signals.
+    auto_tags = ["auto-ingest", f"verdict:{computed['verdict']}", f"risk:{computed['risk_score']}"] + list(computed["tags"] or [])
+    dedup: List[str] = []
+    seen = set()
+    for t in auto_tags:
+        t = str(t).strip()
+        if t and t.lower() not in seen:
+            dedup.append(t)
+            seen.add(t.lower())
+
+    if existing:
+        updates: dict = {
+            "risk_score": computed["risk_score"],
+            "osint_summary": computed["summary"],
+            "last_reputation_at": now,
+            "updated_at": now,
+        }
+        if existing.get("auto_added"):
+            # Fully-managed record — refresh derived fields.
+            updates["threat_name"] = computed["threat_name"] or existing.get("threat_name")
+            updates["severity"] = computed["severity"]
+            updates["source"] = "OSINT Auto-Ingest"
+            updates["notes"] = computed["notes"] or existing.get("notes")
+            merged = list(existing.get("tags") or []) + dedup
+        else:
+            # Analyst-authored — preserve metadata, only append reputation tags.
+            merged = list(existing.get("tags") or [])
+            for t in dedup:
+                if t.lower() not in {x.lower() for x in merged}:
+                    merged.append(t)
+        # Dedup merged tag list once (case-insensitive, preserve order).
+        uniq: List[str] = []
+        seen2 = set()
+        for t in merged:
+            if t.lower() not in seen2:
+                uniq.append(t)
+                seen2.add(t.lower())
+        updates["tags"] = uniq
+        try:
+            await db.iocs.update_one({"key": key}, {"$set": updates})
+        except Exception as e:
+            logger.warning(f"Auto-ingest update failed for {value}: {e}")
+            return None
+        return {**existing, **updates}
+
+    # Insert brand new record.
+    rec = IocRecord(
+        value=value,
+        key=key,
+        type=kind,
+        threat_name=computed["threat_name"],
+        tags=dedup,
+        source="OSINT Auto-Ingest",
+        severity=computed["severity"],
+        notes=computed["notes"],
+        risk_score=computed["risk_score"],
+        auto_added=True,
+        osint_summary=computed["summary"],
+        last_reputation_at=now,
+    )
+    try:
+        await db.iocs.insert_one(rec.model_dump())
+    except Exception as e:
+        logger.warning(f"Auto-ingest insert failed for {value}: {e}")
+        return None
+    return rec.model_dump()
+
+
+
+
 async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
     """Full IOC lookup: classify + free enrichment + optional key-based reputation."""
     value = (value or "").strip()
@@ -2397,6 +2630,29 @@ async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
         result["reputation"] = await _reputation(hc, kind, normalized)
     except Exception as e:
         logger.error(f"IOC reputation error: {e}")
+
+    # OSINT Auto-Ingest — persist any suspicious/malicious verdict into the
+    # curated `iocs` DB with deterministic risk_score + reputation snapshot.
+    # Failures never break the lookup response.
+    try:
+        ingested = await _auto_ingest_from_osint(value, kind, result.get("enrichment"), result.get("reputation"))
+        if ingested:
+            # Refresh the `local_db` snapshot the frontend uses so the Analyzer
+            # instantly reflects the newly-persisted record without a re-fetch.
+            result["local_db"] = {
+                "threat_name": ingested.get("threat_name"),
+                "severity": ingested.get("severity"),
+                "tags": ingested.get("tags", []),
+                "source": ingested.get("source"),
+                "notes": ingested.get("notes"),
+                "created_at": ingested.get("created_at"),
+                "risk_score": ingested.get("risk_score"),
+                "auto_added": bool(ingested.get("auto_added")),
+                "last_reputation_at": ingested.get("last_reputation_at"),
+            }
+            result["auto_ingested"] = True
+    except Exception as e:
+        logger.warning(f"Auto-ingest hook failed for {value}: {e}")
 
     return result
 

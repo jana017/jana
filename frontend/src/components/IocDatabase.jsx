@@ -327,8 +327,8 @@ export default function IocDatabase() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {loading && <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400"><Loader2 className="w-4 h-4 animate-spin inline mr-2" /> Loading…</td></tr>}
-              {!loading && items.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400" data-testid="ioc-db-empty">No IOCs found. {isAdmin ? "Add some above." : ""}</td></tr>}
+              {loading && <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400"><Loader2 className="w-4 h-4 animate-spin inline mr-2" /> Loading…</td></tr>}
+              {!loading && items.length === 0 && <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400" data-testid="ioc-db-empty">No IOCs found. {isAdmin ? "Add some above." : ""}</td></tr>}
               {!loading && items.map((it, i) => {
                 const st = severityStyle(it.severity);
                 return (
@@ -336,8 +336,24 @@ export default function IocDatabase() {
                     {isAdmin && <td className="px-3 py-3"><input type="checkbox" data-testid={`ioc-db-select-${i}`} checked={selected.has(it.id)} onChange={() => toggleSel(it.id)} /></td>}
                     <td className="px-4 py-3"><code className="font-mono-data text-xs text-slate-800 break-all">{it.value}</code></td>
                     <td className="px-4 py-3 whitespace-nowrap"><span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-md bg-slate-100 text-slate-600 border border-slate-200">{TYPE_LABEL[it.type] || it.type}</span></td>
-                    <td className="px-4 py-3 text-slate-700">{it.threat_name || <span className="text-slate-300">—</span>}</td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {it.threat_name || <span className="text-slate-300">—</span>}
+                      {it.auto_added && <span className="ml-2 inline-block text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-200" data-testid={`ioc-db-auto-badge-${i}`}>Auto</span>}
+                    </td>
                     <td className="px-4 py-3"><span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ${st.badge}`}>{it.severity}</span></td>
+                    <td className="px-4 py-3">
+                      {typeof it.risk_score === "number" ? (
+                        <span
+                          data-testid={`ioc-db-risk-${i}`}
+                          title={it.osint_summary?.reason_bits?.join(" · ") || `Risk ${it.risk_score}/100`}
+                          className={`text-[11px] font-mono-data font-bold px-2 py-0.5 rounded ${
+                            it.risk_score >= 70 ? "bg-rose-50 text-rose-600 border border-rose-200"
+                            : it.risk_score >= 30 ? "bg-amber-50 text-amber-700 border border-amber-200"
+                            : "bg-slate-50 text-slate-500 border border-slate-200"
+                          }`}
+                        >{it.risk_score}</span>
+                      ) : <span className="text-slate-300 text-xs">—</span>}
+                    </td>
                     <td className="px-4 py-3"><div className="flex flex-wrap gap-1">{(it.tags || []).map((t) => <span key={t} className="text-[10px] bg-slate-100 border border-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full font-mono-data">{t}</span>)}</div></td>
                     <td className="px-4 py-3 text-slate-500 text-xs">{it.source || "—"}</td>
                     {isAdmin && <td className="px-4 py-3"><button onClick={() => deleteOne(it.id)} data-testid={`ioc-db-delete-${i}`} aria-label="Delete IOC" className="text-slate-400 hover:text-red-600 transition-colors"><Trash2 className="w-4 h-4" /></button></td>}

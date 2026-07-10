@@ -39,6 +39,25 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - **10 pytest cases + offline-safety guard**: total 180/180 backend tests pass.
 - **Zero LLM / external HTTP** in the whole `cms/` module — safe to move to Hostinger VPS.
 
+## Implemented (2026-07-10 — OSINT Auto-Ingest into curated IOC DB)
+### `POST /api/ioc-lookup` + `POST /api/ioc-lookup-batch` (auto-persist on suspicious/malicious verdict)
+- **Trigger** — every `_do_lookup()` call (single, batch, CyberLab enrichment) now runs `_auto_ingest_from_osint()` right after reputation completes.
+- **Deterministic scorer (`_compute_verdict_and_score`)** — 100% rule-based, no LLM:
+  - VT: `malicious × 3 + suspicious` (cap 60)
+  - AbuseIPDB: `confidence × 0.4`
+  - urlscan verdict: malicious +40 / suspicious +20
+  - Hybrid Analysis: malicious +40 / suspicious +20
+  - MalwareBazaar found: +50
+  - CIRCL known_malicious: +80
+  - Clamped 0–100 → verdict + severity (`≥70 malicious/high`, `≥85 critical`, `≥15 suspicious`).
+- **Idempotent upsert (`_auto_ingest_from_osint`)** — auto-added records get full refresh; analyst-authored records keep threat_name/notes/source and only receive updated risk_score, osint_summary, last_reputation_at, and appended reputation tags.
+- **`IocRecord` extended** with `risk_score`, `auto_added`, `osint_summary` (structured signals snapshot), `last_reputation_at`.
+- **`/api/ioc-lookup` response** now includes `auto_ingested: bool` and refreshed `local_db` snapshot with `risk_score` / `auto_added`.
+- **Frontend `IocDatabase.jsx`** — new "Risk" column with red/amber/slate chips (`data-testid="ioc-db-risk-{i}"`) + "Auto" badge next to threat_name (`data-testid="ioc-db-auto-badge-{i}"`).
+- **16 pytest cases** in `/app/backend/tests/test_auto_ingest.py` — 13 unit tests for the scorer, 3 HTTP integration tests exercising the live backend (parallel-safe, motor-loop-safe).
+- Verified end-to-end with EICAR SHA256 → auto-inserted with `risk_score=100`, severity=critical, tags=[`auto-ingest`, `verdict:malicious`, `ha:malicious`, `circl:known-malicious`], `source="OSINT Auto-Ingest"`.
+
+
 
 
 ## Implemented (2026-02-XX — NivX HealthBot + Troubleshoot button)
