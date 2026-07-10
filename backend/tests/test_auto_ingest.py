@@ -36,8 +36,8 @@ def test_clean_when_no_signals():
 def test_vt_stats_scale_score():
     rep = {"vt": {"stats": {"malicious": 10, "suspicious": 2}}}
     r = compute("domain", {}, rep)
-    # 10 * 3 + 2 = 32, but capped at 60 → 32 stays
-    assert r["risk_score"] == 32
+    # 10*8 + 2*3 = 86, capped at 60
+    assert r["risk_score"] == 60
     assert r["verdict"] == "suspicious"
     assert any(t.startswith("vt:") for t in r["tags"])
 
@@ -45,9 +45,49 @@ def test_vt_stats_scale_score():
 def test_vt_cap_at_60():
     rep = {"vt": {"stats": {"malicious": 40}}}
     r = compute("sha256", {}, rep)
-    # 40*3 = 120 → capped at 60
+    # 40*8 = 320 → capped at 60
     assert r["risk_score"] == 60
     assert r["verdict"] == "suspicious"
+
+
+def test_vt_low_count_pup_still_persisted():
+    """Regression: VT 2/70 (typical PUP/adware detection) MUST be treated as
+    suspicious and eligible for auto-ingest, even though the raw numeric
+    weighting alone falls under the malicious threshold. The hard-signal
+    fast path floors the score into the low-suspicious band."""
+    rep = {"vt": {"stats": {"malicious": 2, "suspicious": 0, "undetected": 68}}}
+    r = compute("sha256", {"kind": "hash"}, rep)
+    # 2 VT malicious → hard signal → verdict must be suspicious
+    assert r["verdict"] == "suspicious"
+    assert r["risk_score"] >= 15
+    assert any(t.startswith("vt:") for t in r["tags"])
+
+
+def test_vt_single_malicious_hit_still_persisted():
+    """Even a single VT malicious hit (edge PUP / very fresh sample) is a
+    real signal and must enter the curated DB."""
+    rep = {"vt": {"stats": {"malicious": 1}}}
+    r = compute("md5", {"kind": "hash"}, rep)
+    assert r["verdict"] == "suspicious"
+    assert r["risk_score"] >= 15
+
+
+def test_vt_flat_shape_with_threat_label():
+    """Regression: `_vt_lookup` returns a FLAT dict (malicious/suspicious at
+    top level, no `stats` key). The scorer must accept that shape and lift
+    `threat_label` into `threat_name`. This is the exact shape the user
+    reported for hash 76f3767efc... (VT 2/70 acelauncher PUP)."""
+    rep = {"vt": {
+        "found": True,
+        "malicious": 2, "suspicious": 0, "harmless": 0, "undetected": 68,
+        "threat_label": "acelauncher",
+        "label": "chrome.exe",
+    }}
+    r = compute("sha256", {"kind": "hash"}, rep)
+    assert r["verdict"] == "suspicious"
+    assert r["risk_score"] >= 15
+    assert r["threat_name"] == "acelauncher"
+    assert any(t.startswith("vt:2m") for t in r["tags"])
 
 
 def test_malwarebazaar_found_forces_malicious():

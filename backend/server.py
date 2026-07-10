@@ -2168,20 +2168,36 @@ def _compute_verdict_and_score(kind: str, enrichment: Optional[dict], reputation
     summary: dict = {"signals": {}}
 
     # --- VirusTotal (all kinds) -------------------------------------------
+    # VT weighting: any malicious hit is a real signal in SOC triage even at
+    # 2/70. We use 8× per malicious + 3× per suspicious (cap 60) so 1 mal
+    # scores 8, 2 mal scores 16 — both above the low-suspicious floor of 15.
+    # `_vt_lookup` returns a FLAT dict ({malicious, suspicious, ...}); some
+    # code paths surface the raw v3 API shape ({stats: {malicious, ...}}) so
+    # we accept either.
     vt = reputation.get("vt") or {}
-    vt_stats = vt.get("stats") or {}
+    vt_stats = vt.get("stats") if isinstance(vt.get("stats"), dict) else vt
     vt_mal = int(vt_stats.get("malicious") or 0)
     vt_susp = int(vt_stats.get("suspicious") or 0)
     if vt_mal or vt_susp:
-        score += min(60, vt_mal * 3 + vt_susp)
+        score += min(60, vt_mal * 8 + vt_susp * 3)
         tags.append(f"vt:{vt_mal}m/{vt_susp}s")
         reason_bits.append(f"VT {vt_mal} malicious / {vt_susp} suspicious")
         summary["signals"]["virustotal"] = {"malicious": vt_mal, "suspicious": vt_susp,
                                             "harmless": int(vt_stats.get("harmless") or 0),
                                             "undetected": int(vt_stats.get("undetected") or 0)}
-        names = vt.get("popular_threat_names") or vt.get("threat_names") or []
-        if isinstance(names, list) and names:
-            threat_name = threat_name or str(names[0])[:80]
+        # Prefer VT-supplied family names (threat_label, popular_threat_names,
+        # threat_names) — same field lives at either level.
+        for src in (vt, vt_stats):
+            if threat_name:
+                break
+            label = src.get("threat_label")
+            if label:
+                threat_name = str(label)[:80]
+                break
+            names = src.get("popular_threat_names") or src.get("threat_names")
+            if isinstance(names, list) and names:
+                threat_name = str(names[0])[:80]
+                break
 
     # --- AbuseIPDB (ip only) ----------------------------------------------
     ab = reputation.get("abuseipdb") or {}
@@ -2258,6 +2274,26 @@ def _compute_verdict_and_score(kind: str, enrichment: Optional[dict], reputation
                                            "source_label": enrichment.get("source_label")}
 
     score = max(0, min(100, int(score)))
+
+    # Hard-signal fast-path: any explicit vendor flag guarantees the IOC is
+    # persisted (verdict >= suspicious) regardless of the numeric score. This
+    # catches PUP / low-count VT hits (e.g. 2/70) that would otherwise fall
+    # below the numeric threshold. Each of these is a first-party detection,
+    # not a heuristic derivative, so we honor it as ground truth.
+    has_hard_signal = (
+        vt_mal >= 1
+        or ab_conf >= 50
+        or us_verdict in ("malicious", "suspicious")
+        or (isinstance(reputation.get("hybrid_analysis"), dict)
+            and (reputation["hybrid_analysis"].get("verdict") or "").lower() in ("malicious", "suspicious"))
+        or (isinstance(reputation.get("malwarebazaar"), dict)
+            and (reputation["malwarebazaar"].get("found") or reputation["malwarebazaar"].get("query_status") == "ok"))
+        or (isinstance(enrichment, dict) and enrichment.get("known_malicious"))
+    )
+    if has_hard_signal and score < 15:
+        # Floor the score into low-suspicious so it enters the DB with a real
+        # signal — but never override a higher computed score.
+        score = 15
 
     # Deterministic verdict + severity mapping
     if score >= 70:
