@@ -74,3 +74,35 @@ def test_urlscan_negative_results_are_not_cached(client):
     doc = db.ioc_enrich_cache.find_one({"provider": "urlscan", "key": junk})
     assert doc is None, "empty urlscan result was cached — will poison future lookups"
     c.close()
+
+
+def test_urlscan_fresh_scan_submitted_when_no_prior(client):
+    """When a real domain/URL has no prior urlscan scans, our backend must
+    auto-submit a fresh scan and return `fresh_scan.result_url`."""
+    import time as _t
+    ts = int(_t.time())
+    r = client.get("/api/ioc-lookup", params={"value": f"https://nivx-forge-test-{ts}.vercel.app/"})
+    assert r.status_code == 200
+    en = (r.json().get("enrichment") or {})
+    # Either preview or fresh_scan MUST be present — never both empty.
+    assert en.get("preview") or en.get("fresh_scan"), (
+        "urlscan returned neither a prior-scan preview nor a fresh-scan submission"
+    )
+
+
+def test_url_analysis_returns_all_providers(client):
+    """For an IP IOC, VT + AbuseIPDB + Shodan + geo must all fire in parallel
+    and populate the response — no missing/None fields for well-known IPs."""
+    r = client.get("/api/ioc-lookup", params={"value": "1.1.1.1"})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["type"] == "ip"
+    rep = d.get("reputation") or {}
+    assert rep.get("vt"), "VirusTotal reputation missing"
+    assert rep.get("abuseipdb"), "AbuseIPDB reputation missing"
+    en = d.get("enrichment") or {}
+    assert en.get("geo"), "Geo enrichment missing"
+    assert isinstance(en.get("open_ports"), list), "Shodan open_ports missing/invalid"
+    links = d.get("links") or {}
+    for k in ("VirusTotal", "AbuseIPDB", "Cisco Talos", "Shodan"):
+        assert k in links, f"missing outbound link: {k}"

@@ -2012,6 +2012,67 @@ async def _reputation(hc: httpx.AsyncClient, kind: str, normalized: str) -> Opti
     return rep
 
 
+async def _urlscan_get_with_backoff(hc: httpx.AsyncClient, url: str, headers: dict, tries: int = 3) -> Optional[httpx.Response]:
+    """GET with automatic backoff on urlscan 429/503. Returns None if all retries fail."""
+    import asyncio as _asyncio
+    delay = 1.5
+    for i in range(tries):
+        try:
+            r = await hc.get(url, headers=headers, timeout=6.0)
+            if r.status_code in (429, 503):
+                await _asyncio.sleep(delay + i * 1.0)
+                delay *= 1.8
+                continue
+            return r
+        except (httpx.TimeoutException, httpx.RequestError):
+            if i == tries - 1:
+                return None
+            await _asyncio.sleep(delay)
+    return None
+
+
+async def _urlscan_submit_scan(hc: httpx.AsyncClient, target_url: str) -> Optional[dict]:
+    """Submit a fresh urlscan.io scan when no prior scan exists.
+
+    Returns `{scan_id, result_url, api_url}` on success, or None if the API
+    key is missing or the submission fails. Fresh scans typically take
+    30-60 s — we don't block waiting for them; we return the pending info so
+    the UI can render a "Fresh scan in progress" link.
+    """
+    if not URLSCAN_API_KEY or not target_url:
+        return None
+    try:
+        r = await hc.post(
+            "https://urlscan.io/api/v1/scan/",
+            headers={"API-Key": URLSCAN_API_KEY, "Content-Type": "application/json"},
+            json={"url": target_url, "visibility": "public"},
+            timeout=8.0,
+        )
+        if r.status_code == 200:
+            j = r.json()
+            return {"scan_id": j.get("uuid"), "result_url": j.get("result"),
+                    "api_url": j.get("api"), "message": j.get("message", "")}
+    except Exception:
+        pass
+    return None
+
+
+async def _urlscan_screenshot_is_valid(hc: httpx.AsyncClient, screenshot_url: str) -> bool:
+    """HEAD check the screenshot to make sure urlscan CDN isn't rate-limiting
+    it (429 → HTML error page). Only include preview.screenshot in the response
+    when this passes so the UI never renders a broken image."""
+    if not screenshot_url:
+        return False
+    try:
+        r = await hc.head(screenshot_url, timeout=4.0, follow_redirects=True)
+        if r.status_code != 200:
+            return False
+        ct = (r.headers.get("content-type") or "").lower()
+        return ct.startswith("image/")
+    except Exception:
+        return False
+
+
 async def _shodan_ip(hc: httpx.AsyncClient, ip: str) -> dict:
     if not ip:
         return {}
@@ -2155,8 +2216,10 @@ async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
                             # Step 1 — for URL inputs, try an exact URL match first.
                             if requested_url:
                                 exact_q = f'page.url:"{requested_url}"'
-                                r1 = await hc.get(f"https://urlscan.io/api/v1/search/?q={exact_q}&size=5", headers=headers, timeout=6.0)
-                                if r1.status_code == 200:
+                                r1 = await _urlscan_get_with_backoff(
+                                    hc, f"https://urlscan.io/api/v1/search/?q={exact_q}&size=5", headers,
+                                )
+                                if r1 is not None and r1.status_code == 200:
                                     j1 = r1.json()
                                     for x in (j1.get("results", []) or []):
                                         if _norm_host(x.get("task", {}).get("url", "")) == target_host:
@@ -2172,8 +2235,10 @@ async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
                             raw_j2_results: list[dict] = []
                             if host:
                                 dq = f'page.domain:"{host}"'
-                                r2 = await hc.get(f"https://urlscan.io/api/v1/search/?q={dq}&size=25", headers=headers, timeout=6.0)
-                                if r2.status_code == 200:
+                                r2 = await _urlscan_get_with_backoff(
+                                    hc, f"https://urlscan.io/api/v1/search/?q={dq}&size=25", headers,
+                                )
+                                if r2 is not None and r2.status_code == 200:
                                     j2 = r2.json()
                                     raw_j2_results = j2.get("results", []) or []
                                     filtered = [x for x in raw_j2_results if _norm_host(x.get("task", {}).get("url", "")) == target_host]
@@ -2221,9 +2286,33 @@ async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
                             preview = None
                             for x in ranked:
                                 if x.get("screenshot"):
-                                    preview = {"screenshot": x["screenshot"], "url": x.get("task", {}).get("url"), "result": x.get("result")}
-                                    break
-                            payload = {"scan_count": scan_count, "recent_scans": recent, "preview": preview}
+                                    ss_url = x["screenshot"]
+                                    # Validate screenshot is a real image before
+                                    # exposing it — urlscan CDN often 429s the
+                                    # image endpoint separately from the API.
+                                    if await _urlscan_screenshot_is_valid(hc, ss_url):
+                                        preview = {
+                                            "screenshot": ss_url,
+                                            "url": x.get("task", {}).get("url"),
+                                            "result": x.get("result"),
+                                        }
+                                        break
+
+                            # Auto-submit a fresh urlscan.io scan when we found
+                            # nothing usable AND we have an API key. This
+                            # eliminates "No prior scan of the requested URL"
+                            # for domains/URLs that urlscan hasn't indexed yet.
+                            fresh = None
+                            submit_target = requested_url or (f"https://{host}" if host else None)
+                            if not preview and not all_results and submit_target:
+                                fresh = await _urlscan_submit_scan(hc, submit_target)
+
+                            payload = {
+                                "scan_count": scan_count,
+                                "recent_scans": recent,
+                                "preview": preview,
+                                "fresh_scan": fresh,
+                            }
                             m["hit"] = bool(recent) or bool(preview)
                             # Only cache POSITIVE results — never cache empty/none
                             # responses because they're usually transient urlscan
@@ -2232,7 +2321,7 @@ async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
                                 await set_cached(db, "urlscan", host or "", payload)
                             return payload
                         except Exception:
-                            fallback = {"scan_count": 0, "recent_scans": [], "preview": None}
+                            fallback = {"scan_count": 0, "recent_scans": [], "preview": None, "fresh_scan": None}
                             return fallback
 
             us, resolved = await asyncio.gather(urlscan(), _resolve_host(hc, host))
@@ -2248,6 +2337,7 @@ async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
                 "scan_count": us["scan_count"],
                 "recent_scans": us["recent_scans"],
                 "preview": us.get("preview"),
+                "fresh_scan": us.get("fresh_scan"),
                 "sources": sources,
             }
             if resolved:
@@ -3670,6 +3760,100 @@ async def admin_settings_clear_key(name: str, user: dict = Depends(get_current_u
     await _load_settings_from_db()  # revert to .env
     env_val = os.environ.get(name)
     return {"ok": True, "source": "env" if env_val else "missing", "masked": _mask_key(env_val) if env_val else ""}
+
+
+# ============================================================================
+# Enrichment / Reputation cache administration
+# ============================================================================
+
+_ENRICH_PROVIDERS = ("urlscan", "shodan_ip", "geo_ip", "dns_resolve", "circl_hash")
+_REP_COLLECTIONS = {
+    "reputation": "ioc_cache",       # VT / AbuseIPDB / HA / MalwareBazaar (6h TTL)
+    "ai_summary": "ioc_ai_cache",    # per-IOC AI verdicts (7-day TTL)
+}
+
+
+@api_router.get("/admin/cache/stats")
+async def admin_cache_stats(user: dict = Depends(get_current_user)):
+    """Return per-provider entry counts + oldest/newest timestamps for the
+    OSINT enrichment cache + related reputation caches."""
+    stats: dict = {"enrichment": {}, "reputation": {}}
+    total_enrich = 0
+    for prov in _ENRICH_PROVIDERS:
+        n = await db.ioc_enrich_cache.count_documents({"provider": prov})
+        total_enrich += n
+        stats["enrichment"][prov] = {"count": n}
+    stats["enrichment"]["_total"] = total_enrich
+    for label, coll in _REP_COLLECTIONS.items():
+        try:
+            stats["reputation"][label] = {
+                "collection": coll,
+                "count": await db[coll].count_documents({}),
+            }
+        except Exception as e:
+            stats["reputation"][label] = {"collection": coll, "error": str(e)[:120]}
+    return stats
+
+
+class PurgeCacheRequest(BaseModel):
+    scope: str = "enrichment"        # "enrichment" | "reputation" | "ai_summary" | "all"
+    provider: Optional[str] = None   # optional filter within enrichment scope
+    only_empty: bool = False         # if True, purge only entries with empty payloads
+
+
+@api_router.post("/admin/cache/purge")
+async def admin_cache_purge(req: PurgeCacheRequest, user: dict = Depends(get_current_user)):
+    """Purge enrichment / reputation / AI caches.
+
+    * `scope="enrichment"` + optional `provider=<name>` → clears entries in
+      `ioc_enrich_cache` (optionally filtered to a single provider).
+    * `scope="reputation"` → clears `ioc_cache` (VT/AbuseIPDB/HA/MB reputation).
+    * `scope="ai_summary"` → clears `ioc_ai_cache` (per-IOC LLM verdicts).
+    * `scope="all"` → all three above.
+    * `only_empty=True` → within the chosen scope, purge only docs whose
+      payload is empty (`{}`, `[]`, `""`, `None`, or urlscan-shaped empties).
+    """
+    deleted: dict[str, int] = {}
+
+    def _empty_urlscan_filter():
+        # Match urlscan cache docs that have no preview + no recent scans.
+        return {
+            "provider": "urlscan",
+            "$or": [
+                {"data.preview": None, "data.recent_scans": {"$size": 0}},
+                {"data.preview": {"$exists": False}},
+            ],
+        }
+
+    def _empty_generic_filter(prov: str) -> dict:
+        return {
+            "provider": prov,
+            "$or": [{"data": {}}, {"data": None}, {"data": ""}, {"data": []}],
+        }
+
+    if req.scope in ("enrichment", "all"):
+        if req.only_empty:
+            # Provider-agnostic emptiness cleanup.
+            providers = [req.provider] if req.provider else list(_ENRICH_PROVIDERS)
+            for prov in providers:
+                filt = _empty_urlscan_filter() if prov == "urlscan" else _empty_generic_filter(prov)
+                r = await db.ioc_enrich_cache.delete_many(filt)
+                deleted[f"enrichment:{prov}"] = r.deleted_count
+        else:
+            filt = {"provider": req.provider} if req.provider else {}
+            r = await db.ioc_enrich_cache.delete_many(filt)
+            deleted[f"enrichment:{req.provider or 'all'}"] = r.deleted_count
+
+    if req.scope in ("reputation", "all"):
+        r = await db.ioc_cache.delete_many({})
+        deleted["reputation"] = r.deleted_count
+
+    if req.scope in ("ai_summary", "all"):
+        r = await db.ioc_ai_cache.delete_many({})
+        deleted["ai_summary"] = r.deleted_count
+
+    total = sum(deleted.values())
+    return {"ok": True, "deleted": deleted, "total": total, "at": now_iso()}
 
 
 @api_router.post("/admin/settings/api-key/{name}/test")

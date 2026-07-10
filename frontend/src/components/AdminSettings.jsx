@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { CheckCircle2, XCircle, Loader2, ExternalLink, KeyRound, Radio, RefreshCw, Save, Trash2, Server, History, ChevronDown, ChevronUp, Rewind, Database, Zap } from "lucide-react";
 import { api } from "@/lib/api";
 import EnterpriseTierPanel from "@/components/EnterpriseTierPanel";
+import AdminCachePurge from "@/components/AdminCachePurge";
 
 const SYNCABLE_KEYS = new Set([
   "VIRUSTOTAL_API_KEY",
@@ -366,6 +367,7 @@ export default function AdminSettings() {
           enabled={data.community_sources.enabled}
           onUpdate={updateSources}
         />
+        <AdminCachePurge />
       </div>
     </main>
   );

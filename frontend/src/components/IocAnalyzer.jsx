@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, ExternalLink, Loader2, ShieldQuestion, MapPin, Server, AlertTriangle, Globe2, ShieldCheck, List, Sparkles, Database, Check, Bug, Zap } from "lucide-react";
+import { Search, ExternalLink, Loader2, ShieldQuestion, MapPin, Server, AlertTriangle, Globe2, ShieldCheck, List, Sparkles, Database, Check, Bug, Zap, RefreshCw } from "lucide-react";
 import { api, formatApiErrorDetail } from "@/lib/api";
 import { FAVICON, TYPE_LABEL } from "@/lib/iocUtils";
 import { useAuth } from "@/context/AuthContext";
@@ -279,7 +279,7 @@ export default function IocAnalyzer() {
 
               {en?.kind === "web" && (
                 <div className="space-y-4" data-testid="ioc-web-result">
-                  {en.preview?.screenshot && (() => {
+                  {en.preview?.screenshot ? (() => {
                     const norm = (u) => (u || "").replace(/\/+$/, "").toLowerCase();
                     const isUrlInput = result.type === "url";
                     const isMatch = isUrlInput ? norm(en.preview.url) === norm(result.value) : true;
@@ -310,7 +310,31 @@ export default function IocAnalyzer() {
                         <div className="absolute inset-0 bg-[#2E7DF5]/0 group-hover:bg-[#2E7DF5]/5 transition-colors" />
                       </a>
                     );
-                  })()}
+                  })() : en.fresh_scan?.result_url ? (
+                    <a
+                      href={en.fresh_scan.result_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-testid="ioc-fresh-scan"
+                      className="flex items-center gap-3 rounded-lg border border-cyan-200 bg-cyan-50 hover:bg-cyan-100 p-3 max-w-md transition-colors"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-cyan-100 flex items-center justify-center shrink-0">
+                        <RefreshCw className="w-5 h-5 text-cyan-600 animate-spin" style={{ animationDuration: "2s" }} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-slate-800">Fresh scan submitted to urlscan.io</div>
+                        <div className="text-xs text-slate-500">Screenshot ready in ~30–60 s · click to open</div>
+                      </div>
+                    </a>
+                  ) : (
+                    <div
+                      data-testid="ioc-no-urlscan"
+                      className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500 max-w-md flex items-center gap-2"
+                    >
+                      <Globe2 className="w-4 h-4 text-slate-400 shrink-0" />
+                      <span>No urlscan.io scans found for this host. VirusTotal / AbuseIPDB / Shodan enrichment shown below.</span>
+                    </div>
+                  )}
                   {(en.resolved_ip || en.geo) && (
                     <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
                       {en.resolved_ip && <span className="flex items-center gap-1.5 text-slate-700"><Server className="w-4 h-4 text-[#2E7DF5]" /> Resolves to <code className="font-mono-data text-slate-800">{en.resolved_ip}</code></span>}
