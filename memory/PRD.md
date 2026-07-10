@@ -27,6 +27,20 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - Full redesign: light corporate enterprise theme (Outfit/Inter/IBM Plex Mono).
 - Tests: backend 13/13, frontend 100%.
 
+## Implemented (2026-02-XX — Frontend PowerShell Badge + Client Decoder)
+- **`/app/frontend/src/lib/psDecoder.js`**: pure-browser PowerShell decoder.
+  - Regex detects `-e`, `-en`, `-enc`, `-EncodedCommand` (any case, PS 5 + PS 7 `pwsh`, quoted/unquoted, URL-safe base64, missing padding).
+  - Base64 → bytes with tolerant padding + urlsafe-alphabet normalization.
+  - Encoding sniffer: UTF-16LE (PS default) → UTF-8 fallback → strings-extractor fallback for noisy blobs.
+  - `decodePowerShellCommand(input)` returns `{detected, b64, encoding, decoded, byteLength, snippet, error}`.
+- **`/app/frontend/src/components/cyberlab/PowerShellBadge.jsx`**: status label + expandable quick-preview.
+  - Renders a cyan `POWERSHELL PAYLOAD DETECTED` chip with encoding + decoded-byte count above the Output panel whenever the input matches.
+  - Expand toggles a client-side quick-decode preview (max 400 chars) with a Copy button — instant feedback before the full backend chain runs.
+  - Wired into `pages/CyberLab.jsx` above the Output panel.
+- Verified via 10 in-browser unit tests (PS 5/7, all flag spellings, quoted, URL-safe b64, missing padding, UTF-16LE + UTF-8, non-PS negative, corrupted payloads).
+
+
+
 ## Implemented (2026-02-XX — Cross-Shell Decoder Coverage)
 - **New plugin `cmd-strip-carets`**: strip Windows CMD caret escapes (`p^o^w^e^r^shell`, `c^m^d`), preserves literal `^^` → `^`.
 - **New plugin `extract-bash-base64-pipe`**: recognizes `echo <b64> | base64 -d`, `--decode`, `-D`, `openssl enc -d -base64`.

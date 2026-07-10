@@ -17,6 +17,7 @@ import CustomRuleModal from "@/components/cyberlab/CustomRuleModal";
 import AutoInvestigateProgress from "@/components/cyberlab/AutoInvestigateProgress";
 import VerdictBanner from "@/components/cyberlab/VerdictBanner";
 import EnrichedIocsPanel from "@/components/cyberlab/EnrichedIocsPanel";
+import PowerShellBadge from "@/components/cyberlab/PowerShellBadge";
 
 const CATEGORY_STYLE = {
   Encoding:      { chip: "bg-blue-500/10 text-blue-300 border-blue-500/30",         dot: "bg-blue-400" },
@@ -819,6 +820,7 @@ export default function CyberLab() {
 
             {/* Output */}
             <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+              <PowerShellBadge input={input} />
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-400" />
