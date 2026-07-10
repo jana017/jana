@@ -97,6 +97,7 @@ export default function CyberLab() {
   const [enrichBusy, setEnrichBusy] = useState(false);
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [downloading, setDownloading] = useState(null); // format label while download in flight
+  const [selectedIocs, setSelectedIocs] = useState(() => new Set()); // Set<string> of IOC values checked in the IOCs tab
   const [tab, setTab] = useState("mitre");
   const [shareOpen, setShareOpen] = useState(false);
   const [ruleModalOpen, setRuleModalOpen] = useState(false);
@@ -408,6 +409,58 @@ export default function CyberLab() {
     try { sessionStorage.setItem("nivx.iocBatch", JSON.stringify(iocs)); } catch { /* quota */ }
     window.location.href = "/threat-intelligence#analyzer";
   };
+
+  // -- Inline bulk IOC analyzer: enrich a hand-picked subset of extracted
+  // IOCs using the existing /api/cyberlab/enrich-iocs endpoint. Reuses the
+  // same EnrichedIocsPanel that Auto Investigate uses.
+  const enrichSelectedIocs = useCallback(async (valuesOverride) => {
+    const src = (result?.analysis?.iocs || []).map((i) => i.value).filter(Boolean);
+    let picked = valuesOverride;
+    if (!picked) {
+      picked = src.filter((v) => selectedIocs.has(v));
+    }
+    if (!picked.length) {
+      toast.error("Select at least one IOC to analyze");
+      return;
+    }
+    if (picked.length > 20) {
+      toast.info(`Capped at 20 IOCs (you selected ${picked.length}).`);
+      picked = picked.slice(0, 20);
+    }
+    setEnrichBusy(true);
+    try {
+      const res = await enrichIocs(picked, enrichDepth);
+      setEnrichedIocs(res.results || []);
+      setEnrichMeta({
+        count: res.count, flagged: res.flagged,
+        duration_ms: res.duration_ms, iocs_per_sec: res.iocs_per_sec,
+        cache_hit_rate: res.cache_hit_rate, depth: res.depth,
+      });
+      toast.success(`Enriched ${res.count} IOC${res.count === 1 ? "" : "s"} · ${res.flagged} flagged · ${(res.duration_ms / 1000).toFixed(1)}s`);
+      // Scroll the enrichment panel into view
+      setTimeout(() => {
+        document.querySelector('[data-testid="enriched-iocs-panel"]')?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
+    } catch (e) {
+      toast.error(`Enrichment failed: ${e.message}`);
+    } finally { setEnrichBusy(false); }
+  }, [result, selectedIocs, enrichDepth]);
+
+  // Selection helpers for the IOC checkboxes.
+  const toggleIocSelected = useCallback((value) => {
+    setSelectedIocs((prev) => {
+      const next = new Set(prev);
+      if (next.has(value)) next.delete(value); else next.add(value);
+      return next;
+    });
+  }, []);
+  const selectAllIocs = useCallback(() => {
+    const all = (result?.analysis?.iocs || []).map((i) => i.value).filter(Boolean);
+    setSelectedIocs(new Set(all));
+  }, [result]);
+  const clearSelectedIocs = useCallback(() => setSelectedIocs(new Set()), []);
+  // Reset selection whenever a new investigation runs
+  useEffect(() => { setSelectedIocs(new Set()); }, [result?.analysis?.iocs]);
 
   const uploadFile = (e) => {
     const f = e.target.files?.[0]; if (!f) return;
@@ -857,23 +910,80 @@ export default function CyberLab() {
               {tab === "iocs" && (
                 analysis?.iocs?.length ? (
                   <>
-                    <div className="mb-2 flex items-center justify-between">
-                      <span className="text-[10px] text-slate-500">{analysis.iocs.length} extracted</span>
-                      <button data-testid="send-to-analyzer-btn" onClick={sendToAnalyzer} className="inline-flex items-center gap-1 text-[10px] font-semibold text-cyan-400 hover:text-cyan-300 transition-colors">
-                        Send to Analyzer <ChevronDown className="w-3 h-3 -rotate-90" />
-                      </button>
-                    </div>
-                    {analysis.iocs.map((i, k) => (
-                      <div key={k} className="flex items-center gap-2 rounded border border-slate-800 bg-slate-950 px-2 py-1.5" data-testid={`ioc-${k}`}>
-                        <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500 w-14 shrink-0">{i.type}</span>
-                        <span className="font-mono text-[11px] text-cyan-300 flex-1 truncate">{i.value}</span>
-                        <button
-                          onClick={() => { navigator.clipboard.writeText(i.value); toast.success("Copied"); }}
-                          className="text-slate-500 hover:text-white"
-                          title="Copy"
-                        ><Copy className="w-3 h-3" /></button>
+                    <div className="mb-2 flex items-center justify-between flex-wrap gap-2" data-testid="ioc-toolbar">
+                      <div className="flex items-center gap-2">
+                        <label className="inline-flex items-center gap-1.5 text-[10px] text-slate-400 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            data-testid="ioc-select-all"
+                            checked={selectedIocs.size > 0 && selectedIocs.size === analysis.iocs.length}
+                            onChange={(e) => (e.target.checked ? selectAllIocs() : clearSelectedIocs())}
+                            className="w-3.5 h-3.5 rounded border-slate-600 bg-slate-800 accent-cyan-500"
+                          />
+                          <span>{selectedIocs.size > 0 ? `${selectedIocs.size}/${analysis.iocs.length}` : `${analysis.iocs.length} extracted`}</span>
+                        </label>
                       </div>
-                    ))}
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          data-testid="analyze-selected-iocs-btn"
+                          onClick={() => enrichSelectedIocs()}
+                          disabled={enrichBusy || selectedIocs.size === 0}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded bg-cyan-500/15 border border-cyan-500/40 text-[10px] font-bold uppercase tracking-widest text-cyan-300 hover:bg-cyan-500/25 disabled:opacity-40 transition-colors"
+                          title="Enrich the selected IOCs inline via VT/AbuseIPDB/Shodan/urlscan/CIRCL/HA/MalwareBazaar"
+                        >
+                          {enrichBusy ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Radar className="w-3 h-3" />}
+                          {enrichBusy ? "Analyzing…" : `Analyze ${selectedIocs.size || ""}`}
+                        </button>
+                        <button
+                          data-testid="analyze-all-iocs-btn"
+                          onClick={() => {
+                            const all = analysis.iocs.map((i) => i.value).filter(Boolean);
+                            enrichSelectedIocs(all);
+                          }}
+                          disabled={enrichBusy}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded border border-slate-700 text-[10px] font-semibold text-slate-400 hover:text-cyan-300 hover:border-cyan-500/40 disabled:opacity-40 transition-colors"
+                          title="Analyze all extracted IOCs (capped at 20)"
+                        >
+                          Analyze all
+                        </button>
+                        <button
+                          data-testid="send-to-analyzer-btn"
+                          onClick={sendToAnalyzer}
+                          className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-400 hover:text-cyan-300 transition-colors"
+                          title="Send to the separate Threat Intelligence Bulk Analyzer page"
+                        >
+                          Send →
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      {analysis.iocs.map((i, k) => {
+                        const checked = selectedIocs.has(i.value);
+                        return (
+                          <label
+                            key={k}
+                            data-testid={`ioc-${k}`}
+                            data-selected={checked ? "true" : "false"}
+                            className={`flex items-center gap-2 rounded border px-2 py-1.5 cursor-pointer transition-colors ${checked ? "border-cyan-500/40 bg-cyan-500/5" : "border-slate-800 bg-slate-950 hover:border-slate-700"}`}
+                          >
+                            <input
+                              type="checkbox"
+                              data-testid={`ioc-check-${k}`}
+                              checked={checked}
+                              onChange={() => toggleIocSelected(i.value)}
+                              className="w-3.5 h-3.5 rounded border-slate-600 bg-slate-800 accent-cyan-500 shrink-0"
+                            />
+                            <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500 w-14 shrink-0">{i.type}</span>
+                            <span className="font-mono text-[11px] text-cyan-300 flex-1 truncate" title={i.value}>{i.value}</span>
+                            <button
+                              onClick={(e) => { e.preventDefault(); navigator.clipboard.writeText(i.value); toast.success("Copied"); }}
+                              className="text-slate-500 hover:text-white"
+                              title="Copy"
+                            ><Copy className="w-3 h-3" /></button>
+                          </label>
+                        );
+                      })}
+                    </div>
                   </>
                 ) : analysis && <div className="text-xs text-slate-500 italic px-2 py-4">No IOCs extracted.</div>
               )}

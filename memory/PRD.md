@@ -619,6 +619,13 @@ Wired into `ForensicEventsPanel.jsx` as a **Table | Timeline** toggle above the 
 
 ## 2026-07-09 — In-page OSINT Enrichment + Multi-format Reports + Perf Instrumentation (P0)
 
+### Selective IOC Enrichment (user request — 2026-07-10)
+- IOCs tab now renders **per-row checkboxes** + a compact toolbar with `select-all`, current selection count (`N/total`), primary **Analyze N** button, `Analyze all` secondary, and `Send →` (legacy bulk-analyzer path retained).
+- Selecting IOCs and clicking "Analyze N" runs the exact same `/api/cyberlab/enrich-iocs` pipeline the Auto Investigate stage uses — the enriched result populates the shared `EnrichedIocsPanel` and auto-scrolls into view.
+- Selection auto-resets when a new investigation runs. 20-IOC hard cap enforced; if user selects more, the client toasts and truncates.
+- No new endpoints — 100% reuse of the shipped enrichment engine + cache.
+- Regression: `test_enrich_iocs_mixed_types_selective` in `tests/test_cyberlab_enrich.py` (12 tests total in the enrich suite).
+
 ### CyberLab In-page OSINT Enrichment (new "OSINT Enrich" stage)
 - New `POST /api/cyberlab/enrich-iocs` accepts `{values, depth: free|comprehensive|ai}`. Runs the same OSINT pipeline as the Bulk Analyzer (VT · AbuseIPDB · Shodan · geo · DNS · urlscan · CIRCL · Hybrid Analysis · MalwareBazaar) with per-batch cap of 20 IOCs, dedup + normalization, 20 concurrent, cache-aware.
 - Depth = `free` returns enrichment only (no key-based reputation); `comprehensive` adds VT/AbuseIPDB/HA/MB; `ai` additionally generates a per-IOC Claude/Gemini verdict (7-day cache).

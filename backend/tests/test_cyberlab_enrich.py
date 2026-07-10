@@ -61,6 +61,24 @@ def test_enrich_iocs_dedupe(client):
     assert r.json()["count"] == 1
 
 
+def test_enrich_iocs_mixed_types_selective(client):
+    """Simulate the CyberLab IOC-selection flow: enrich a hand-picked subset
+    of extracted IOCs (mix of URL, IP, domain, hash)."""
+    r = client.post("/api/cyberlab/enrich-iocs", json={
+        "values": [
+            "https://malicious.site/beacon",
+            "45.137.21.90",
+            "44d88612fea8a8f36de82e1278abb02f",  # md5 (EICAR)
+        ],
+        "depth": "free",
+    })
+    assert r.status_code == 200
+    d = r.json()
+    assert d["count"] == 3
+    kinds = {row["type"] for row in d["results"]}
+    assert kinds == {"url", "ip", "md5"}
+
+
 def test_enrich_metrics_snapshot(client):
     r = client.get("/api/cyberlab/enrich-metrics")
     assert r.status_code == 200
