@@ -27,6 +27,25 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - Full redesign: light corporate enterprise theme (Outfit/Inter/IBM Plex Mono).
 - Tests: backend 13/13, frontend 100%.
 
+## Implemented (2026-02-XX — NivX HealthBot + Troubleshoot button)
+### Troubleshoot button (NivX Forge)
+- One-click deterministic input repair. Runs `_normalize_input` (dashes, quotes, NBSP, zero-width) + strips CMD carets + email quote markers + ellipsis + rebalances base64 padding + unfolds b64 line-wraps. Backend endpoint `POST /api/cyberlab/refine`.
+- Full audit modal: every fix (id, label, count, before/after preview) is shown so the analyst can verify what changed.
+- After repair, auto-re-runs Auto Investigate with the cleaned input.
+- 16 pytest cases cover every fix rule + the offline-safety guard (`repair.py` must not import LLM/network libs).
+
+### NivX HealthBot (Admin panel → HealthBot tab)
+- 10 built-in checks: `mongo_reachable`, `mongo_indexes`, `plugin_registry`, `expired_shares`, `enrichment_cache`, `webhook_backlog`, `osint_keys`, `env_sanity`, `disk`, `modules`.
+- Endpoints (all admin-only): `POST /api/healthbot/scan`, `POST /api/healthbot/scan-and-fix`, `POST /api/healthbot/fix/{id}`, `GET /api/healthbot/history`.
+- Safe auto-fixes: rebuild missing MongoDB indexes, prune expired shares, purge oversized enrichment cache — all idempotent.
+- Silent hourly cron loop on server startup — writes to `healthbot_scans` collection (last 100), only logs at WARN level when overall = CRITICAL.
+- Admin UI: severity chips, per-check "Fix" button, one-click "Scan + auto-fix" button, expandable details panel, 20-entry scan history.
+- **100% offline — no LLM/network calls anywhere.** Pytest guard (`test_healthbot_is_offline_safe`) asserts no `emergentintegrations`, `openai`, `anthropic`, `google.generativeai`, `aiohttp`, `requests` imports in the module.
+- 7 pytest cases + 2s SLA check. Scan completes in <10ms typically.
+- **170/170 pytest tests pass** across the full backend suite.
+
+
+
 ## Fixed (2026-02-XX — Copy-Paste Corruption + UTF-16BE)
 - **Root cause of user's screenshot bug**: their pasted payload came from a rich-text source (Word/PDF/email) that auto-formatted ASCII `-` into en-dash (`\u2013`). Every flag-based regex (`-enc`, `-e`, `-EncodedCommand`, `/SESSION:`) missed the payload, and the tool fell back to blind base64+utf16le → CJK glyphs.
 - **Fix (backend)** `/app/backend/cyberlab/engine.py`: new `_normalize_input()` folds all typographic Unicode dashes (U+2010..U+2015, U+2212, U+FF0D), smart quotes (U+2018..U+201F), non-breaking + narrow spaces (U+00A0, U+2009, U+200A, U+202F), and zero-width chars (U+200B..U+200D, U+FEFF) to ASCII. Applied at the entry of `run_recipe` and `auto_decode` — every plugin benefits automatically.

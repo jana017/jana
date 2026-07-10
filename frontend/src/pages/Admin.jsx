@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import { LogOut, Plus, Pencil, Trash2, ArrowLeft, ShieldCheck, Download, LayoutDashboard, Settings, Webhook } from "lucide-react";
+import { LogOut, Plus, Pencil, Trash2, ArrowLeft, ShieldCheck, Download, LayoutDashboard, Settings, Webhook, Activity } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import useSeo from "@/lib/useSeo";
@@ -10,6 +10,7 @@ import SocDashboard from "@/components/SocDashboard";
 import AdminSettings from "@/components/AdminSettings";
 import AdminCyberLabRules from "@/components/AdminCyberLabRules";
 import AdminWebhooks from "@/components/AdminWebhooks";
+import AdminHealthBot from "@/components/AdminHealthBot";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -247,6 +248,13 @@ function Dashboard() {
           >
             <Webhook className="w-4 h-4" /> EDR / SIEM
           </button>
+          <button
+            data-testid="tab-healthbot"
+            onClick={() => setView("healthbot")}
+            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${view === "healthbot" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+          >
+            <Activity className="w-4 h-4" /> HealthBot
+          </button>
         </div>
       </div>
 
@@ -256,6 +264,8 @@ function Dashboard() {
         <AdminSettings />
       ) : view === "webhooks" ? (
         <AdminWebhooks />
+      ) : view === "healthbot" ? (
+        <AdminHealthBot />
       ) : view === "cyberlab-rules" ? (
         <main className="mx-auto max-w-7xl px-6 py-10">
           <AdminCyberLabRules />

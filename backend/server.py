@@ -4035,6 +4035,50 @@ _attach_webhook_routes(webhooks_router, get_current_user)
 app.include_router(webhooks_router)
 
 
+# NivX HealthBot — deterministic, offline-safe self-diagnostics + repair
+from healthbot.router import (  # noqa: E402
+    router as healthbot_router,
+    attach_routes as _attach_healthbot_routes,
+    ensure_indexes as _healthbot_ensure_indexes,
+)
+_attach_healthbot_routes(healthbot_router, get_current_user)
+app.include_router(healthbot_router)
+
+
+async def _healthbot_hourly_loop():
+    """Silent background scan every hour. Only logs at WARN level when the
+    scan surfaces a critical severity — never wakes the admin unnecessarily.
+    Fully offline: no LLM, no external HTTP."""
+    from healthbot import checks as _hb_checks
+    import asyncio as _asyncio
+    from datetime import datetime as _dt, timezone as _tz
+    while True:
+        try:
+            await _asyncio.sleep(3600)
+            results = await _hb_checks.run_all_checks()
+            overall = max(
+                (r.severity for r in results),
+                key=lambda s: {"ok": 0, "info": 1, "warning": 2, "critical": 3}.get(s, 0),
+                default="ok",
+            )
+            await _hb_checks.persist_scan({
+                "started_at": _dt.now(_tz.utc).isoformat(),
+                "finished_at": _dt.now(_tz.utc).isoformat(),
+                "overall": overall,
+                "summary": {s: sum(1 for r in results if r.severity == s) for s in ("ok", "info", "warning", "critical")},
+                "results": [_hb_checks.to_dict(r) for r in results],
+                "auto_fixed": 0,
+                "triggered_by": "cron:hourly",
+            })
+            if overall == "critical":
+                logger.warning("HealthBot cron detected CRITICAL issues: %s",
+                               [r.id for r in results if r.severity == "critical"])
+        except _asyncio.CancelledError:
+            break
+        except Exception as e:  # noqa: BLE001
+            logger.warning("HealthBot cron iteration failed: %s", e)
+
+
 @app.on_event("startup")
 async def _webhooks_ensure_indexes_startup():
     try:
@@ -4042,6 +4086,16 @@ async def _webhooks_ensure_indexes_startup():
         logger.info("webhooks: mongo indexes ensured")
     except Exception as e:
         logger.warning("webhooks index setup failed: %s", e)
+
+
+@app.on_event("startup")
+async def _healthbot_startup():
+    try:
+        await _healthbot_ensure_indexes()
+        asyncio.create_task(_healthbot_hourly_loop())
+        logger.info("healthbot: indexes ensured, hourly cron scheduled")
+    except Exception as e:
+        logger.warning("healthbot startup failed: %s", e)
 
 
 @app.on_event("startup")
