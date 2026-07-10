@@ -27,6 +27,19 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - Full redesign: light corporate enterprise theme (Outfit/Inter/IBM Plex Mono).
 - Tests: backend 13/13, frontend 100%.
 
+## Implemented (2026-02-XX — Cross-Shell Decoder Coverage)
+- **New plugin `cmd-strip-carets`**: strip Windows CMD caret escapes (`p^o^w^e^r^shell`, `c^m^d`), preserves literal `^^` → `^`.
+- **New plugin `extract-bash-base64-pipe`**: recognizes `echo <b64> | base64 -d`, `--decode`, `-D`, `openssl enc -d -base64`.
+- **New plugin `extract-bash-hex-pipe`**: recognizes `echo <hex> | xxd -r -p`.
+- **New plugin `extract-strings`**: `strings(1)`-style extraction — surfaces UTF-16LE and ASCII printable runs from noisy binary blobs (Windows/PowerShell dumps, corrupted payloads).
+- **Engine corruption notice**: if auto-decode produces majority-non-printable output with no readable UTF-16LE/ASCII runs, the tool now surfaces a clear `[NivX Forge notice]` explaining the likely cause (misaligned base64 / intentional obfuscation / custom encoding / truncated capture) + a hex dump of the raw bytes — instead of showing CJK glyph garbage.
+- **`_PS_ENC_RE`** min length lowered from 16 → 8 chars so short encoded commands (`-enc <8-char-b64>`) chain through base64-decode.
+- **`_detect_base64`** min length lowered from 16 → 8 chars WITH `==`-padding requirement below 16 (prevents false positives on plain words like `Password`).
+- Plugin count now 40. 122/122 pytest tests pass across full backend suite (+ 12 new tests in `tests/test_shell_decoders.py`).
+- Verified via live API against the user's exact reported AMSI-bypass payload → now shows readable diagnostic instead of garbage; clean AMSI-bypass payloads still decode fully to `[Ref].Assembly.GetType('System.Management.Automation.AmsiUtils')...`.
+
+
+
 ## Implemented (2026-02-XX — EDR/SIEM Webhook Push)
 - New backend module `/app/backend/webhooks/` (models, presets, delivery, router).
 - 8 curated presets: Custom, Splunk HEC, Microsoft Sentinel Logic App, Elastic Security Rules API, CrowdStrike Falcon Custom IOA, Slack, Discord, Microsoft Teams — each with correct payload template + docs link.

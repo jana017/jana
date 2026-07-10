@@ -109,7 +109,48 @@ def auto_decode(input_text: str, max_depth: int = 8) -> Tuple[bytes, List[StepRe
             confidence=round(best_score, 2),
         ))
         current = out
+    # Final post-processing: if the decoded output is majority non-printable
+    # AND we actually did decode something, surface a helpful diagnostic
+    # instead of dumping CJK garbage from UTF-16LE-ing random bytes.
+    if trace and _looks_unreadable(current):
+        current = _corruption_notice(current)
     return current, trace
+
+
+def _looks_unreadable(data: bytes) -> bool:
+    """True when the output is majority non-printable — no ASCII or UTF-16LE
+    strings that a human analyst can actually read."""
+    if len(data) < 8:
+        return False
+    non_printable = sum(1 for b in data if b not in (9, 10, 13) and (b < 32 or b > 126))
+    if non_printable / len(data) < 0.6:
+        return False
+    # Second chance: look for embedded UTF-16LE printable runs.
+    import re as _re
+    if _re.search(rb"(?:[\x20-\x7e]\x00){6,}", data):
+        return False
+    if _re.search(rb"[\x20-\x7e]{8,}", data):
+        return False
+    return True
+
+
+def _corruption_notice(data: bytes) -> bytes:
+    """Prepend a human-readable diagnostic when the payload is unreadable.
+
+    Analysts always prefer a clear 'why did decoding fail?' message over a
+    wall of CJK glyphs from UTF-16LE-ing random bytes.
+    """
+    return (
+        b"[NivX Forge notice] Payload decoded successfully but yields no readable "
+        b"ASCII or UTF-16LE content. Common causes:\n"
+        b"  * The base64 blob has invalid byte alignment (stray char at start)\n"
+        b"  * The payload was intentionally malformed to evade sandboxing\n"
+        b"  * Custom / proprietary encoding - try manual decoders in the Operations panel\n"
+        b"  * Truncated capture - missing bytes from the original payload\n\n"
+        b"Raw decoded output (hex, first 128 bytes):\n"
+        + data[:128].hex().encode("ascii")
+        + (b"\n... (+%d more bytes)" % (len(data) - 128) if len(data) > 128 else b"")
+    )
 
 
 def compute_risk(mitre_count: int, rule_matches: List[Any], ioc_count: int) -> Tuple[int, str, str]:
