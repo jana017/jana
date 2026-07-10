@@ -143,7 +143,7 @@ def test_export_csv_contains_all_sections(client):
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/csv")
     txt = r.text
-    for marker in ("NivX CyberLab Report", "MITRE ATT&CK", "INDICATORS OF COMPROMISE",
+    for marker in ("NivX Forge Report", "MITRE ATT&CK", "INDICATORS OF COMPROMISE",
                    "OSINT ENRICHMENT", "1.1.1.1", "Cloudflare",
                    "AI verdict", "Cloudflare edge"):
         assert marker in txt, f"missing CSV section/marker: {marker}"
@@ -154,7 +154,7 @@ def test_export_json_shape(client):
     r = client.post("/api/cyberlab/export/json", json=_SAMPLE)
     assert r.status_code == 200
     d = _j.loads(r.text)
-    assert d["source"] == "NivX Machines CyberLab"
+    assert d["source"] == "NivX Machines · NivX Forge"
     assert d["verdict"] == "malicious"
     assert d["risk_score"] == 78
     assert len(d["enriched_iocs"]) == 1

@@ -83,7 +83,7 @@ def render(payload: Dict[str, Any]) -> bytes:
     brand_font = _font(28, bold=True)
     sub_font = _font(20)
     dr.text((60, 50), "NivX", fill=WHITE, font=brand_font)
-    dr.text((136, 55), "·  CyberLab", fill=CYAN, font=sub_font)
+    dr.text((136, 55), "·  NivX Forge", fill=CYAN, font=sub_font)
 
     # --- verdict label pill ---
     label_font = _font(46, bold=True)

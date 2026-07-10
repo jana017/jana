@@ -35,7 +35,7 @@ export default function IocAnalyzer() {
         sessionStorage.removeItem("nivx.forensicHandoff");
         if (parsed?.events?.length) {
           setForensic(parsed);
-          setHandoff({ count: parsed.iocs?.length || 0, source: parsed.source || "CyberLab", forensic: true });
+          setHandoff({ count: parsed.iocs?.length || 0, source: parsed.source || "NivX Forge", forensic: true });
           const iocValues = [...new Set((parsed.iocs || []).map((i) => String(i.value).trim()).filter(Boolean))];
           if (iocValues.length > 0) {
             setMode("bulk");
@@ -55,7 +55,7 @@ export default function IocAnalyzer() {
       sessionStorage.removeItem("nivx.iocBatch");
       const clean = [...new Set(iocs.map((v) => String(v).trim()).filter(Boolean))];
       if (clean.length === 0) return;
-      setHandoff({ count: clean.length, source: "CyberLab" });
+      setHandoff({ count: clean.length, source: "NivX Forge" });
       setMode("bulk");
       setBulkPrefill({ text: clean.join("\n"), autoRun: true, key: Date.now() });
       requestAnimationFrame(() => {

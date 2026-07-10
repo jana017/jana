@@ -45,7 +45,7 @@ export default function ShareModal({ open, onClose, report }) {
   };
 
   const shareUrl = share
-    ? `${window.location.origin}/cyberlab/share/${share.share_id}`
+    ? `${window.location.origin}/nivx-forge/share/${share.share_id}`
     : "";
 
   return (

@@ -78,7 +78,7 @@ function toMarkdown(forensic) {
     "# NivX Machines · Forensic Event Report",
     `_Generated ${new Date().toISOString()}_`,
     "",
-    `**Source:** ${forensic.source || "CyberLab"} · **Format:** \`${forensic.format || "?"}\` · **Events:** ${events.length}`,
+    `**Source:** ${forensic.source || "NivX Forge"} · **Format:** \`${forensic.format || "?"}\` · **Events:** ${events.length}`,
     "",
   ];
   const cols = COLUMNS.filter(([f]) => f !== "mitre_techniques").map(([, l]) => l);

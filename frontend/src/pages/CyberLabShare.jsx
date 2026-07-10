@@ -43,9 +43,9 @@ export default function CyberLabShare() {
 
   useSeo({
     title: state.data
-      ? `${(state.data.payload?.analysis?.verdict || "Analysis").toUpperCase()} · Risk ${state.data.payload?.analysis?.risk_score || 0} · NivX CyberLab`
-      : "Shared analysis · NivX CyberLab",
-    description: state.data?.payload?.analysis?.summary || "Public shared CyberLab analysis report — decoded payload, MITRE ATT&CK mapping, YARA hits, IOCs and risk score.",
+      ? `${(state.data.payload?.analysis?.verdict || "Analysis").toUpperCase()} · Risk ${state.data.payload?.analysis?.risk_score || 0} · NivX Forge`
+      : "Shared analysis · NivX Forge",
+    description: state.data?.payload?.analysis?.summary || "Public shared NivX Forge analysis report — decoded payload, MITRE ATT&CK mapping, YARA hits, IOCs and risk score.",
     canonical: shareUrl,
     ogImage: ogImageUrl,
     ogType: "article",
@@ -78,9 +78,9 @@ export default function CyberLabShare() {
           <p className="text-sm text-slate-400 mb-6">
             {state.error || "This shared analysis is missing or has expired (shares auto-delete after 30 days)."}
           </p>
-          <Link to="/cyberlab" data-testid="back-to-cyberlab"
+          <Link to="/nivx-forge" data-testid="back-to-cyberlab"
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-cyan-500 hover:bg-cyan-400 text-slate-900 text-sm font-semibold">
-            <Beaker className="w-4 h-4" /> Open CyberLab
+            <Beaker className="w-4 h-4" /> Open NivX Forge
           </Link>
         </div>
       </div>
@@ -98,7 +98,7 @@ export default function CyberLabShare() {
         <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
           <div>
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-cyan-400 mb-2">
-              <Beaker className="w-3.5 h-3.5" /> Shared CyberLab Analysis
+              <Beaker className="w-3.5 h-3.5" /> Shared NivX Forge Analysis
             </div>
             <h1 className="font-heading text-2xl md:text-3xl font-semibold text-white">Read-only report</h1>
             <p className="text-xs text-slate-500 mt-1">

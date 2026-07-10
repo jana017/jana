@@ -181,7 +181,7 @@ export default function ProcessTreeViewer({ initialTree = null, initialText = ""
     try {
       // Ship the full forensic events + IOC list; the analyzer will render both.
       sessionStorage.setItem("nivx.forensicHandoff", JSON.stringify({
-        source: "CyberLab · Sysmon Parser",
+        source: "NivX Forge · Sysmon Parser",
         format: t.format,
         events: t.forensic_events,
         iocs: t.iocs,

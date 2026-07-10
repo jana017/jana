@@ -1,6 +1,6 @@
 import "@/App.css";
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import ReactLenis from "lenis/react";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/context/AuthContext";
@@ -15,7 +15,6 @@ const BlogPost = lazy(() => import("@/pages/BlogPost"));
 const BlogIndex = lazy(() => import("@/pages/BlogIndex"));
 const CommunityCd = lazy(() => import("@/pages/CommunityCd"));
 const CommunityFeed = lazy(() => import("@/pages/CommunityFeed"));
-const PayloadLab = lazy(() => import("@/pages/PayloadLab"));
 const CyberLab = lazy(() => import("@/pages/CyberLab"));
 const CyberLabShare = lazy(() => import("@/pages/CyberLabShare"));
 
@@ -46,10 +45,12 @@ function App() {
                 <Route path="/blog/:slug" element={<BlogPost />} />
                 <Route path="/community/cd/:topic" element={<CommunityCd />} />
                 <Route path="/community/:source" element={<CommunityFeed />} />
-                <Route path="/detonate" element={<PayloadLab />} />
-                <Route path="/payload-lab" element={<PayloadLab />} />
+                <Route path="/detonate" element={<Navigate to="/nivx-forge" replace />} />
+                <Route path="/payload-lab" element={<Navigate to="/nivx-forge" replace />} />
                 <Route path="/cyberlab" element={<CyberLab />} />
+                <Route path="/nivx-forge" element={<CyberLab />} />
                 <Route path="/cyberlab/share/:shareId" element={<CyberLabShare />} />
+                <Route path="/nivx-forge/share/:shareId" element={<CyberLabShare />} />
                 <Route path="/admin" element={<Admin />} />
               </Routes>
             </Suspense>

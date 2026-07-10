@@ -54,10 +54,10 @@ export default function AdminCyberLabRules() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="font-heading text-lg font-semibold text-slate-900 flex items-center gap-2">
-            <Bug className="w-4 h-4 text-fuchsia-500" /> CyberLab custom rules
+            <Bug className="w-4 h-4 text-fuchsia-500" /> NivX Forge custom rules
           </h3>
           <p className="text-xs text-slate-500">
-            Global YARA-lite detection rules applied to every CyberLab analysis (in addition to the 13 built-in rules).
+            Global YARA-lite detection rules applied to every NivX Forge analysis (in addition to the 13 built-in rules).
           </p>
         </div>
         <button
@@ -73,7 +73,7 @@ export default function AdminCyberLabRules() {
         <div className="text-sm text-slate-500 flex items-center gap-2 py-6"><RefreshCw className="w-4 h-4 animate-spin" /> Loading…</div>
       ) : rules.length === 0 ? (
         <div className="text-sm text-slate-500 italic py-8 text-center border border-dashed border-slate-200 rounded-md">
-          No custom rules yet. Add one to detect internal threat patterns across every CyberLab analysis.
+          No custom rules yet. Add one to detect internal threat patterns across every NivX Forge analysis.
         </div>
       ) : (
         <div className="space-y-2">
@@ -150,7 +150,7 @@ function AddRuleForm({ onClose, onSaved }) {
       data-testid="admin-rule-form">
       <div className="w-full max-w-xl rounded-xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-semibold text-slate-900">Add global CyberLab rule</h3>
+          <h3 className="text-base font-semibold text-slate-900">Add global NivX Forge rule</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-900"><X className="w-4 h-4" /></button>
         </div>
         <div className="space-y-3">

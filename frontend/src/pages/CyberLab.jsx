@@ -73,9 +73,9 @@ const RISK_TEXT = (score) => {
 
 export default function CyberLab() {
   useSeo({
-    title: "CyberLab — Decoder & Threat Analysis Platform · NivX Machines",
+    title: "NivX Forge — Decoder & Threat Analysis Platform · NivX Machines",
     description: "Enterprise-grade payload decoder for DFIR analysts. Auto-decode PowerShell, MITRE ATT&CK mapping, YARA-lite rules, IOC extraction, and risk scoring.",
-    canonical: "https://nivxmachines.com/cyberlab",
+    canonical: "https://nivxmachines.com/nivx-forge",
   });
 
   const [plugins, setPlugins] = useState([]);
@@ -487,7 +487,7 @@ export default function CyberLab() {
         <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-cyan-400 mb-2">
-              <Cpu className="w-3.5 h-3.5" /> CyberLab · v2
+              <Cpu className="w-3.5 h-3.5" /> NivX Forge
               <span className="ml-2 inline-flex items-center gap-1 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
                 <Radar className="w-3 h-3" /> Auto-decode · MITRE · YARA · IOC
               </span>
@@ -780,7 +780,7 @@ export default function CyberLab() {
               </div>
               {recipe.length === 0 ? (
                 <div className="text-xs text-slate-500 italic px-2 py-6 text-center border border-dashed border-slate-800 rounded-md">
-                  Click operations on the left to build a pipeline, or hit <span className="text-cyan-400 font-semibold">Auto Decode</span> to let CyberLab figure it out.
+                  Click operations on the left to build a pipeline, or hit <span className="text-cyan-400 font-semibold">Auto Decode</span> to let NivX Forge figure it out.
                 </div>
               ) : (
                 <div className="space-y-1.5">

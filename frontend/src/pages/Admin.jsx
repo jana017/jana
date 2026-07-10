@@ -237,7 +237,7 @@ function Dashboard() {
             onClick={() => setView("cyberlab-rules")}
             className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${view === "cyberlab-rules" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
           >
-            CyberLab Rules
+            NivX Forge Rules
           </button>
         </div>
       </div>

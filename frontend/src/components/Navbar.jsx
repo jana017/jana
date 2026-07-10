@@ -30,7 +30,7 @@ export default function Navbar() {
   useEffect(() => {
     const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 800));
     const handle = idle(() => {
-      ["/blog", "/threat-intelligence", "/cybersecurity-101", "/detonate", "/cyberlab", "/admin"].forEach(prefetchRoute);
+      ["/blog", "/threat-intelligence", "/cybersecurity-101", "/nivx-forge", "/admin"].forEach(prefetchRoute);
     });
     return () => {
       if (window.cancelIdleCallback) window.cancelIdleCallback(handle);
@@ -99,23 +99,13 @@ export default function Navbar() {
             Threat Intelligence
           </Link>
           <Link
-            to="/detonate"
-            data-testid="nav-payload-lab"
-            onMouseEnter={() => prefetchRoute("/detonate")}
-            onFocus={() => prefetchRoute("/detonate")}
-            className={`inline-flex items-center gap-1 text-sm font-medium transition-colors ${location.pathname === "/detonate" ? "text-[#F5821F]" : "text-slate-600 hover:text-slate-900"}`}
-          >
-            <Beaker className="w-3.5 h-3.5" /> Payload Lab
-          </Link>
-          <Link
-            to="/cyberlab"
+            to="/nivx-forge"
             data-testid="nav-cyberlab"
-            onMouseEnter={() => prefetchRoute("/cyberlab")}
-            onFocus={() => prefetchRoute("/cyberlab")}
-            className={`inline-flex items-center gap-1 text-sm font-medium transition-colors ${location.pathname === "/cyberlab" ? "text-cyan-500" : "text-slate-600 hover:text-slate-900"}`}
+            onMouseEnter={() => prefetchRoute("/nivx-forge")}
+            onFocus={() => prefetchRoute("/nivx-forge")}
+            className={`inline-flex items-center gap-1 text-sm font-medium transition-colors ${(location.pathname === "/nivx-forge" || location.pathname === "/cyberlab") ? "text-cyan-500" : "text-slate-600 hover:text-slate-900"}`}
           >
-            <Beaker className="w-3.5 h-3.5" /> CyberLab
-            <span className="text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-cyan-50 text-cyan-700 border border-cyan-200">v2</span>
+            <Beaker className="w-3.5 h-3.5" /> NivX Forge
           </Link>
         </div>
 
@@ -140,11 +130,8 @@ export default function Navbar() {
           <Link to="/blog" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Blog</Link>
           <Link to="/cybersecurity-101" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Cyber 101</Link>
           <Link to="/threat-intelligence" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-[#2E7DF5]">Threat Intelligence</Link>
-          <Link to="/detonate" data-testid="mobile-nav-payload-lab" onClick={() => setOpen(false)} className="inline-flex items-center gap-1.5 text-left text-sm font-medium text-slate-700">
-            <Beaker className="w-4 h-4" /> Payload Lab
-          </Link>
-          <Link to="/cyberlab" data-testid="mobile-nav-cyberlab" onClick={() => setOpen(false)} className="inline-flex items-center gap-1.5 text-left text-sm font-medium text-cyan-600">
-            <Beaker className="w-4 h-4" /> CyberLab v2
+          <Link to="/nivx-forge" data-testid="mobile-nav-cyberlab" onClick={() => setOpen(false)} className="inline-flex items-center gap-1.5 text-left text-sm font-medium text-cyan-600">
+            <Beaker className="w-4 h-4" /> NivX Forge
           </Link>
           <Link to="/admin" data-testid="mobile-nav-admin-link" onClick={() => setOpen(false)} className="inline-flex items-center gap-2 text-left text-sm font-semibold text-slate-700 pt-3 mt-1 border-t border-slate-200">
             <ShieldCheck className="w-4 h-4" /> Admin sign in
