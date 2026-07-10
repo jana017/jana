@@ -2026,7 +2026,8 @@ async def _shodan_ip(hc: httpx.AsyncClient, ip: str) -> dict:
                 m["hit"] = bool(data)
             except Exception:
                 data = {}
-    await set_cached(db, "shodan_ip", ip, data)
+    if data:
+        await set_cached(db, "shodan_ip", ip, data)
     return data
 
 
@@ -2048,7 +2049,8 @@ async def _geo_ip(hc: httpx.AsyncClient, ip: str) -> dict:
                 m["hit"] = bool(data)
             except Exception:
                 data = {}
-    await set_cached(db, "geo_ip", ip, data)
+    if data:
+        await set_cached(db, "geo_ip", ip, data)
     return data
 
 
@@ -2075,7 +2077,7 @@ async def _resolve_host(hc: httpx.AsyncClient, host: str) -> Optional[str]:
                             return ans["data"]
             except Exception:
                 pass
-    await set_cached(db, "dns_resolve", host, "")
+    # Do NOT cache the negative result — DNS resolution may be transient.
     return None
 
 
@@ -2162,17 +2164,33 @@ async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
                                     scan_count = j1.get("total", 0) or scan_count
 
                             # Step 2 — quoted-domain search + strict host filter.
+                            # Fallback: if strict filter yields nothing, accept
+                            # subdomains so we don't return an empty preview for
+                            # domains that only have subdomain scans (e.g. root
+                            # `cloudflare.com` when only `challenges.cloudflare.com`
+                            # is present in urlscan).
+                            raw_j2_results: list[dict] = []
                             if host:
                                 dq = f'page.domain:"{host}"'
                                 r2 = await hc.get(f"https://urlscan.io/api/v1/search/?q={dq}&size=25", headers=headers, timeout=6.0)
                                 if r2.status_code == 200:
                                     j2 = r2.json()
-                                    filtered = [x for x in (j2.get("results", []) or []) if _norm_host(x.get("task", {}).get("url", "")) == target_host]
+                                    raw_j2_results = j2.get("results", []) or []
+                                    filtered = [x for x in raw_j2_results if _norm_host(x.get("task", {}).get("url", "")) == target_host]
                                     existing_ids = {x.get("_id") for x in all_results}
                                     for x in filtered:
                                         if x.get("_id") not in existing_ids:
                                             all_results.append(x)
                                     scan_count = scan_count or j2.get("total", 0) or 0
+
+                            # Subdomain fallback: only if we found nothing exact.
+                            if not all_results and raw_j2_results:
+                                def _is_subdomain(u: str) -> bool:
+                                    n = _norm_host(u)
+                                    return bool(n) and (n == target_host or n.endswith("." + target_host))
+                                for x in raw_j2_results:
+                                    if _is_subdomain(x.get("task", {}).get("url", "")):
+                                        all_results.append(x)
 
                             recent = [{"url": x["task"]["url"], "date": x["task"].get("time"), "score": x.get("verdicts", {}).get("overall", {}).get("score"), "screenshot": x.get("screenshot")} for x in all_results[:5]]
 
@@ -2207,7 +2225,11 @@ async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
                                     break
                             payload = {"scan_count": scan_count, "recent_scans": recent, "preview": preview}
                             m["hit"] = bool(recent) or bool(preview)
-                            await set_cached(db, "urlscan", host or "", payload)
+                            # Only cache POSITIVE results — never cache empty/none
+                            # responses because they're usually transient urlscan
+                            # slowness or rate-limit backoffs, not real emptiness.
+                            if recent or preview:
+                                await set_cached(db, "urlscan", host or "", payload)
                             return payload
                         except Exception:
                             fallback = {"scan_count": 0, "recent_scans": [], "preview": None}
