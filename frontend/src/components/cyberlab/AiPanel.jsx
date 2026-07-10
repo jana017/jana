@@ -2,15 +2,22 @@
  * AI Analysis panel — calls Claude Sonnet 4.5 for triage summary + draft
  * Sigma & YARA rules. Presents them in tabs with copy buttons.
  */
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Brain, Copy, RefreshCw, Sparkles } from "lucide-react";
 import { runAiAnalysis } from "@/lib/cyberlabApi";
 
-export default function AiPanel({ input, output, analysis, onGenerated }) {
+export default function AiPanel({ input, output, analysis, ai, onGenerated }) {
   const [busy, setBusy] = useState(false);
-  const [data, setData] = useState(null);
+  const [data, setData] = useState(ai || null);
   const [tab, setTab] = useState("summary");
+
+  // Sync when the parent's Auto Investigate orchestrator generates AI content
+  // — otherwise this panel would keep showing "Generate" even after the pipe
+  // successfully ran /ai-analysis at the orchestrator level.
+  useEffect(() => {
+    if (ai && ai !== data) setData(ai);
+  }, [ai]);
 
   const generate = async () => {
     if (!output && !input) { toast.error("No decoded output to analyze."); return; }

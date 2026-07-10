@@ -1086,6 +1086,7 @@ export default function CyberLab() {
               input={input}
               output={result.output}
               analysis={result.analysis || {}}
+              ai={ai}
               onGenerated={setAi}
               key={result.output?.slice(0, 40)}
             />
