@@ -7,7 +7,6 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import axios from "axios";
 import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
 import { ArrowLeft } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "";
@@ -59,7 +58,6 @@ export default function CmsPage() {
           </article>
         )}
       </main>
-      <Footer />
     </div>
   );
 }
