@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Brain, Copy, RefreshCw, Sparkles } from "lucide-react";
 import { runAiAnalysis } from "@/lib/cyberlabApi";
+import PushToSIEMButton from "./PushToSIEMButton";
 
 const MODEL_LABELS = {
   claude: "Claude Sonnet 4.6",
@@ -86,6 +87,9 @@ export default function AiPanel({ input, output, analysis, ai, onGenerated }) {
             {busy ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
             {data ? "Regenerate" : "Generate summary + draft rules"}
           </button>
+          {data && (
+            <PushToSIEMButton input={input} output={output} ai={data} analysis={analysis} />
+          )}
         </div>
       </div>
 

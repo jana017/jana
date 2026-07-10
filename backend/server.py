@@ -4025,6 +4025,24 @@ from cyberlab import persistence as cyberlab_persistence  # noqa: E402
 app.include_router(cyberlab_router)
 app.include_router(cyberlab_admin_router)
 
+# EDR/SIEM webhook subsystem — admin CRUD + one-click push from NivX Forge
+from webhooks.router import (  # noqa: E402
+    router as webhooks_router,
+    attach_routes as _attach_webhook_routes,
+    ensure_indexes as _webhooks_ensure_indexes,
+)
+_attach_webhook_routes(webhooks_router, get_current_user)
+app.include_router(webhooks_router)
+
+
+@app.on_event("startup")
+async def _webhooks_ensure_indexes_startup():
+    try:
+        await _webhooks_ensure_indexes()
+        logger.info("webhooks: mongo indexes ensured")
+    except Exception as e:
+        logger.warning("webhooks index setup failed: %s", e)
+
 
 @app.on_event("startup")
 async def _cyberlab_ensure_indexes():
