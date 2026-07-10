@@ -5,7 +5,6 @@ import About from "@/components/Manifesto";
 import StatsBand from "@/components/EditorialMarquee";
 import LiveThreatLandscape from "@/components/LiveThreatLandscape";
 import LiveGlobalAttacks from "@/components/LiveGlobalAttacks";
-import AttackFeed from "@/components/AttackFeed";
 import Services from "@/components/Services";
 import Gallery from "@/components/Gallery";
 import Careers from "@/components/Careers";
@@ -34,7 +33,6 @@ export default function Landing() {
       <StatsBand />
       <LiveThreatLandscape />
       <LiveGlobalAttacks />
-      <AttackFeed />
       <Services />
       <Gallery />
       <Careers />
