@@ -719,19 +719,41 @@ export default function CyberLab() {
           <section className="lg:col-span-5 space-y-4">
             {/* Input */}
             <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-cyan-400" />
                   <h3 className="text-xs font-bold uppercase tracking-widest text-slate-300">Input</h3>
                   <span className="text-[10px] text-slate-500">{input.length.toLocaleString()} chars</span>
                 </div>
-                <button
-                  data-testid="clear-input-btn"
-                  onClick={() => { setInput(""); setResult(null); }}
-                  className="text-[10px] text-slate-400 hover:text-red-400 inline-flex items-center gap-1 transition-colors"
-                >
-                  <X className="w-3 h-3" /> Clear
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    data-testid="input-auto-investigate-btn"
+                    onClick={runAutoInvestigate}
+                    disabled={investigateBusy || !input.trim()}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-gradient-to-r from-cyan-500 to-fuchsia-500 hover:from-cyan-400 hover:to-fuchsia-400 text-slate-900 font-bold text-[10px] uppercase tracking-widest disabled:opacity-40 transition-colors shadow shadow-cyan-500/20"
+                    title="Run full pipeline: detect → decode → analyze → AI → enrich → render"
+                  >
+                    {investigateBusy ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Radar className="w-3 h-3" />}
+                    Auto Investigate
+                  </button>
+                  <button
+                    data-testid="input-auto-decode-btn"
+                    onClick={runAuto}
+                    disabled={autoBusy || investigateBusy || !input.trim()}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-700 hover:border-cyan-500/40 text-[10px] font-semibold text-slate-300 hover:text-cyan-300 disabled:opacity-40 transition-colors"
+                    title="Recursive decode only (no AI, no enrichment)"
+                  >
+                    {autoBusy ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                    Decode
+                  </button>
+                  <button
+                    data-testid="clear-input-btn"
+                    onClick={() => { setInput(""); setResult(null); }}
+                    className="text-[10px] text-slate-400 hover:text-red-400 inline-flex items-center gap-1 transition-colors px-1.5 py-1"
+                  >
+                    <X className="w-3 h-3" /> Clear
+                  </button>
+                </div>
               </div>
               <textarea
                 data-testid="input-textarea"
