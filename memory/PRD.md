@@ -27,6 +27,20 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - Full redesign: light corporate enterprise theme (Outfit/Inter/IBM Plex Mono).
 - Tests: backend 13/13, frontend 100%.
 
+## Implemented (2026-02-XX — Developer tab: full self-service CMS)
+### Admin → Developer tab (`/admin` → "Developer")
+- **Admin tab visibility toggle** — hide/show sub-tabs your team doesn't use; locked tabs (Overview, Developer) cannot be hidden.
+- **Landing-page section layout** — reorder + enable/disable Hero, About, Threat Landscape, Attack Feed, Services, Gallery, Careers, Contact.
+- **Top-bar announcement banner** — active toggle, 4 variants (info/success/warning/promo), optional link + expiry, dismissable. Mounted globally via `AnnouncementBanner` component; dismissed state remembered in localStorage keyed by text.
+- **Custom Markdown pages CRUD** — publish arbitrary pages at `/pages/<slug>`. Server renders Markdown → HTML with a small deterministic escaper (no external deps). Route wired in `App.js`.
+- **File uploads (any format)** — GridFS-backed storage; 25MB per file; grid view with thumbnails for images; one-click "Copy URL" to paste into custom pages/CSS. Endpoint `GET/POST/DELETE /api/cms/files`.
+- **Site branding** — logo URL, favicon URL, site title, custom CSS (injected into `<head>`), custom JS (injected before `</body>`, `</script>` sequences escaped). `useBrandingInjection` hook applies these on every page load.
+- Endpoints (all `/api/cms/*`): `admin-tabs`, `landing-sections`, `announcement`, `branding`, `pages`, `files` — every public endpoint requires no auth, every mutation requires admin JWT.
+- **10 pytest cases + offline-safety guard**: total 180/180 backend tests pass.
+- **Zero LLM / external HTTP** in the whole `cms/` module — safe to move to Hostinger VPS.
+
+
+
 ## Implemented (2026-02-XX — NivX HealthBot + Troubleshoot button)
 ### Troubleshoot button (NivX Forge)
 - One-click deterministic input repair. Runs `_normalize_input` (dashes, quotes, NBSP, zero-width) + strips CMD carets + email quote markers + ellipsis + rebalances base64 padding + unfolds b64 line-wraps. Backend endpoint `POST /api/cyberlab/refine`.

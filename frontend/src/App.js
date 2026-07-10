@@ -6,6 +6,8 @@ import { Toaster } from "sonner";
 import { AuthProvider } from "@/context/AuthContext";
 import ScrollToTop from "@/components/ScrollToTop";
 import ScrollToTopOnNav from "@/components/ScrollToTopOnNav";
+import AnnouncementBanner from "@/components/AnnouncementBanner";
+import useBrandingInjection from "@/lib/useBrandingInjection";
 
 const Landing = lazy(() => import("@/pages/Landing"));
 const Admin = lazy(() => import("@/pages/Admin"));
@@ -17,6 +19,7 @@ const CommunityCd = lazy(() => import("@/pages/CommunityCd"));
 const CommunityFeed = lazy(() => import("@/pages/CommunityFeed"));
 const CyberLab = lazy(() => import("@/pages/CyberLab"));
 const CyberLabShare = lazy(() => import("@/pages/CyberLabShare"));
+const CmsPage = lazy(() => import("@/pages/CmsPage"));
 
 function RouteFallback() {
   return (
@@ -27,11 +30,13 @@ function RouteFallback() {
 }
 
 function App() {
+  useBrandingInjection();
   return (
     <AuthProvider>
       <ReactLenis root options={{ lerp: 0.09, smoothWheel: true }}>
         <div className="App min-h-screen bg-white">
           <Toaster position="bottom-right" richColors />
+          <AnnouncementBanner />
           <ScrollToTop />
           <BrowserRouter>
             <ScrollToTopOnNav />
@@ -52,6 +57,7 @@ function App() {
                 <Route path="/cyberlab/share/:shareId" element={<CyberLabShare />} />
                 <Route path="/nivx-forge/share/:shareId" element={<CyberLabShare />} />
                 <Route path="/admin" element={<Admin />} />
+                <Route path="/pages/:slug" element={<CmsPage />} />
               </Routes>
             </Suspense>
           </BrowserRouter>

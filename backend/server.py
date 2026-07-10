@@ -4045,6 +4045,25 @@ _attach_healthbot_routes(healthbot_router, get_current_user)
 app.include_router(healthbot_router)
 
 
+# Site CMS — admin tab visibility, landing sections, announcement, custom pages
+from cms.router import (  # noqa: E402
+    router as cms_router,
+    attach_routes as _attach_cms_routes,
+    ensure_indexes as _cms_ensure_indexes,
+)
+_attach_cms_routes(cms_router, get_current_user)
+app.include_router(cms_router)
+
+
+@app.on_event("startup")
+async def _cms_startup():
+    try:
+        await _cms_ensure_indexes()
+        logger.info("cms: mongo indexes ensured")
+    except Exception as e:
+        logger.warning("cms startup failed: %s", e)
+
+
 async def _healthbot_hourly_loop():
     """Silent background scan every hour. Only logs at WARN level when the
     scan surfaces a critical severity — never wakes the admin unnecessarily.
