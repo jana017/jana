@@ -27,6 +27,18 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - Full redesign: light corporate enterprise theme (Outfit/Inter/IBM Plex Mono).
 - Tests: backend 13/13, frontend 100%.
 
+## Implemented (2026-02-XX — Decoder Robustness Pass)
+- Added `extract-notepad-session` plugin: decodes Windows 11 Notepad `/SESSION:<base64>` args → recovers persisted file paths from UTF-16LE payload (skips session-id junk prefix + null padding).
+- Added `extract-fromb64string` plugin: extracts inline `[Convert]::FromBase64String("...")` / `[System.Convert]::…` blobs (fileless PS staging).
+- Improved `_b64_decode_lenient`: targets the longest contiguous base64 run instead of stripping the whole input — fixes cases like `payload%3D<b64>` where URL-decode produces `payload=<b64>` (whole string looked b64-alphabet).
+- Enabled auto-detect for JS/CharCode deobfuscation (`String.fromCharCode`, `unescape(...)`) — now fires automatically.
+- Raised detect scores for `url-decode` and `unicode-escape-decode` so single `%XX` / 2+ `\uXXXX` matches clear the 0.7 auto-decode floor.
+- Broadened PS `-EncodedCommand` regex to also match `pwsh` (PowerShell 7).
+- Plugin count: 34 → 36. All 111 pytest cases pass (`tests/test_decoder_matrix.py`, `tests/test_notepad_session_decoder.py`).
+- Verified end-to-end via live API: user-reported Notepad payload now decodes cleanly to `C:\Users\loukiosk\OneDrive - Piston Group\Desktop\startup_edge.bat` in one step.
+
+
+
 ## Credentials
 - Admin: admin@nivxmachines.com / NivX@Admin2025 (see /app/memory/test_credentials.md)
 

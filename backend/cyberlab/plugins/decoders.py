@@ -87,12 +87,30 @@ def _to_best_text(data: bytes) -> str:
 # ---------------------------------------------------------------------------
 def _b64_decode_lenient(data: bytes, urlsafe: bool = False) -> bytes:
     text = data.decode("ascii", errors="ignore")
-    # Strip anything that isn't base64
+    # If input contains a large contiguous base64 run (>=16 chars), decode
+    # ONLY that run. This avoids treating adjacent alphanumeric noise like
+    # `payload=cG93...` (which is entirely b64-alphabet) as part of the blob.
     if urlsafe:
-        text = re.sub(r"[^A-Za-z0-9\-_=]", "", text)
-        text = text.replace("-", "+").replace("_", "/")
+        alphabet_re = r"[A-Za-z0-9\-_]{16,}={0,2}"
     else:
-        text = re.sub(r"[^A-Za-z0-9+/=]", "", text)
+        alphabet_re = r"[A-Za-z0-9+/]{16,}={0,2}"
+    longest = ""
+    for m in re.finditer(alphabet_re, text):
+        chunk = m.group(0)
+        # Prefer chunks whose length (excluding padding) is a multiple of 4.
+        core = chunk.rstrip("=")
+        if len(core) % 4 in (0, 2, 3) and len(chunk) > len(longest):
+            longest = chunk
+    if longest and len(longest) >= 16:
+        text = longest
+    else:
+        # Fall back to whole-input strip (handles whitespace-broken blobs).
+        if urlsafe:
+            text = re.sub(r"[^A-Za-z0-9\-_=]", "", text)
+        else:
+            text = re.sub(r"[^A-Za-z0-9+/=]", "", text)
+    if urlsafe:
+        text = text.replace("-", "+").replace("_", "/")
     # Strip trailing =, re-pad
     text = text.rstrip("=")
     rem = len(text) % 4
@@ -208,7 +226,10 @@ def _detect_url(data: bytes) -> float:
     matches = len(re.findall(rb"%[0-9a-fA-F]{2}", data))
     if matches == 0:
         return 0.0
-    return min(0.9, 0.5 + matches / max(len(data), 1) * 2)
+    # Any %XX sequence is a strong signal — auto-decoder threshold is 0.7,
+    # so guarantee we clear it even for a single match. Additional matches
+    # only push the score higher.
+    return min(0.95, 0.75 + matches * 0.02)
 
 
 register(Plugin(
@@ -262,7 +283,10 @@ def _detect_unicode_escape(data: bytes) -> float:
     matches = len(re.findall(r"\\u[0-9a-fA-F]{4}|\\x[0-9a-fA-F]{2}", text))
     if matches == 0:
         return 0.0
-    return min(0.85, 0.5 + matches * 0.04)
+    # 2+ escape sequences is unambiguous — clear the 0.7 auto-decode floor.
+    if matches >= 2:
+        return min(0.9, 0.75 + matches * 0.02)
+    return 0.6
 
 
 def _unicode_escape_decode(data: bytes, params: Dict[str, Any]) -> bytes:
@@ -415,7 +439,7 @@ register(Plugin(
 # PowerShell -EncodedCommand extractor (auto-triggered pre-processor)
 # ---------------------------------------------------------------------------
 _PS_ENC_RE = re.compile(
-    r"powershell(?:\.exe)?[^\r\n]*?\s-e(?:c|nc|ncodedcommand)?\s+([A-Za-z0-9+/=]{16,})",
+    r"(?:powershell|pwsh)(?:\.exe)?[^\r\n]*?\s-e(?:c|nc|ncodedcommand)?\s+([A-Za-z0-9+/=]{16,})",
     re.IGNORECASE,
 )
 
@@ -440,6 +464,102 @@ register(Plugin(
     description="Find `powershell -e/-enc/-EncodedCommand <base64>` and extract just the payload.",
     run=_extract_ps_encoded,
     detect=_detect_ps_encoded,
+))
+
+
+# ---------------------------------------------------------------------------
+# Inline PowerShell `[Convert]::FromBase64String("...")` extractor
+# ---------------------------------------------------------------------------
+# Fileless attacks commonly stage payloads via inline scripts like:
+#   $x=[Convert]::FromBase64String("H4sIA...");IEX (...)
+# This pre-processor pulls out the quoted base64 so downstream decoders
+# (base64 → gzip → utf16le) can run automatically.
+_FROMB64_RE = re.compile(
+    r"""(?:\[?(?:System\.)?Convert\]?::FromBase64String|FromBase64String)"""
+    r"""\s*\(\s*['"]([A-Za-z0-9+/=]{16,})['"]\s*\)""",
+    re.IGNORECASE,
+)
+
+
+def _detect_fromb64(data: bytes) -> float:
+    text = data.decode("utf-8", errors="ignore")
+    return 0.95 if _FROMB64_RE.search(text) else 0.0
+
+
+def _extract_fromb64(data: bytes, params: Dict[str, Any]) -> bytes:
+    text = data.decode("utf-8", errors="replace")
+    m = _FROMB64_RE.search(text)
+    if m:
+        return m.group(1).encode("ascii")
+    return data
+
+
+register(Plugin(
+    id="extract-fromb64string",
+    name="Extract [Convert]::FromBase64String Payload",
+    category="Extractors",
+    description=(
+        "Find inline `[Convert]::FromBase64String(\"<base64>\")` in PowerShell "
+        "scripts (fileless staging) and extract just the base64 blob."
+    ),
+    run=_extract_fromb64,
+    detect=_detect_fromb64,
+))
+
+
+# ---------------------------------------------------------------------------
+# Notepad /SESSION: state extractor
+# ---------------------------------------------------------------------------
+# Windows 11 Notepad persists open-file state via a `/SESSION:<base64>` argument
+# where the base64 payload contains a random session-id prefix followed by a
+# UTF-16LE-encoded file path and trailing null padding. Real analyst example:
+#   Notepad.exe /SESSION:mKkWzDoWZ0eSpxweHL9MrwFCQwA6AFwAVQBz...
+# → C:\Users\loukiosk\OneDrive - Piston Group\Desktop\startup_edge.bat
+#
+# This plugin extracts the base64 chunk after `/SESSION:`, decodes it, and
+# recovers embedded UTF-16LE strings (typically the referenced file path).
+_NOTEPAD_SESSION_RE = re.compile(r"/SESSION:\s*([A-Za-z0-9+/=]{20,})", re.IGNORECASE)
+
+
+def _detect_notepad_session(data: bytes) -> float:
+    text = data.decode("utf-8", errors="ignore")
+    return 0.96 if _NOTEPAD_SESSION_RE.search(text) else 0.0
+
+
+def _extract_notepad_session(data: bytes, params: Dict[str, Any]) -> bytes:
+    text = data.decode("utf-8", errors="replace")
+    m = _NOTEPAD_SESSION_RE.search(text)
+    if not m:
+        return data
+    b64_chunk = m.group(1)
+    try:
+        raw = _b64_decode_lenient(b64_chunk.encode("ascii"))
+    except Exception as e:
+        return f"[extract-notepad-session] base64 decode failed: {e}".encode("utf-8")
+    # Recover embedded UTF-16LE strings (min 4 chars) — this strips the
+    # random session-id prefix and null padding, leaving only the path(s).
+    strings: list[str] = []
+    for m2 in re.finditer(rb"(?:[\x20-\x7e]\x00){4,}", raw):
+        try:
+            strings.append(m2.group(0).decode("utf-16le"))
+        except Exception:
+            pass
+    if strings:
+        return "\n".join(strings).encode("utf-8")
+    # Fallback: return raw bytes so downstream utf16le-decode can try.
+    return raw
+
+
+register(Plugin(
+    id="extract-notepad-session",
+    name="Extract Notepad /SESSION: Path",
+    category="Extractors",
+    description=(
+        "Find `Notepad.exe /SESSION:<base64>` args (Windows 11 Notepad state) "
+        "and extract the referenced file path from the base64 UTF-16LE payload."
+    ),
+    run=_extract_notepad_session,
+    detect=_detect_notepad_session,
 ))
 
 
@@ -696,12 +816,27 @@ register(Plugin(
 
 
 # ---------------------------------------------------------------------------
-# JavaScript deobfuscation (light)
+# JavaScript / char-code deobfuscation
 # ---------------------------------------------------------------------------
+_FROMCC_RE = re.compile(r"String\.fromCharCode\s*\(([0-9,\s]+)\)")
+_JS_UNESCAPE_RE = re.compile(r"""unescape\(\s*['"]([^'"]+)['"]\s*\)""")
+
+
+def _detect_js_deobfuscate(data: bytes) -> float:
+    text = data.decode("utf-8", errors="ignore")
+    matches = len(_FROMCC_RE.findall(text)) + len(_JS_UNESCAPE_RE.findall(text))
+    if matches == 0:
+        return 0.0
+    # `String.fromCharCode(...)` / `unescape(...)` are unambiguous obfuscation
+    # patterns — clear the 0.7 auto-decode floor immediately.
+    return min(0.92, 0.8 + matches * 0.02)
+
+
 def _js_deobfuscate(data: bytes, params: Dict[str, Any]) -> bytes:
     text = _to_best_text(data)
     # Collapse string concatenation like 'a'+'b'+'c'
     text = re.sub(r"['\"]\s*\+\s*['\"]", "", text)
+
     # String.fromCharCode(65,66,67) → "ABC"
     def _fromcc(m):
         try:
@@ -709,14 +844,16 @@ def _js_deobfuscate(data: bytes, params: Dict[str, Any]) -> bytes:
             return '"' + "".join(chr(c) for c in codes if 0 <= c < 0x110000) + '"'
         except Exception:
             return m.group(0)
-    text = re.sub(r"String\.fromCharCode\(([0-9,\s]+)\)", _fromcc, text)
+    text = _FROMCC_RE.sub(_fromcc, text)
+
     # unescape("%XX%YY") → decoded
     def _unescape(m):
         try:
             return '"' + unquote_to_bytes(m.group(1)).decode("utf-8", errors="replace") + '"'
         except Exception:
             return m.group(0)
-    text = re.sub(r"""unescape\(\s*['"]([^'"]+)['"]\s*\)""", _unescape, text)
+    text = _JS_UNESCAPE_RE.sub(_unescape, text)
+
     # \xNN and \uNNNN escapes
     try:
         text = codecs.decode(text, "unicode_escape")
@@ -729,11 +866,11 @@ def _js_deobfuscate(data: bytes, params: Dict[str, Any]) -> bytes:
 
 register(Plugin(
     id="js-deobfuscate",
-    name="JavaScript Deobfuscate",
+    name="JavaScript / CharCode Deobfuscate",
     category="Deobfuscation",
     description="Collapse string concat, resolve fromCharCode() / unescape(), decode \\xNN / \\uNNNN.",
     run=_js_deobfuscate,
-    auto=False,
+    detect=_detect_js_deobfuscate,
 ))
 
 

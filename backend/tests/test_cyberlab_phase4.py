@@ -102,7 +102,7 @@ def test_export_markdown(client):
     r = client.post("/api/cyberlab/export/markdown", json=payload)
     assert r.status_code == 200
     md = r.text
-    assert "# NivX CyberLab Analysis Report" in md
+    assert "# NivX Forge Analysis Report" in md
     assert "**MALICIOUS**" in md
     assert "T1059" in md
     assert "TestRule" in md
