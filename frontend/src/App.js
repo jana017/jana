@@ -8,6 +8,7 @@ import ScrollToTop from "@/components/ScrollToTop";
 import ScrollToTopOnNav from "@/components/ScrollToTopOnNav";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 import useBrandingInjection from "@/lib/useBrandingInjection";
+import useRouteBodyBg from "@/lib/useRouteBodyBg";
 
 const Landing = lazy(() => import("@/pages/Landing"));
 const Admin = lazy(() => import("@/pages/Admin"));
@@ -29,17 +30,26 @@ function RouteFallback() {
   );
 }
 
+/** Small child component that lives inside <BrowserRouter> so it can read the
+ * active route. Handles body-background theming and any other route-aware
+ * side-effects. Returns null. */
+function RouteEffects() {
+  useRouteBodyBg();
+  return null;
+}
+
 function App() {
   useBrandingInjection();
   return (
     <AuthProvider>
       <ReactLenis root options={{ lerp: 0.09, smoothWheel: true }}>
-        <div className="App min-h-screen bg-white">
+        <div className="App min-h-screen">
           <Toaster position="bottom-right" richColors />
           <AnnouncementBanner />
           <ScrollToTop />
           <BrowserRouter>
             <ScrollToTopOnNav />
+            <RouteEffects />
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<Landing />} />

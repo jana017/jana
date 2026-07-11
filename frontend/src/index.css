@@ -44,6 +44,14 @@
 html {
   scrollbar-width: thin;
   scrollbar-color: #cbd5e1 #f1f5f9;
+  /* Bulletproof no-horizontal-bleed on mobile browsers (elastic scroll,
+     sub-pixel rounding, over-scroll bounce). `overflow-x: clip` is the
+     modern replacement for `hidden` that doesn't create a scroll container
+     nor break `position: sticky`. */
+  overflow-x: clip;
+  max-width: 100%;
+  /* Follow the body background so any 1-2px peek stays theme-consistent. */
+  background-color: inherit;
 }
 
 body {
@@ -53,7 +61,19 @@ body {
   font-family: 'Inter', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overflow-x: hidden;
+  overflow-x: clip;
+  max-width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh; /* dynamic viewport height on mobile (iOS Safari) */
+  transition: background-color 180ms ease;
+}
+
+/* Enforce viewport width on the React root as well — belt & suspenders. */
+#root {
+  max-width: 100%;
+  overflow-x: clip;
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 ::selection {

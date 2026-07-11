@@ -111,6 +111,10 @@ export default function CyberLab() {
     listPlugins().then(setPlugins).catch((e) => toast.error(`Load plugins: ${e.message}`));
   }, []);
 
+  // Body background is handled centrally by useRouteBodyBg in App.js — no
+  // per-page hack needed anymore.
+
+
   // Group plugins by category
   const grouped = useMemo(() => {
     const term = q.trim().toLowerCase();
