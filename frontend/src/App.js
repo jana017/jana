@@ -19,6 +19,7 @@ const BlogIndex = lazy(() => import("@/pages/BlogIndex"));
 const CommunityCd = lazy(() => import("@/pages/CommunityCd"));
 const CommunityFeed = lazy(() => import("@/pages/CommunityFeed"));
 const Learn = lazy(() => import("@/pages/Learn"));
+const EmployeePortal = lazy(() => import("@/pages/EmployeePortal"));
 const CyberLab = lazy(() => import("@/pages/CyberLab"));
 const CyberLabShare = lazy(() => import("@/pages/CyberLabShare"));
 const CmsPage = lazy(() => import("@/pages/CmsPage"));
@@ -69,6 +70,7 @@ function App() {
                 <Route path="/cyberlab/share/:shareId" element={<CyberLabShare />} />
                 <Route path="/nivx-forge/share/:shareId" element={<CyberLabShare />} />
                 <Route path="/admin" element={<Admin />} />
+                <Route path="/employee" element={<EmployeePortal />} />
                 <Route path="/pages/:slug" element={<CmsPage />} />
               </Routes>
             </Suspense>

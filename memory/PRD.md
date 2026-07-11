@@ -73,6 +73,23 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - **UI**: Progress bar during scan, severity filter chips, findings table grouped by severity, CSV/JSON export, history list of last 10 scans persisted to Mongo `ui_scans`.
 - **Tests** — 8 pytest cases in `/app/backend/tests/test_ui_scanner.py` cover auth-gate, persist, aggregate counts, history, latest, delete, 404, empty payload. All passing.
 
+## Implemented (2026-07-11 — Learn tab merge + Employee Portal Phase 1)
+### Learn tab (Blog + Cyber 101 merged)
+- New `/learn` route with sub-tabs `?tab=blog|cyber101`.
+- Navbar shows single "Learn" link (both desktop + mobile menu).
+- Old `/blog` and `/cybersecurity-101` auto-redirect to `/learn?tab=...`.
+- BlogIndex + KnowledgeBase accept `embedded` prop → skip own Navbar/top padding.
+- Individual post routes (`/blog/:slug`, `/cybersecurity-101/:slug`) unchanged.
+
+### Employee Portal (Phase 1)
+- Backend module `/app/backend/employees/` — extends `users` collection with `role="employee"` field. Documents stored in MongoDB GridFS (`employee_docs` bucket) + metadata in `employee_documents` collection.
+- **Admin flow** — new "Employees" tab in Admin panel: create employee (temp password shown once with copy button, no email needed), list/search, edit metadata, reset password, delete (cascades docs), upload/download docs on employee's behalf.
+- **Employee flow** — new `/employee` route: login card, force-change-password on first login, profile card, storage meter (50MB cap), upload/download/delete personal documents grouped by 11 categories (payslip, PF, F&F, ID card, offer letter, hike, experience, relieving, appraisal, tax, other).
+- **Security**: strict role checks (`_require_admin` gate), document ownership validation (employee can only see own docs; admin can only see docs of the specific employee in URL), MIME whitelist, per-file 25MB / per-employee 50MB caps, sanitized filenames.
+- **10 pytest cases passing** in `/app/backend/tests/test_employees.py`: CRUD, duplicate rejection, non-admin blocked, list/search, reset-password, employee login+profile, change-password (wrong/short/success), upload/list/download/delete + cross-employee 403, delete-cascade, admin-upload-for-employee.
+- **Phase 2 pending** — ServiceNow-style ticketing system.
+
+
 
 
 

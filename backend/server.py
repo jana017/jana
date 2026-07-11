@@ -4344,6 +4344,14 @@ from ui_scanner import (  # noqa: E402
 _attach_ui_scanner_routes(ui_scanner_router, get_current_user)
 app.include_router(ui_scanner_router)
 
+from employees import (  # noqa: E402
+    router as employees_router,
+    attach_routes as _attach_employees_routes,
+    ensure_indexes as _employees_ensure_indexes,
+)
+_attach_employees_routes(employees_router, get_current_user)
+app.include_router(employees_router)
+
 
 # Site CMS — admin tab visibility, landing sections, announcement, custom pages
 from cms.router import (  # noqa: E402
@@ -4424,6 +4432,15 @@ async def _ui_scanner_startup():
         logger.info("ui_scanner: indexes ensured")
     except Exception as e:
         logger.warning("ui_scanner startup failed: %s", e)
+
+
+@app.on_event("startup")
+async def _employees_startup():
+    try:
+        await _employees_ensure_indexes()
+        logger.info("employees: indexes ensured")
+    except Exception as e:
+        logger.warning("employees startup failed: %s", e)
 
 
 @app.on_event("startup")

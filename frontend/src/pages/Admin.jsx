@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import { LogOut, Plus, Pencil, Trash2, ArrowLeft, ShieldCheck, Download, LayoutDashboard, Settings, Webhook, Activity, Code2 } from "lucide-react";
+import { LogOut, Plus, Pencil, Trash2, ArrowLeft, ShieldCheck, Download, LayoutDashboard, Settings, Webhook, Activity, Code2, Users } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import useSeo from "@/lib/useSeo";
@@ -13,6 +13,7 @@ import AdminWebhooks from "@/components/AdminWebhooks";
 import AdminHealthBot from "@/components/AdminHealthBot";
 import AdminSiteCMS from "@/components/AdminSiteCMS";
 import AdminUiScanner from "@/components/AdminUiScanner";
+import AdminEmployees from "@/components/AdminEmployees";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -265,6 +266,13 @@ function Dashboard() {
             <ShieldCheck className="w-4 h-4" /> UI/UX Scanner
           </button>
           <button
+            data-testid="tab-employees"
+            onClick={() => setView("employees")}
+            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${view === "employees" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+          >
+            <Users className="w-4 h-4" /> Employees
+          </button>
+          <button
             data-testid="tab-developer"
             onClick={() => setView("developer")}
             className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${view === "developer" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
@@ -284,6 +292,8 @@ function Dashboard() {
         <AdminHealthBot />
       ) : view === "ui-scanner" ? (
         <AdminUiScanner />
+      ) : view === "employees" ? (
+        <AdminEmployees />
       ) : view === "developer" ? (
         <AdminSiteCMS />
       ) : view === "cyberlab-rules" ? (
