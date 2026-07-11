@@ -13,6 +13,7 @@ import AdminWebhooks from "@/components/AdminWebhooks";
 import AdminHealthBot from "@/components/AdminHealthBot";
 import AdminSiteCMS from "@/components/AdminSiteCMS";
 import AdminUiScanner from "@/components/AdminUiScanner";
+import AdminMaster from "@/components/AdminMaster";
 import AdminEmployees from "@/components/AdminEmployees";
 import AdminTickets from "@/components/AdminTickets";
 import {
@@ -253,18 +254,11 @@ function Dashboard() {
             <Webhook className="w-4 h-4" /> EDR / SIEM
           </button>
           <button
-            data-testid="tab-healthbot"
-            onClick={() => setView("healthbot")}
-            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${view === "healthbot" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+            data-testid="tab-master"
+            onClick={() => setView("master")}
+            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${view === "master" || view === "healthbot" || view === "ui-scanner" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
           >
-            <Activity className="w-4 h-4" /> HealthBot
-          </button>
-          <button
-            data-testid="tab-ui-scanner"
-            onClick={() => setView("ui-scanner")}
-            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${view === "ui-scanner" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
-          >
-            <ShieldCheck className="w-4 h-4" /> UI/UX Scanner
+            <Activity className="w-4 h-4" /> Master
           </button>
           <button
             data-testid="tab-employees"
@@ -296,10 +290,8 @@ function Dashboard() {
         <AdminSettings />
       ) : view === "webhooks" ? (
         <AdminWebhooks />
-      ) : view === "healthbot" ? (
-        <AdminHealthBot />
-      ) : view === "ui-scanner" ? (
-        <AdminUiScanner />
+      ) : view === "healthbot" || view === "ui-scanner" || view === "master" ? (
+        <AdminMaster />
       ) : view === "employees" ? (
         <AdminEmployees />
       ) : view === "tickets" ? (
