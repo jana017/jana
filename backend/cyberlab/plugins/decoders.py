@@ -692,6 +692,52 @@ register(Plugin(
 
 
 # ---------------------------------------------------------------------------
+# Python `base64.b64decode(b'...')` / `__import__('base64').b64decode(b'...')`
+# extractor — commonly used in inline `python -c "exec(...)"` staging.
+#   Example that used to slip past NivX Forge (Feb 2026):
+#     -c exec(__import__('base64').b64decode(b'aW1wb...').decode())
+# Matches:
+#   * base64.b64decode('<b64>')
+#   * base64.b64decode(b'<b64>')  / b"<b64>"
+#   * __import__('base64').b64decode(...)  — bare or with .decode()
+#   * .a85decode / .b32decode via a sibling regex below? No — b64 is by far
+#     the dominant real-world flavor; keep this plugin focused.
+# ---------------------------------------------------------------------------
+_PY_B64DECODE_RE = re.compile(
+    r"""(?:base64|__import__\(\s*['"]base64['"]\s*\))"""      # module or dynamic import
+    r"""\s*\.\s*b64decode\s*\(\s*b?['"]([A-Za-z0-9+/=]{16,})['"]\s*\)""",
+    re.IGNORECASE,
+)
+
+
+def _detect_py_b64decode(data: bytes) -> float:
+    text = data.decode("utf-8", errors="ignore")
+    return 0.96 if _PY_B64DECODE_RE.search(text) else 0.0
+
+
+def _extract_py_b64decode(data: bytes, params: Dict[str, Any]) -> bytes:
+    text = data.decode("utf-8", errors="replace")
+    m = _PY_B64DECODE_RE.search(text)
+    if m:
+        return m.group(1).encode("ascii")
+    return data
+
+
+register(Plugin(
+    id="extract-python-b64decode",
+    name="Extract Python `base64.b64decode(...)` Payload",
+    category="Extractors",
+    description=(
+        "Find inline `base64.b64decode(b'<base64>')` or "
+        "`__import__('base64').b64decode(...)` in Python `-c` "
+        "one-liners (fileless staging) and extract just the base64 blob."
+    ),
+    run=_extract_py_b64decode,
+    detect=_detect_py_b64decode,
+))
+
+
+# ---------------------------------------------------------------------------
 # Notepad /SESSION: state extractor
 # ---------------------------------------------------------------------------
 # Windows 11 Notepad persists open-file state via a `/SESSION:<base64>` argument
