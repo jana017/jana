@@ -448,6 +448,20 @@ _GOLDEN_PAYLOADS = [
         "input": "48656c6c6f20576f726c64",
         "must_decode_to_contain": "Hello World",
     },
+    # Regression: base64 padding fixer must not inject `===` into strings
+    # that already have valid padding. Feb 2026 bug — the refine step
+    # corrupted properly-padded Python b64decode payloads by adding
+    # phantom `=` characters mid-string, making Troubleshoot break what
+    # Auto-Investigate could already decode.
+    {
+        "id": "b64_padding_no_corruption",
+        "input": (
+            "-c \"exec(__import__('base64').b64decode("
+            "b'aW1wb3J0IG9zLHN5cwpvcy5jaGRpcihvcy5wYXRoLmRpcm5hbWUo"
+            "b3MucGF0aC5hYnNwYXRoKHN5cy5leGVjdXRhYmxlKSkpCg==').decode())\""
+        ),
+        "must_decode_to_contain": "import os",
+    },
 ]
 
 
@@ -455,11 +469,12 @@ async def _check_decoder_coverage():
     t0 = time.perf_counter()
     try:
         from cyberlab.engine import auto_decode
+        from cyberlab.repair import refine
     except Exception as e:  # noqa: BLE001
         return CheckResult(
             id="decoder_coverage", name="NivX Forge decoder coverage",
             severity="critical",
-            message=f"Cannot import auto_decode: {e}",
+            message=f"Cannot import auto_decode/refine: {e}",
             duration_ms=(time.perf_counter() - t0) * 1000,
         )
 
@@ -483,27 +498,36 @@ async def _check_decoder_coverage():
 
     failed = []
     passed = 0
-    for sample in samples:
-        needle = sample.get("must_decode_to_contain") or ""
+
+    def _run_sample(sample):
+        """Return (ok, reason). We check BOTH direct auto-decode AND the
+        Troubleshoot flow (refine → auto-decode). If either variant fails,
+        we flag the sample."""
+        needle = (sample.get("must_decode_to_contain") or "").lower()
         input_text = sample.get("input") or ""
-        if not input_text or not needle:
+        variants = [("direct", input_text), ("refined", refine(input_text).refined)]
+        for kind, txt in variants:
+            try:
+                output, _trace = auto_decode(txt, max_depth=8)
+                text_out = output.decode("utf-8", errors="replace").lower()
+                if needle not in text_out:
+                    return False, f"{kind} decode did not contain {needle!r} — got {text_out[:120]!r}"
+            except Exception as e:  # noqa: BLE001
+                return False, f"{kind}: {type(e).__name__}: {str(e)[:120]}"
+        return True, None
+
+    for sample in samples:
+        if not sample.get("input") or not sample.get("must_decode_to_contain"):
             continue
-        try:
-            output, trace = auto_decode(input_text, max_depth=8)
-            text = output.decode("utf-8", errors="replace")
-            if needle.lower() not in text.lower():
-                failed.append({
-                    "id": sample["id"],
-                    "steps": len(trace),
-                    "expected": needle,
-                    "got_preview": text[:120],
-                    "custom": sample.get("custom", False),
-                })
-            else:
-                passed += 1
-        except Exception as e:  # noqa: BLE001
-            failed.append({"id": sample["id"], "error": str(e)[:200],
-                           "custom": sample.get("custom", False)})
+        ok, reason = _run_sample(sample)
+        if ok:
+            passed += 1
+        else:
+            failed.append({
+                "id": sample["id"],
+                "reason": reason,
+                "custom": sample.get("custom", False),
+            })
 
     dur = (time.perf_counter() - t0) * 1000
     total = passed + len(failed)

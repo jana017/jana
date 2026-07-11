@@ -230,25 +230,30 @@ def _fix_b64_urlsafe(text: str) -> tuple[str, Optional[Fix]]:
 
 def _fix_b64_padding(text: str) -> tuple[str, Optional[Fix]]:
     """Detect trailing base64 blobs missing `=` padding and add it. Only
-    touches contiguous alphanumeric runs 16+ chars long."""
+    touches contiguous base64 runs 24+ chars long."""
     changed = 0
 
     def _repair(m: re.Match) -> str:
         nonlocal changed
         blob = m.group(0)
-        rem = len(blob.rstrip("=")) % 4
-        if rem == 0:
+        # `blob` may include existing `=` padding at the tail. Compute the
+        # payload length (chars minus trailing `=`) and add the exact number
+        # of `=` needed to bring it to a multiple of 4.
+        payload_len = len(blob.rstrip("="))
+        needed = (4 - (payload_len % 4)) % 4
+        existing_pad = len(blob) - payload_len
+        if needed <= existing_pad:
+            # Already correctly padded (or over-padded — leave alone).
             return blob
-        # Only pad if what's already there doesn't ALREADY end in `=`
-        # (avoids double-padding).
-        pad_needed = (4 - rem) % 4
-        if pad_needed == 0 or blob.endswith("=" * pad_needed):
-            return blob
+        add = needed - existing_pad
         changed += 1
-        return blob + "=" * pad_needed
+        return blob + ("=" * add)
 
-    # Match likely base64 runs (24+ chars) that aren't already padded.
-    new = re.sub(r"[A-Za-z0-9+/]{24,}(?!=)", _repair, text)
+    # IMPORTANT: include `={0,3}` in the match so we consume any *existing*
+    # padding as part of the blob. Without this, the regex would backtrack
+    # into the middle of a valid base64 string (Feb 2026 bug — corrupted
+    # payloads with `===` injected mid-string).
+    new = re.sub(r"[A-Za-z0-9+/]{24,}={0,3}", _repair, text)
     if changed == 0:
         return text, None
     return new, Fix(
