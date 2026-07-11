@@ -4500,6 +4500,33 @@ async def seed_admin():
     elif not verify_password(admin_password, existing["password_hash"]):
         await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
 
+    # Additional admin seats — deterministic, idempotent, survives redeploys.
+    # Added Feb 2026 per operator request for shared admin access. Each entry
+    # is upserted so removing an email from the list will NOT delete the row
+    # (safer: manually delete from Mongo if you want to revoke).
+    extra_admins = [
+        {"email": "admin1@nivxmachines.com", "name": "admin1", "password": "Holiday@145"},
+        {"email": "admin2@nivxmachines.com", "name": "admin2", "password": "Holiday@145"},
+    ]
+    for a in extra_admins:
+        email = a["email"].lower()
+        row = await db.users.find_one({"email": email})
+        if row is None:
+            await db.users.insert_one({
+                "email": email,
+                "password_hash": hash_password(a["password"]),
+                "name": a["name"],
+                "role": "admin",
+                "created_at": now_iso(),
+            })
+            logger.info("Seeded extra admin: %s", email)
+        elif not verify_password(a["password"], row["password_hash"]):
+            # Keep the password in sync with the seed if it drifted.
+            await db.users.update_one({"email": email},
+                                      {"$set": {"password_hash": hash_password(a["password"]),
+                                                "role": "admin",
+                                                "name": a["name"]}})
+
 
 SAMPLE_THREATS = [
     {
