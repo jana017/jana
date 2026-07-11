@@ -412,6 +412,97 @@ register(_check_module_health)
 
 
 # ---------------------------------------------------------------------------
+# 10b. Decoder coverage — golden-payload regression suite for the NivX Forge
+#      auto-decode engine.  Runs a fixed set of real-world staging payloads
+#      through auto_decode() and fails critical if any of them go undecoded.
+#      This catches "silent regression" bugs like the Feb 2026 missing
+#      Python-b64decode extractor that let a malicious sample slip past as
+#      "clean/risk=8".  Each sample is deterministic — no LLM, no network.
+# ---------------------------------------------------------------------------
+_GOLDEN_PAYLOADS = [
+    {
+        "id": "powershell_frombase64string",
+        "input": "$x=[Convert]::FromBase64String('SGVsbG8gV29ybGQh');IEX",
+        "must_decode_to_contain": "Hello World",
+    },
+    {
+        "id": "bash_echo_base64_pipe",
+        "input": "echo SGVsbG8gTWFsd2FyZQ== | base64 -d",
+        "must_decode_to_contain": "Hello Malware",
+    },
+    {
+        "id": "python_b64decode_exec",
+        "input": (
+            "-c exec(__import__('base64').b64decode("
+            "b'aW1wb3J0IG9zLHN5cwo=').decode())"
+        ),
+        "must_decode_to_contain": "import os",
+    },
+    {
+        "id": "cmd_caret_obfuscation",
+        "input": "p^o^w^e^r^shell.exe -nop -w hidden -c whoami",
+        "must_decode_to_contain": "powershell",
+    },
+    {
+        "id": "hex_string",
+        "input": "48656c6c6f20576f726c64",
+        "must_decode_to_contain": "Hello World",
+    },
+]
+
+
+async def _check_decoder_coverage():
+    t0 = time.perf_counter()
+    try:
+        from cyberlab.engine import auto_decode
+    except Exception as e:  # noqa: BLE001
+        return CheckResult(
+            id="decoder_coverage", name="NivX Forge decoder coverage",
+            severity="critical",
+            message=f"Cannot import auto_decode: {e}",
+            duration_ms=(time.perf_counter() - t0) * 1000,
+        )
+
+    failed = []
+    passed = 0
+    for sample in _GOLDEN_PAYLOADS:
+        try:
+            output, trace = auto_decode(sample["input"], max_depth=8)
+            text = output.decode("utf-8", errors="replace")
+            needle = sample["must_decode_to_contain"]
+            if needle.lower() not in text.lower():
+                failed.append({
+                    "id": sample["id"],
+                    "steps": len(trace),
+                    "expected": needle,
+                    "got_preview": text[:120],
+                })
+            else:
+                passed += 1
+        except Exception as e:  # noqa: BLE001
+            failed.append({"id": sample["id"], "error": str(e)[:200]})
+
+    dur = (time.perf_counter() - t0) * 1000
+    total = len(_GOLDEN_PAYLOADS)
+    if failed:
+        return CheckResult(
+            id="decoder_coverage", name="NivX Forge decoder coverage",
+            severity="critical",
+            message=f"{len(failed)}/{total} decoder sample(s) failed — plugin regression.",
+            details={"failed": failed, "passed": passed, "total": total},
+            duration_ms=dur,
+        )
+    return CheckResult(
+        id="decoder_coverage", name="NivX Forge decoder coverage",
+        severity="ok",
+        message=f"All {total} decoder samples decoded correctly.",
+        details={"samples": [s["id"] for s in _GOLDEN_PAYLOADS]},
+        duration_ms=dur,
+    )
+register(_check_decoder_coverage)
+
+
+# ---------------------------------------------------------------------------
 # 11. Frontend static lint — catches page-breaking JS/JSX bugs
 #     (no-undef, react/jsx-no-undef) BEFORE they white-screen a route.
 #     Added Feb 2026 after a `ReferenceError: exportRef is not defined`

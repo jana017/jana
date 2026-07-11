@@ -155,6 +155,53 @@ BUILTIN_RULES: List[Dict[str, Any]] = [
         ],
     },
     {
+        "name": "Python_Fileless_B64_Loader",
+        "tags": ["python", "fileless", "execution", "T1059.006", "T1027"],
+        "severity": "critical",
+        "description": (
+            "Python `-c exec(base64.b64decode(...).decode())` fileless loader. "
+            "Frequently used as a stage-1 dropper — the decoded stage often reads "
+            "a companion file from disk, XOR-decrypts it and exec()s the result. "
+            "See Feb 2026 sample: base64 payload → XOR key `4fab0f4d5f6d...` → "
+            "reads `instructions.docx` → exec()."
+        ),
+        "strings": [
+            # -c "exec(...)"  or  -c exec(...)  followed by b64decode
+            {"type": "regex",
+             "pattern": r"""-c\s*(?:['"])?exec\s*\(\s*(?:__import__\s*\(\s*['"]base64['"]\s*\)|base64)\s*\.\s*b64decode\s*\(""",
+             "flags": "i"},
+            # Bare form: exec(__import__('base64').b64decode(b'...').decode())
+            {"type": "regex",
+             "pattern": r"""exec\s*\(\s*__import__\s*\(\s*['"]base64['"]\s*\)\s*\.\s*b64decode\s*\(""",
+             "flags": "i"},
+        ],
+    },
+    {
+        "name": "Python_XOR_File_Loader",
+        "tags": ["python", "xor", "fileless", "defense-evasion", "T1027"],
+        "severity": "critical",
+        "description": (
+            "Python fileless-XOR staged loader — reads a companion file (docx, "
+            "txt, dat), XOR-decrypts it with a hex-encoded key and exec()s the "
+            "result. Classic 2nd-stage of the `python -c exec(b64decode(...))` "
+            "dropper chain."
+        ),
+        "strings": [
+            {"type": "regex",
+             "pattern": r"""bytes\.fromhex\s*\(\s*['"][0-9a-fA-F]{16,}['"]\s*\)""",
+             "flags": "i"},
+            {"type": "regex",
+             "pattern": r"""open\s*\(\s*['"][^'"]+\.(?:docx?|txt|dat|bin|log|tmp)['"]\s*,\s*['"]rb['"]""",
+             "flags": "i"},
+            {"type": "regex",
+             "pattern": r"""for\s+\w+\s*,\s*\w+\s+in\s+enumerate\s*\([^\)]+\)\s*\)\s*""",
+             "flags": "s"},
+            {"type": "regex",
+             "pattern": r"""exec\s*\([^\)]{0,60}\.decode\s*\(\s*['"]utf-?8['"]""",
+             "flags": "i"},
+        ],
+    },
+    {
         "name": "Suspicious_Registry_Persistence",
         "tags": ["persistence", "T1547"],
         "severity": "high",
