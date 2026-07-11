@@ -267,6 +267,34 @@ export default function AdminUiScanner() {
     URL.revokeObjectURL(url);
   };
 
+  const downloadReport = async (scanId, format) => {
+    try {
+      const r = await api.get(`/ui-scanner/report/${scanId}`);
+      const rep = r.data;
+      const stamp = (rep.finished_at || "").slice(0, 19).replace(/[:T]/g, "-");
+      if (format === "json") {
+        const blob = new Blob([JSON.stringify(rep, null, 2)], {type: "application/json"});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = `ui-scan-${stamp}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        const rows = [["route","viewport","severity","type","details"]];
+        for (const f of (rep.findings || [])) rows.push([f.route, f.viewport, f.severity, f.type, JSON.stringify(f.details)]);
+        const csv = rows.map(row => row.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+        const blob = new Blob([csv], {type: "text/csv"});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = `ui-scan-${stamp}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (e) {
+      console.error("Report download failed", e);
+    }
+  };
+
   const sevBadge = (sev) => {
     const map = {
       CRIT: "bg-rose-50 text-rose-700 border-rose-200",
@@ -287,6 +315,9 @@ export default function AdminUiScanner() {
           <p className="mt-1 text-sm text-slate-500 max-w-2xl">
             Deterministic health scan across mobile · tablet · desktop viewports. Detects horizontal overflow,
             missing meta tags, small tap targets, contrast issues, and layout regressions. No LLM.
+          </p>
+          <p className="mt-2 text-xs text-slate-400 max-w-2xl">
+            <strong className="text-slate-600">Auto-fixed globally at runtime:</strong> missing viewport &amp; theme-color meta, body/html bg per route. <strong className="text-slate-600">Reported for code fix:</strong> tap-target size, missing alt, layout overflow — safe auto-injection could break intentional design, so a developer applies these.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -420,6 +451,7 @@ export default function AdminUiScanner() {
                   <th className="px-3 py-2">MED</th>
                   <th className="px-3 py-2">LOW</th>
                   <th className="px-3 py-2">By</th>
+                  <th className="px-3 py-2 text-right">Report</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100" data-testid="ui-scan-history">
@@ -432,6 +464,24 @@ export default function AdminUiScanner() {
                     <td className="px-3 py-2 text-amber-600">{h.counts_by_severity?.MED || 0}</td>
                     <td className="px-3 py-2 text-slate-500">{h.counts_by_severity?.LOW || 0}</td>
                     <td className="px-3 py-2 text-slate-500 text-xs">{h.triggered_by || "—"}</td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                      <button
+                        onClick={() => downloadReport(h.id, "csv")}
+                        data-testid={`ui-scan-download-csv-${h.id}`}
+                        title="Download CSV"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-slate-600 hover:bg-slate-100"
+                      >
+                        <Download className="w-3 h-3" /> CSV
+                      </button>
+                      <button
+                        onClick={() => downloadReport(h.id, "json")}
+                        data-testid={`ui-scan-download-json-${h.id}`}
+                        title="Download JSON"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-slate-600 hover:bg-slate-100 ml-1"
+                      >
+                        <FileCode2 className="w-3 h-3" /> JSON
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
