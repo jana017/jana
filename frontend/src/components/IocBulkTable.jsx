@@ -40,15 +40,27 @@ function inferredSeverity(r) {
   return "medium";
 }
 
-export default function IocBulkTable() {
+export default function IocBulkTable({ initialText, autoRun, prefillKey }) {
   const { user } = useAuth();
   const isAdmin = !!user;
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialText || "");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null); // {kind, text}
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef(null);
+
+  // Close the export dropdown on outside click.
+  useEffect(() => {
+    if (!exportOpen) return;
+    const onDoc = (e) => {
+      if (exportRef.current && !exportRef.current.contains(e.target)) setExportOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [exportOpen]);
 
   const parsedCount = useMemo(() => {
     const set = new Set(text.split(/[\s,;]+/).map((t) => t.trim().toLowerCase()).filter(Boolean));
@@ -73,6 +85,17 @@ export default function IocBulkTable() {
       setLoading(false);
     }
   };
+
+  // Consume prefill from a parent handoff (NivX Forge → analyzer). When
+  // `prefillKey` changes we hydrate the textarea and, if `autoRun` is on,
+  // immediately fire the batch lookup.
+  useEffect(() => {
+    if (!prefillKey) return;
+    if (initialText != null) setText(initialText);
+    if (autoRun && initialText?.trim()) {
+      analyze(initialText);
+    }
+  }, [prefillKey]);
 
   const stamp = () => new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const doExportCSV = () => {
