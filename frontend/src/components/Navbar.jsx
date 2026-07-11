@@ -95,9 +95,24 @@ export default function Navbar() {
             data-testid="nav-threat-intelligence"
             onMouseEnter={() => prefetchRoute("/threat-intelligence")}
             onFocus={() => prefetchRoute("/threat-intelligence")}
-            className={`text-sm font-semibold transition-colors ${isIntel ? "text-[#F5821F]" : "text-[#F5821F] hover:text-[#D96D0A]"}`}
+            className="group relative inline-flex items-center gap-1.5 text-sm font-bold transition-all hover:-translate-y-0.5"
           >
-            Threat Intelligence
+            <span
+              className="relative flex h-2 w-2"
+              aria-hidden="true"
+            >
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-70"></span>
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500 ring-2 ring-red-100"></span>
+            </span>
+            <span
+              className="bg-gradient-to-r from-[#0F172A] via-[#F5821F] to-[#F5821F] bg-clip-text text-transparent bg-[length:200%_100%] bg-[position:0%_50%] group-hover:bg-[position:100%_50%] transition-[background-position] duration-500"
+            >
+              Threat Intelligence
+            </span>
+            <span
+              aria-hidden="true"
+              className={`absolute -bottom-1 left-0 h-[2px] bg-gradient-to-r from-[#F5821F] to-[#DC2626] transition-all duration-300 ${isIntel ? "w-full" : "w-0 group-hover:w-full"}`}
+            ></span>
           </Link>
           <Link
             to="/nivx-forge"
@@ -130,7 +145,15 @@ export default function Navbar() {
           ))}
           <Link to="/learn" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Learn</Link>
           <Link to="/employee" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Employee Login</Link>
-          <Link to="/threat-intelligence" onClick={() => setOpen(false)} className="text-left text-sm font-semibold text-[#F5821F]">Threat Intelligence</Link>
+          <Link to="/threat-intelligence" onClick={() => setOpen(false)} className="inline-flex items-center gap-2 text-left text-sm font-bold">
+            <span className="relative flex h-2 w-2" aria-hidden="true">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-70"></span>
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500"></span>
+            </span>
+            <span className="bg-gradient-to-r from-[#0F172A] to-[#F5821F] bg-clip-text text-transparent">
+              Threat Intelligence
+            </span>
+          </Link>
           <Link to="/nivx-forge" data-testid="mobile-nav-cyberlab" onClick={() => setOpen(false)} className="inline-flex items-center gap-1.5 text-left text-sm font-medium text-cyan-600">
             <Beaker className="w-4 h-4" /> NivX Forge
           </Link>
