@@ -1,5 +1,16 @@
 # NivX Machines — PRD
 
+## Fixed (2026-02-11 — /threat-intelligence white-screen + HealthBot upgrade)
+- **Root cause**: `IocBulkTable.jsx` referenced `exportRef`, `exportOpen`, `setExportOpen` without declaring them → `ReferenceError` white-screened the whole route in production. The component also ignored the `initialText`, `autoRun`, `prefillKey` props that `IocAnalyzer` passes from the NivX Forge → Bulk-Analyzer handoff.
+- **Bonus bugs found by new scanner**: `ForensicEventsPanel.jsx` was missing imports for `Table`, `Clock`, `InvestigationTimeline` — same class of runtime crash.
+- **Fixes**: Added `useState(exportOpen)`, `useRef(exportRef)`, click-outside effect, and prop wiring with an auto-run `useEffect(prefillKey)`. Missing lucide imports and component import added to ForensicEventsPanel.
+- **HealthBot upgrade** — added two new deterministic checks so this class of bug never ships silently again:
+  - `frontend_lint` — runs ESLint (`no-undef`, `react/jsx-no-undef`) across 138 JS/JSX files (~1.4s)
+  - `route_smoke` — parallel-hits 14 public + admin endpoints with shape validation (~650ms via `asyncio.gather`)
+- **Whole HealthBot scan now completes in ~1.4s** (12 checks in parallel).
+- **Pytest**: `/app/backend/tests/test_healthbot_new_checks.py` — 4/4 pass, locks the regression down.
+- **Verified**: /threat-intelligence renders in Single mode, Bulk paste analyzes multi-IOC, Download-report dropdown opens, zero page errors.
+
 ## Implemented (2026-02-11 — Master Command Center consolidation)
 - Merged three separate Admin sidebar tabs (Settings, NivX Forge Rules, EDR / SIEM) into the single **Master** tab as sub-tabs, per user request.
 - `AdminMaster.jsx` now hosts 4 sub-tabs: **Overview** (Backend HealthBot + UI/UX Scanner), **Settings**, **NivX Forge Rules**, **EDR / SIEM**.

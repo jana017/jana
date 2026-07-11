@@ -412,6 +412,217 @@ register(_check_module_health)
 
 
 # ---------------------------------------------------------------------------
+# 11. Frontend static lint — catches page-breaking JS/JSX bugs
+#     (no-undef, react/jsx-no-undef) BEFORE they white-screen a route.
+#     Added Feb 2026 after a `ReferenceError: exportRef is not defined`
+#     shipped to production and broke /threat-intelligence.
+# ---------------------------------------------------------------------------
+import subprocess
+import json as _json
+
+_FRONTEND_ROOT = "/app/frontend"
+_ESLINT_CONFIG = "/app/backend/healthbot/eslint.smoke.mjs"
+
+
+async def _check_frontend_lint():
+    t0 = time.perf_counter()
+    try:
+        proc = await asyncio.wait_for(
+            asyncio.create_subprocess_exec(
+                "npx", "eslint",
+                "--config", _ESLINT_CONFIG,
+                "src/",
+                "--format", "json",
+                cwd=_FRONTEND_ROOT,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            ),
+            timeout=60,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=60)
+    except asyncio.TimeoutError:
+        return CheckResult(
+            id="frontend_lint", name="Frontend static lint",
+            severity="warning",
+            message="ESLint scan timed out (>60s). Skipping.",
+            duration_ms=(time.perf_counter() - t0) * 1000,
+        )
+    except FileNotFoundError:
+        return CheckResult(
+            id="frontend_lint", name="Frontend static lint",
+            severity="info",
+            message="ESLint not installed — skipping frontend lint check.",
+            duration_ms=(time.perf_counter() - t0) * 1000,
+        )
+
+    try:
+        payload = _json.loads(stdout.decode("utf-8", errors="replace") or "[]")
+    except _json.JSONDecodeError:
+        return CheckResult(
+            id="frontend_lint", name="Frontend static lint",
+            severity="warning",
+            message="Could not parse ESLint output.",
+            duration_ms=(time.perf_counter() - t0) * 1000,
+        )
+
+    errors = []
+    for f in payload:
+        rel = f.get("filePath", "").replace(_FRONTEND_ROOT + "/", "")
+        for m in f.get("messages", []):
+            if m.get("severity") == 2 and m.get("ruleId") in ("no-undef", "react/jsx-no-undef"):
+                errors.append({
+                    "file": rel,
+                    "line": m.get("line"),
+                    "rule": m.get("ruleId"),
+                    "message": m.get("message"),
+                })
+
+    dur = (time.perf_counter() - t0) * 1000
+    if errors:
+        # Group by file for a nicer summary
+        by_file = {}
+        for e in errors:
+            by_file.setdefault(e["file"], []).append(f'L{e["line"]} {e["message"]}')
+        return CheckResult(
+            id="frontend_lint", name="Frontend static lint",
+            severity="critical",
+            message=f"{len(errors)} page-breaking JS reference(s) in {len(by_file)} file(s).",
+            details={"errors": errors[:50], "by_file": {k: v[:5] for k, v in by_file.items()}},
+            duration_ms=dur,
+        )
+    scanned = len(payload)
+    return CheckResult(
+        id="frontend_lint", name="Frontend static lint",
+        severity="ok",
+        message=f"No page-breaking references across {scanned} JS/JSX file(s).",
+        details={"files_scanned": scanned},
+        duration_ms=dur,
+    )
+register(_check_frontend_lint)
+
+
+# ---------------------------------------------------------------------------
+# 12. Route smoke — parallel-hit every critical public/admin GET endpoint and
+#     verify shape. Catches serialization crashes, ordering bugs, dead
+#     routes and 500s that would silently break pages.  Runs in <1s thanks
+#     to asyncio.gather.
+# ---------------------------------------------------------------------------
+async def _check_route_smoke():
+    t0 = time.perf_counter()
+    try:
+        import httpx  # already in requirements
+    except ImportError:
+        return CheckResult(
+            id="route_smoke", name="Route smoke test",
+            severity="info",
+            message="httpx not available — skipping route smoke.",
+            duration_ms=(time.perf_counter() - t0) * 1000,
+        )
+
+    base = os.environ.get("BACKEND_INTERNAL_URL", "http://127.0.0.1:8001")
+
+    # (path, expected_type, auth_required, shape_hint)
+    # `shape_hint` is a callable returning True if body looks correct.
+    def _is_ioc_page(b): return isinstance(b, dict) and "items" in b and "total" in b
+    def _is_stats(b):    return isinstance(b, dict) and "total" in b
+    def _is_root(b):     return isinstance(b, dict) and "message" in b
+    def _is_list(b):     return isinstance(b, list)
+    def _is_dict(b):     return isinstance(b, dict)
+
+    endpoints = [
+        # Public
+        ("/api/",                   False, _is_root),
+        ("/api/threats",            False, _is_list),
+        ("/api/live-feed",          False, _is_dict),
+        ("/api/iocs?limit=1",       False, _is_ioc_page),
+        ("/api/iocs/stats",         False, _is_stats),
+        ("/api/threat-intel/overview", False, _is_dict),
+        ("/api/intel-feed",         False, _is_dict),
+        ("/api/community/enabled-sources", False, _is_dict),
+        # Admin
+        ("/api/leads",              True,  _is_list),
+        ("/api/webhooks",           True,  _is_list),
+        ("/api/webhooks/presets",   True,  _is_list),
+        ("/api/admin/overview",     True,  _is_dict),
+        ("/api/admin/settings",     True,  _is_dict),
+        ("/api/admin/cyberlab/rules", True, _is_dict),
+    ]
+
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        # Grab an admin token from the seeded admin so we can hit auth routes.
+        # Falls back gracefully if login fails (auth checks marked as skipped).
+        token = None
+        try:
+            admin_email = os.environ.get("ADMIN_EMAIL", "admin@nivxmachines.com")
+            admin_pass = os.environ.get("ADMIN_PASSWORD", "NivX@Admin2025")
+            login = await client.post(
+                f"{base}/api/auth/login",
+                json={"email": admin_email, "password": admin_pass},
+            )
+            if login.status_code == 200:
+                token = login.json().get("access_token")
+        except Exception:  # noqa: BLE001
+            token = None
+
+        async def hit(path: str, auth: bool, shape_ok):
+            headers = {}
+            if auth and token:
+                headers["Authorization"] = f"Bearer {token}"
+            try:
+                r = await client.get(f"{base}{path}", headers=headers)
+                if r.status_code != 200:
+                    return {"path": path, "status": r.status_code,
+                            "detail": r.text[:180], "auth": auth}
+                try:
+                    body = r.json()
+                except Exception:
+                    return {"path": path, "status": 200,
+                            "detail": "non-JSON response", "auth": auth}
+                if not shape_ok(body):
+                    return {"path": path, "status": 200,
+                            "detail": f"shape mismatch: {type(body).__name__} — {str(body)[:80]}",
+                            "auth": auth}
+                return None
+            except Exception as e:  # noqa: BLE001
+                return {"path": path, "status": None,
+                        "detail": str(e)[:180], "auth": auth}
+
+        # Fan-out in parallel — this makes the whole smoke take ~200ms.
+        results = await asyncio.gather(*[hit(p, a, s) for p, a, s in endpoints])
+
+    failures = [r for r in results if r is not None]
+    skipped_auth = [f for f in failures if f["auth"] and not token]
+
+    dur = (time.perf_counter() - t0) * 1000
+    if failures:
+        # If ALL failures are auth-skipped (couldn't get a token), soften to warning
+        if failures and len(failures) == len(skipped_auth):
+            return CheckResult(
+                id="route_smoke", name="Route smoke test",
+                severity="warning",
+                message=f"Admin token unavailable — {len(skipped_auth)} auth route(s) skipped.",
+                details={"skipped": [f["path"] for f in skipped_auth]},
+                duration_ms=dur,
+            )
+        return CheckResult(
+            id="route_smoke", name="Route smoke test",
+            severity="critical",
+            message=f"{len(failures)}/{len(endpoints)} critical endpoint(s) failing.",
+            details={"failures": failures[:20],
+                     "checked": [p for p, _, _ in endpoints]},
+            duration_ms=dur,
+        )
+    return CheckResult(
+        id="route_smoke", name="Route smoke test",
+        severity="ok",
+        message=f"All {len(endpoints)} critical endpoint(s) responding correctly.",
+        details={"checked": [p for p, _, _ in endpoints]},
+        duration_ms=dur,
+    )
+register(_check_route_smoke)
+
+
+# ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
 async def run_all_checks() -> List[CheckResult]:

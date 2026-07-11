@@ -6,7 +6,8 @@
  */
 import { useState, useMemo, useRef, useEffect } from "react";
 import { toast } from "sonner";
-import { Download, ChevronDown, FileSpreadsheet, FileJson, FileText, Search, ShieldAlert } from "lucide-react";
+import { Download, ChevronDown, FileSpreadsheet, FileJson, FileText, Search, ShieldAlert, Table, Clock } from "lucide-react";
+import InvestigationTimeline from "./InvestigationTimeline";
 
 const RISK_CHIP = {
   info:     "bg-emerald-100 text-emerald-800 border-emerald-200",
