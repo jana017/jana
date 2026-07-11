@@ -462,6 +462,18 @@ _GOLDEN_PAYLOADS = [
         ),
         "must_decode_to_contain": "import os",
     },
+    # Regression: bare `import(...)` variant (double-underscore stripped by
+    # markdown / paste sanitizers).  Feb 2026 report — analyst pasted a
+    # payload where `__import__` had been mangled to `import`, and the
+    # extractor didn't recognize it → 0 decode steps.
+    {
+        "id": "python_import_bare_variant",
+        "input": (
+            "-c \"exec(import('base64').b64decode("
+            "b'aW1wb3J0IG9zLHN5cwo=').decode())\""
+        ),
+        "must_decode_to_contain": "import os",
+    },
 ]
 
 

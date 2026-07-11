@@ -704,9 +704,17 @@ register(Plugin(
 #     the dominant real-world flavor; keep this plugin focused.
 # ---------------------------------------------------------------------------
 _PY_B64DECODE_RE = re.compile(
-    r"""(?:base64|__import__\(\s*['"]base64['"]\s*\))"""      # module or dynamic import
+    # Accept:  base64.b64decode(...)                 — direct module ref
+    #          __import__('base64').b64decode(...)   — canonical dynamic
+    #          import('base64').b64decode(...)       — sanitized / mangled
+    #          importlib.import_module('base64').b64decode(...)
+    r"""(?:
+          base64                                                     # bare module
+        | _{0,2}import_{0,2}\s*\(\s*['"]base64['"]\s*\)              # __import__ or import()
+        | importlib\s*\.\s*import_module\s*\(\s*['"]base64['"]\s*\)  # importlib idiom
+        )"""
     r"""\s*\.\s*b64decode\s*\(\s*b?['"]([A-Za-z0-9+/=]{16,})['"]\s*\)""",
-    re.IGNORECASE,
+    re.IGNORECASE | re.VERBOSE,
 )
 
 
@@ -730,10 +738,64 @@ register(Plugin(
     description=(
         "Find inline `base64.b64decode(b'<base64>')` or "
         "`__import__('base64').b64decode(...)` in Python `-c` "
-        "one-liners (fileless staging) and extract just the base64 blob."
+        "one-liners (fileless staging) and extract just the base64 blob. "
+        "Handles `__import__`, bare `import()`, and `importlib.import_module` variants."
     ),
     run=_extract_py_b64decode,
     detect=_detect_py_b64decode,
+))
+
+
+# ---------------------------------------------------------------------------
+# Fallback extractor — pulls the LARGEST base64 blob from any Python-style
+# string literal (`'...'`, `"..."`, `b'...'`, `b"..."`).  Runs at lower
+# confidence than the targeted plugins above so it only kicks in when the
+# more specific extractors couldn't recognize the wrapper.  This defends
+# against arbitrary obfuscation like renamed functions, encoding-layer
+# indirection, or PEP-manipulated `import` variants.
+# ---------------------------------------------------------------------------
+_ANY_QUOTED_B64_RE = re.compile(
+    r"""b?['"]([A-Za-z0-9+/=]{200,})['"]"""     # 200+ char base64 inside quotes
+)
+
+
+def _detect_any_quoted_b64(data: bytes) -> float:
+    text = data.decode("utf-8", errors="ignore")
+    m = _ANY_QUOTED_B64_RE.search(text)
+    if not m:
+        return 0.0
+    blob = m.group(1)
+    # Confirm the blob passes a strict base64 sanity check (length mod 4 = 0
+    # after stripping optional trailing padding) to avoid false positives on
+    # long alphanumeric IDs.
+    stripped = blob.rstrip("=")
+    if len(stripped) % 4 != 0 and (len(blob) - len(stripped)) not in (0, 1, 2):
+        return 0.0
+    # Lower confidence than the targeted plugin (0.96) so it doesn't
+    # override well-known idioms.
+    return 0.75
+
+
+def _extract_any_quoted_b64(data: bytes, params: Dict[str, Any]) -> bytes:
+    text = data.decode("utf-8", errors="replace")
+    best = ""
+    for m in _ANY_QUOTED_B64_RE.finditer(text):
+        if len(m.group(1)) > len(best):
+            best = m.group(1)
+    return best.encode("ascii") if best else data
+
+
+register(Plugin(
+    id="extract-quoted-b64-blob",
+    name="Extract Largest Quoted Base64 Blob (fallback)",
+    category="Extractors",
+    description=(
+        "Last-resort extractor — pulls the largest base64 blob (200+ chars) "
+        "from any Python-style string literal. Catches obfuscated wrappers "
+        "where the specific `b64decode()` idiom has been renamed or aliased."
+    ),
+    run=_extract_any_quoted_b64,
+    detect=_detect_any_quoted_b64,
 ))
 
 

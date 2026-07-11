@@ -163,16 +163,20 @@ BUILTIN_RULES: List[Dict[str, Any]] = [
             "Frequently used as a stage-1 dropper — the decoded stage often reads "
             "a companion file from disk, XOR-decrypts it and exec()s the result. "
             "See Feb 2026 sample: base64 payload → XOR key `4fab0f4d5f6d...` → "
-            "reads `instructions.docx` → exec()."
+            "reads `instructions.docx` → exec(). Matches both canonical "
+            "`__import__` and sanitized `import()` variants."
         ),
         "strings": [
-            # -c "exec(...)"  or  -c exec(...)  followed by b64decode
+            # -c "exec(...)" wrapping a b64decode call.  Accepts:
+            #   __import__('base64'), import('base64'),
+            #   importlib.import_module('base64'), or the bare `base64`
+            #   module reference.
             {"type": "regex",
-             "pattern": r"""-c\s*(?:['"])?exec\s*\(\s*(?:__import__\s*\(\s*['"]base64['"]\s*\)|base64)\s*\.\s*b64decode\s*\(""",
+             "pattern": r"""-c\s*(?:['"])?exec\s*\(\s*(?:_{0,2}import_{0,2}\s*\(\s*['"]base64['"]\s*\)|importlib\s*\.\s*import_module\s*\(\s*['"]base64['"]\s*\)|base64)\s*\.\s*b64decode\s*\(""",
              "flags": "i"},
-            # Bare form: exec(__import__('base64').b64decode(b'...').decode())
+            # Bare form (no `-c`): exec((__)import(__)?('base64').b64decode(b'...').decode())
             {"type": "regex",
-             "pattern": r"""exec\s*\(\s*__import__\s*\(\s*['"]base64['"]\s*\)\s*\.\s*b64decode\s*\(""",
+             "pattern": r"""exec\s*\(\s*(?:_{0,2}import_{0,2}\s*\(\s*['"]base64['"]\s*\)|importlib\s*\.\s*import_module\s*\(\s*['"]base64['"]\s*\))\s*\.\s*b64decode\s*\(""",
              "flags": "i"},
         ],
     },
