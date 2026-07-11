@@ -2040,10 +2040,12 @@ async def _urlscan_get_with_backoff(hc: httpx.AsyncClient, url: str, headers: di
 async def _urlscan_submit_scan(hc: httpx.AsyncClient, target_url: str) -> Optional[dict]:
     """Submit a fresh urlscan.io scan when no prior scan exists.
 
-    Returns `{scan_id, result_url, api_url}` on success, or None if the API
-    key is missing or the submission fails. Fresh scans typically take
-    30-60 s — we don't block waiting for them; we return the pending info so
-    the UI can render a "Fresh scan in progress" link.
+    Returns `{scan_id, result_url, api_url}` on success, or a dict with
+    `{error: str}` on failure (so the UI can explain to the user why they
+    see no preview — e.g., domain doesn't resolve, rate-limited, etc.).
+    Fresh scans typically take 30-60 s — we don't block waiting for them;
+    we return the pending info so the UI can render a "Fresh scan in
+    progress" link.
     """
     if not URLSCAN_API_KEY or not target_url:
         return None
@@ -2058,9 +2060,16 @@ async def _urlscan_submit_scan(hc: httpx.AsyncClient, target_url: str) -> Option
             j = r.json()
             return {"scan_id": j.get("uuid"), "result_url": j.get("result"),
                     "api_url": j.get("api"), "message": j.get("message", "")}
-    except Exception:
-        pass
-    return None
+        # 400/429/etc. — surface the reason so the UI can tell the user
+        # why they see no preview instead of a silent empty state.
+        try:
+            j = r.json()
+            msg = j.get("message") or j.get("description") or f"HTTP {r.status_code}"
+        except Exception:
+            msg = f"HTTP {r.status_code}"
+        return {"error": msg, "http_status": r.status_code}
+    except Exception as e:  # noqa: BLE001
+        return {"error": f"Network error: {type(e).__name__}"}
 
 
 async def _urlscan_screenshot_is_valid(hc: httpx.AsyncClient, screenshot_url: str) -> bool:
@@ -2567,13 +2576,16 @@ async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
                                         }
                                         break
 
-                            # Auto-submit a fresh urlscan.io scan when we found
-                            # nothing usable AND we have an API key. This
-                            # eliminates "No prior scan of the requested URL"
-                            # for domains/URLs that urlscan hasn't indexed yet.
+                            # Auto-submit a fresh urlscan.io scan when we
+                            # couldn't find a usable preview — regardless of
+                            # whether stale prior scans exist. Prior scans
+                            # commonly reference subdomains or return 404s
+                            # from the urlscan CDN, leaving the user with
+                            # neither a preview nor a fresh scan otherwise
+                            # (see Feb 2026 bug: bestshoppingday.com).
                             fresh = None
                             submit_target = requested_url or (f"https://{host}" if host else None)
-                            if not preview and not all_results and submit_target:
+                            if not preview and submit_target:
                                 fresh = await _urlscan_submit_scan(hc, submit_target)
 
                             payload = {
