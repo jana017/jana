@@ -463,27 +463,50 @@ async def _check_decoder_coverage():
             duration_ms=(time.perf_counter() - t0) * 1000,
         )
 
+    # Merge built-in golden samples with any custom analyst-authored samples
+    # stored in Mongo (`healthbot_regression_samples`). This makes HealthBot
+    # a living regression suite — analysts can add real-world payloads that
+    # they've seen in the wild and pin them so future refactors can't
+    # silently regress the decoder.
+    samples = list(_GOLDEN_PAYLOADS)
+    try:
+        db = _get_db()
+        async for doc in db.healthbot_regression_samples.find({"enabled": {"$ne": False}}):
+            samples.append({
+                "id": f"custom:{doc.get('id', str(doc.get('_id', '?')))}",
+                "input": doc.get("input", ""),
+                "must_decode_to_contain": doc.get("must_decode_to_contain", ""),
+                "custom": True,
+            })
+    except Exception:  # noqa: BLE001
+        pass  # DB unreachable — fall back to built-ins.
+
     failed = []
     passed = 0
-    for sample in _GOLDEN_PAYLOADS:
+    for sample in samples:
+        needle = sample.get("must_decode_to_contain") or ""
+        input_text = sample.get("input") or ""
+        if not input_text or not needle:
+            continue
         try:
-            output, trace = auto_decode(sample["input"], max_depth=8)
+            output, trace = auto_decode(input_text, max_depth=8)
             text = output.decode("utf-8", errors="replace")
-            needle = sample["must_decode_to_contain"]
             if needle.lower() not in text.lower():
                 failed.append({
                     "id": sample["id"],
                     "steps": len(trace),
                     "expected": needle,
                     "got_preview": text[:120],
+                    "custom": sample.get("custom", False),
                 })
             else:
                 passed += 1
         except Exception as e:  # noqa: BLE001
-            failed.append({"id": sample["id"], "error": str(e)[:200]})
+            failed.append({"id": sample["id"], "error": str(e)[:200],
+                           "custom": sample.get("custom", False)})
 
     dur = (time.perf_counter() - t0) * 1000
-    total = len(_GOLDEN_PAYLOADS)
+    total = passed + len(failed)
     if failed:
         return CheckResult(
             id="decoder_coverage", name="NivX Forge decoder coverage",
@@ -495,8 +518,8 @@ async def _check_decoder_coverage():
     return CheckResult(
         id="decoder_coverage", name="NivX Forge decoder coverage",
         severity="ok",
-        message=f"All {total} decoder samples decoded correctly.",
-        details={"samples": [s["id"] for s in _GOLDEN_PAYLOADS]},
+        message=f"All {total} decoder samples decoded correctly ({len(_GOLDEN_PAYLOADS)} builtin + {total - len(_GOLDEN_PAYLOADS)} custom).",
+        details={"samples": [s["id"] for s in samples]},
         duration_ms=dur,
     )
 register(_check_decoder_coverage)

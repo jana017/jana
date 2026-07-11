@@ -122,6 +122,19 @@ def attach_routes(app_router: APIRouter, auth_dep):
             raise HTTPException(status_code=404, detail="check_id has no auto-fix")
         return _checks.to_dict(result)
 
+    @app_router.get("/latest")
+    async def latest_endpoint(user: dict = Depends(auth_dep)):
+        """Most recent scan (from history) — used by the pre-flight banner
+        to render an instant status without triggering a fresh scan."""
+        db = _get_db()
+        doc = await db.healthbot_scans.find_one({}, sort=[("started_at", -1)])
+        if not doc:
+            # No scan on record yet — banner will just not render.
+            return {"overall": "ok", "summary": {}, "results": [],
+                    "started_at": None, "finished_at": None,
+                    "auto_fixed": 0, "triggered_by": None}
+        return _serialize_history(doc)
+
     @app_router.get("/history")
     async def history_endpoint(limit: int = 50, user: dict = Depends(auth_dep)):
         db = _get_db()
@@ -129,7 +142,74 @@ def attach_routes(app_router: APIRouter, auth_dep):
         docs = await db.healthbot_scans.find().sort("started_at", -1).limit(limit).to_list(limit)
         return [_serialize_history(d) for d in docs]
 
+    # -----------------------------------------------------------------------
+    # Custom regression samples — analysts can pin real-world payloads that
+    # HealthBot's decoder_coverage check runs on every scan.
+    # -----------------------------------------------------------------------
+    def _serialize_sample(doc):
+        return {
+            "id": doc.get("id"),
+            "label": doc.get("label", doc.get("id", "")),
+            "input": doc.get("input", ""),
+            "must_decode_to_contain": doc.get("must_decode_to_contain", ""),
+            "enabled": doc.get("enabled", True),
+            "created_at": doc.get("created_at"),
+            "created_by": doc.get("created_by"),
+        }
+
+    @app_router.get("/regression-samples")
+    async def list_samples(user: dict = Depends(auth_dep)):
+        db = _get_db()
+        docs = await db.healthbot_regression_samples.find().sort("created_at", -1).to_list(200)
+        return [_serialize_sample(d) for d in docs]
+
+    @app_router.post("/regression-samples")
+    async def create_sample(payload: Dict[str, Any], user: dict = Depends(auth_dep)):
+        input_text = (payload.get("input") or "").strip()
+        needle = (payload.get("must_decode_to_contain") or "").strip()
+        label = (payload.get("label") or "").strip() or f"custom-{int(datetime.now(timezone.utc).timestamp())}"
+        if not input_text or not needle:
+            raise HTTPException(status_code=400, detail="`input` and `must_decode_to_contain` are required")
+        if len(input_text) > 32_000 or len(needle) > 2_000:
+            raise HTTPException(status_code=413, detail="payload too large")
+        db = _get_db()
+        sample_id = payload.get("id") or f"sample_{int(datetime.now(timezone.utc).timestamp() * 1000)}"
+        doc = {
+            "id": sample_id,
+            "label": label,
+            "input": input_text,
+            "must_decode_to_contain": needle,
+            "enabled": bool(payload.get("enabled", True)),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_by": user.get("email"),
+        }
+        # upsert by id
+        await db.healthbot_regression_samples.update_one(
+            {"id": sample_id}, {"$set": doc}, upsert=True,
+        )
+        return _serialize_sample(doc)
+
+    @app_router.delete("/regression-samples/{sample_id}")
+    async def delete_sample(sample_id: str, user: dict = Depends(auth_dep)):
+        db = _get_db()
+        r = await db.healthbot_regression_samples.delete_one({"id": sample_id})
+        return {"deleted": r.deleted_count}
+
+    @app_router.post("/regression-samples/{sample_id}/toggle")
+    async def toggle_sample(sample_id: str, user: dict = Depends(auth_dep)):
+        db = _get_db()
+        doc = await db.healthbot_regression_samples.find_one({"id": sample_id})
+        if not doc:
+            raise HTTPException(status_code=404, detail="sample not found")
+        new_state = not doc.get("enabled", True)
+        await db.healthbot_regression_samples.update_one(
+            {"id": sample_id}, {"$set": {"enabled": new_state}},
+        )
+        return {"id": sample_id, "enabled": new_state}
+
 
 async def ensure_indexes():
     db = _get_db()
     await db.healthbot_scans.create_index([("started_at", -1)])
+    await db.healthbot_regression_samples.create_index("id", unique=True)
+    await db.healthbot_regression_samples.create_index([("created_at", -1)])

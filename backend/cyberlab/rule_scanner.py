@@ -202,6 +202,28 @@ BUILTIN_RULES: List[Dict[str, Any]] = [
         ],
     },
     {
+        "name": "Amateur_XOR_Crypter_Signature",
+        "tags": ["xor", "crypter", "obfuscation", "T1027"],
+        "severity": "high",
+        "description": (
+            "Amateur / commodity XOR crypter signature — short (17–32 byte) "
+            "hex XOR key combined with a modular index (`key[i % len(key)]`). "
+            "Common in Python, Go and .NET stagers for hobbyist RATs and "
+            "off-the-shelf crypters. Not itself proof of malware, but a strong "
+            "signal in combination with any file-read + exec pattern."
+        ),
+        "strings": [
+            # 17–32-byte hex XOR key (34–64 hex chars) — the amateur-crypter sweet spot.
+            {"type": "regex",
+             "pattern": r"""bytes\.fromhex\s*\(\s*['"][0-9a-fA-F]{34,64}['"]\s*\)""",
+             "flags": "i"},
+            # Modular indexing `key[i % len(key)]` is the give-away for repeating-XOR.
+            {"type": "regex",
+             "pattern": r"""\[\s*\w+\s*%\s*len\s*\(\s*\w+\s*\)\s*\]""",
+             "flags": ""},
+        ],
+    },
+    {
         "name": "Suspicious_Registry_Persistence",
         "tags": ["persistence", "T1547"],
         "severity": "high",

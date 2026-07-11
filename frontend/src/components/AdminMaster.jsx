@@ -19,6 +19,7 @@ import { useState, useEffect, lazy, Suspense } from "react";
 import { Wrench, Activity, Settings as SettingsIcon, Bug, Webhook, Loader2 } from "lucide-react";
 import AdminHealthBot from "@/components/AdminHealthBot";
 import AdminUiScanner from "@/components/AdminUiScanner";
+import AdminRegressionSuite from "@/components/AdminRegressionSuite";
 
 // Lazy-load heavier sub-panels so switching tabs doesn't cost anything until
 // the analyst opens them.
@@ -72,6 +73,10 @@ function Overview() {
           <AdminUiScanner />
         </div>
       </section>
+
+      <div className="mt-6">
+        <AdminRegressionSuite />
+      </div>
     </div>
   );
 }

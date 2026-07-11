@@ -11,6 +11,7 @@ import AdminSiteCMS from "@/components/AdminSiteCMS";
 import AdminMaster from "@/components/AdminMaster";
 import AdminEmployees from "@/components/AdminEmployees";
 import AdminTickets from "@/components/AdminTickets";
+import PreflightBanner from "@/components/PreflightBanner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -217,6 +218,8 @@ function Dashboard() {
           </div>
         </div>
       </header>
+
+      <PreflightBanner />
 
       <div className="bg-white border-b border-slate-200">
         <div className="mx-auto max-w-7xl px-6 flex gap-1">

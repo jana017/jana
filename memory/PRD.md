@@ -1,5 +1,21 @@
 # NivX Machines — PRD
 
+## Implemented (2026-02-11 — NivX Forge decoder gap + HealthBot regression suite)
+- **Fixed NivX Forge decoder gap**: Added `extract-python-b64decode` plugin — recognizes `base64.b64decode(b'...')` / `__import__('base64').b64decode(...)` idioms used in `python -c "exec(...)"` fileless staging. Now decodes the Feb 2026 sample in 2 auto-steps (extract → base64) instead of stalling silently.
+- **Added 3 new detection rules** in `rule_scanner.py`:
+  - `Python_Fileless_B64_Loader` — severity=**critical** — matches the outer wrapper
+  - `Python_XOR_File_Loader` — severity=**critical** — matches the stage-2 XOR + file-read + exec pattern
+  - `Amateur_XOR_Crypter_Signature` — severity=**high** — flags 17-32-byte hex XOR keys + modular indexing (commodity crypter tell)
+- Verdict now: **malicious · risk=100** for the sample commandline (was `clean · risk=8`).
+- **HealthBot regression suite** — new `decoder_coverage` check runs a golden-payload suite through `auto_decode()` on every scan (~2ms). Ships with 5 builtins (PS FromBase64String, bash echo|b64, python b64decode, cmd caret, hex string). Analysts can pin custom samples via `/api/healthbot/regression-samples` and the new Master → Overview → **Regression Suite** admin panel (CRUD + enable/disable toggles).
+- **Pre-flight HealthBot banner** — new `PreflightBanner` component on Admin surfaces `overall` status at the top of every admin page. Auto-polls `/healthbot/latest` every 60s. Hides on `overall=ok`, amber for warning, red pulsing for critical. Click-through to Master, one-click Re-scan, session-dismiss.
+- **New backend routes**:
+  - `GET /api/healthbot/latest` — most-recent scan (banner data)
+  - `GET/POST/DELETE /api/healthbot/regression-samples` — CRUD for custom golden payloads
+  - `POST /api/healthbot/regression-samples/{id}/toggle` — enable/disable
+- **Deployment hygiene**: quoted `MALWAREBAZAAR_API_KEY` in `backend/.env` per deployment_agent recommendation.
+- **Tests**: 4/4 healthbot pytests pass. HealthBot scan now runs 13 checks in ~1.5s.
+
 ## Fixed (2026-02-11 — /threat-intelligence white-screen + HealthBot upgrade)
 - **Root cause**: `IocBulkTable.jsx` referenced `exportRef`, `exportOpen`, `setExportOpen` without declaring them → `ReferenceError` white-screened the whole route in production. The component also ignored the `initialText`, `autoRun`, `prefillKey` props that `IocAnalyzer` passes from the NivX Forge → Bulk-Analyzer handoff.
 - **Bonus bugs found by new scanner**: `ForensicEventsPanel.jsx` was missing imports for `Table`, `Clock`, `InvestigationTimeline` — same class of runtime crash.
