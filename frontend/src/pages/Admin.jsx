@@ -2,17 +2,12 @@ import { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import { LogOut, Plus, Pencil, Trash2, ArrowLeft, ShieldCheck, Download, LayoutDashboard, Settings, Webhook, Activity, Code2, Users, Ticket } from "lucide-react";
+import { LogOut, Plus, Pencil, Trash2, ArrowLeft, ShieldCheck, Download, LayoutDashboard, Activity, Code2, Users, Ticket } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import useSeo from "@/lib/useSeo";
 import SocDashboard from "@/components/SocDashboard";
-import AdminSettings from "@/components/AdminSettings";
-import AdminCyberLabRules from "@/components/AdminCyberLabRules";
-import AdminWebhooks from "@/components/AdminWebhooks";
-import AdminHealthBot from "@/components/AdminHealthBot";
 import AdminSiteCMS from "@/components/AdminSiteCMS";
-import AdminUiScanner from "@/components/AdminUiScanner";
 import AdminMaster from "@/components/AdminMaster";
 import AdminEmployees from "@/components/AdminEmployees";
 import AdminTickets from "@/components/AdminTickets";
@@ -119,6 +114,20 @@ function Dashboard() {
     const h = (e) => { if (e.detail) setView(e.detail); };
     window.addEventListener("nivx-admin-goto", h);
     return () => window.removeEventListener("nivx-admin-goto", h);
+  }, []);
+
+  // Backward-compat: honor legacy `?view=settings|rules|edr|siem|webhooks`
+  // URL params by routing them to the consolidated Master tab.
+  useEffect(() => {
+    try {
+      const p = new URLSearchParams(window.location.search).get("view");
+      if (!p) return;
+      const q = p.toLowerCase();
+      if (q === "settings") setView("settings");
+      else if (q === "rules" || q === "cyberlab-rules") setView("cyberlab-rules");
+      else if (q === "edr" || q === "siem" || q === "webhooks") setView("webhooks");
+      else if (["overview", "reports", "leads", "master", "employees", "tickets", "developer", "healthbot", "ui-scanner"].includes(q)) setView(q);
+    } catch { /* ignore */ }
   }, []);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -233,30 +242,9 @@ function Dashboard() {
             Leads <span className="text-xs font-normal">({leads.length})</span>
           </button>
           <button
-            data-testid="tab-settings"
-            onClick={() => setView("settings")}
-            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${view === "settings" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
-          >
-            <Settings className="w-4 h-4" /> Settings
-          </button>
-          <button
-            data-testid="tab-cyberlab-rules"
-            onClick={() => setView("cyberlab-rules")}
-            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${view === "cyberlab-rules" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
-          >
-            NivX Forge Rules
-          </button>
-          <button
-            data-testid="tab-webhooks"
-            onClick={() => setView("webhooks")}
-            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${view === "webhooks" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
-          >
-            <Webhook className="w-4 h-4" /> EDR / SIEM
-          </button>
-          <button
             data-testid="tab-master"
             onClick={() => setView("master")}
-            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${view === "master" || view === "healthbot" || view === "ui-scanner" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${view === "master" || view === "healthbot" || view === "ui-scanner" || view === "settings" || view === "cyberlab-rules" || view === "webhooks" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
           >
             <Activity className="w-4 h-4" /> Master
           </button>
@@ -287,9 +275,11 @@ function Dashboard() {
       {view === "overview" ? (
         <SocDashboard />
       ) : view === "settings" ? (
-        <AdminSettings />
+        <AdminMaster initialTab="settings" />
       ) : view === "webhooks" ? (
-        <AdminWebhooks />
+        <AdminMaster initialTab="webhooks" />
+      ) : view === "cyberlab-rules" ? (
+        <AdminMaster initialTab="rules" />
       ) : view === "healthbot" || view === "ui-scanner" || view === "master" ? (
         <AdminMaster />
       ) : view === "employees" ? (
@@ -298,10 +288,6 @@ function Dashboard() {
         <AdminTickets />
       ) : view === "developer" ? (
         <AdminSiteCMS />
-      ) : view === "cyberlab-rules" ? (
-        <main className="mx-auto max-w-7xl px-6 py-10">
-          <AdminCyberLabRules />
-        </main>
       ) : view === "reports" ? (
       <main className="mx-auto max-w-7xl px-6 py-10 grid lg:grid-cols-[400px_1fr] gap-8">
         <form onSubmit={submit} data-testid="threat-form" className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-3.5 lg:sticky lg:top-24 self-start">
