@@ -165,6 +165,20 @@ async def refine_payload(req: RefineRequest):
     return repair_mod.refine_to_dict(req.input or "")
 
 
+@router.post("/diagnose")
+async def diagnose_payload(req: RefineRequest):
+    """Dry-run diagnostic pass.  Reports every paste artifact Troubleshoot
+    *could* fix — plus anomalies it *can't* — without touching the
+    original payload.
+
+    The frontend calls this before applying `refine()` so the analyst
+    can review the proposed fixes ("Here are 3 issues I found — apply?")
+    and only click Proceed when they're comfortable. This is what
+    Troubleshoot should have looked like from day one.
+    """
+    return repair_mod.diagnose(req.input or "")
+
+
 @router.post("/analyze", response_model=AnalysisReport)
 async def analyze(req: AnalyzeRequest, session_id: Optional[str] = None):
     try:

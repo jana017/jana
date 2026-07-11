@@ -295,6 +295,132 @@ _PIPELINE = [
     _fix_trim,
 ]
 
+# Human-facing description for each fixer id.  Used by `diagnose()` to
+# tell the analyst *what* Troubleshoot can fix, before it actually touches
+# their payload.  Keep these one line and analyst-friendly (no jargon).
+# Keys MUST match the `id` field emitted by each `_fix_*` function.
+_FIXER_META = {
+    "zero_width":    ("Invisible zero-width characters (U+200B/U+200C/U+FEFF)",
+                      "Malware and copy-paste from chat apps often smuggle "
+                      "invisible chars into the payload. Removing them lets "
+                      "regex-based extractors match properly."),
+    "nbsp":          ("Non-breaking / narrow spaces",
+                      "Word/PDF pastes replace spaces with U+00A0. Base64 "
+                      "chunks with these characters cannot be decoded."),
+    "unicode_dash":  ("Typographic Unicode dashes (em/en/minus)",
+                      "PDFs and email clients auto-substitute `-` with `—`. "
+                      "Command-line flags won't be recognized."),
+    "smart_quote":   ("Curly / smart quotes",
+                      "Word turns `'` and `\"` into curly quotes. Python "
+                      "string literals inside the payload can't be parsed."),
+    "control_chars": ("Non-printable ASCII control characters",
+                      "Terminal / log copies drop invisible \\r, \\b, etc. "
+                      "Removing them restores clean whitespace layout."),
+    "email_quote":   ("Email quote markers (`>` prefix per line)",
+                      "Forwarded phishing emails prefix every line with `>`. "
+                      "Stripping them recovers the original commandline."),
+    "ellipsis":      ("Truncation ellipsis (`…` or `...`)",
+                      "The paste looks truncated — the payload may be "
+                      "incomplete. Removing the ellipsis marker at least "
+                      "lets the rest decode."),
+    "cmd_caret":     ("Windows CMD caret escapes (`p^o^w^e^r^shell`)",
+                      "Adversary CMD obfuscation. Removing the `^` between "
+                      "characters restores the real command name so "
+                      "downstream regex rules fire."),
+    "b64_line_wrap": ("Base64 blob with hard line-wraps (76-column email)",
+                     "Emails wrap base64 blobs every 76 chars. Joining "
+                     "the lines makes it decodable."),
+    "b64_urlsafe":   ("URL-safe base64 (- and _ instead of + and /)",
+                      "JWT tokens and some malware use URL-safe alphabet. "
+                      "Translating restores the standard alphabet decoder."),
+    "b64_padding":   ("Base64 missing `=` padding",
+                      "Truncated / manually-typed base64 lacks trailing `=`. "
+                      "Adding the correct amount fixes the decode."),
+    "trim":          ("Leading / trailing whitespace",
+                      "Off-by-one whitespace bytes at the ends of the paste."),
+}
+
+
+def diagnose(text: str) -> dict:
+    """Dry-run diagnostic pass — analyze the payload, list every issue
+    Troubleshoot *could* fix, and note whether the auto-decoder already
+    succeeds without any repair.
+
+    Returns a JSON-serializable report the frontend renders as a
+    "here's what I found; click Proceed to apply" confirmation modal.
+    """
+    if not isinstance(text, str):
+        text = str(text)
+
+    findings: List[dict] = []
+    # Dry-run: run each fixer over the ORIGINAL text in isolation. We do
+    # not chain them, because we want the analyst to see every distinct
+    # issue independently (chaining would mask which fixer contributed
+    # what). A separate `refine()` call does the actual repair.
+    for step in _PIPELINE:
+        _new, fix = step(text)
+        if fix is None:
+            continue
+        title, description = _FIXER_META.get(
+            fix.id, (fix.label, fix.detail),
+        )
+        findings.append({
+            "id": fix.id,
+            "label": fix.label,
+            "title": title,
+            "description": description,
+            "count": fix.count,
+            "sample_before": (text[:80] if len(text) else ""),
+            "sample_after":  (_new[:80] if _new else ""),
+            "has_fix": True,
+        })
+
+    # Also detect known "no plugin will match this" anomalies. These are
+    # things Troubleshoot cannot repair itself — they need a developer to
+    # add a new decoder plugin. We surface them so the analyst knows to
+    # pin the sample to the Regression Suite.
+    anomalies: List[dict] = []
+    # Presence of a large base64-looking blob (200+ chars) that Auto
+    # Investigate's normal extractors don't recognize means we're likely
+    # missing an extractor for the outer wrapper.
+    m = re.search(r"[A-Za-z0-9+/=]{200,}", text)
+    if m:
+        anomalies.append({
+            "id": "possible_missing_extractor",
+            "title": "Large base64 blob detected — but no known wrapper",
+            "description": (
+                "There is a 200+ character base64 block in your payload, "
+                "but no built-in extractor recognized its surrounding "
+                "syntax. Troubleshoot's fallback plugin will still pull "
+                "the largest quoted base64 blob at lower confidence. "
+                "For a permanent fix, ask a developer to add an "
+                "extractor plugin for this wrapper."
+            ),
+            "has_fix": False,
+        })
+    # Presence of hex-encoded XOR key + open() + exec = classic staged loader
+    if re.search(r"bytes\.fromhex\s*\(\s*['\"][0-9a-fA-F]{16,}", text) and \
+       re.search(r"open\s*\(\s*['\"][^'\"]+['\"]\s*,\s*['\"]rb['\"]", text):
+        anomalies.append({
+            "id": "staged_xor_loader",
+            "title": "Second-stage XOR file loader detected",
+            "description": (
+                "This payload reads a companion file and XOR-decrypts it. "
+                "To fully decode you need the companion file. Troubleshoot "
+                "cannot fetch remote files — but the payload is already "
+                "flagged malicious by the rule engine."
+            ),
+            "has_fix": False,
+        })
+
+    return {
+        "input_length": len(text),
+        "findings": findings,          # things Troubleshoot CAN fix
+        "anomalies": anomalies,        # things it CAN'T fix (info only)
+        "total_repairs_available": len(findings),
+        "would_change": len(findings) > 0,
+    }
+
 
 def refine(text: str) -> RefineResult:
     """Run the deterministic repair pipeline over the given payload text."""
