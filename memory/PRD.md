@@ -1,5 +1,14 @@
 # NivX Machines — PRD
 
+## Implemented (2026-02-11 — Master Command Center consolidation)
+- Merged three separate Admin sidebar tabs (Settings, NivX Forge Rules, EDR / SIEM) into the single **Master** tab as sub-tabs, per user request.
+- `AdminMaster.jsx` now hosts 4 sub-tabs: **Overview** (Backend HealthBot + UI/UX Scanner), **Settings**, **NivX Forge Rules**, **EDR / SIEM**.
+- Each heavy sub-panel (Settings, Rules, Webhooks) is lazy-loaded via `React.lazy` + `Suspense` so switching tabs stays cheap.
+- Last selected sub-tab persisted in localStorage (`nivx-admin-master-tab`).
+- Backward compat: `?view=settings|rules|cyberlab-rules|edr|siem|webhooks` on `/admin` opens Master with the correct sub-tab pre-selected.
+- Underlying components (`AdminSettings`, `AdminCyberLabRules`, `AdminWebhooks`, `AdminHealthBot`, `AdminUiScanner`) are unchanged — pure UI consolidation. All existing endpoints and pytest coverage remain valid.
+- Verified: testing_agent_v3_fork 11/11 frontend checks PASS (iteration_23.json). Backend pytest 257/259 pass (2 pre-existing failures are OSINT-feed-volume dependent, not related).
+
 ## Problem Statement
 NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gallery, Threat Report, Careers, Services, Support. Threat Report shows real-time threat reports with Attack Chain (MITRE ATT&CK), Process Trees, images. Contact: Mobile 9059565125, Email info@nivxmachines.com. Real-time threat landscape.
 
