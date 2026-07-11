@@ -90,7 +90,7 @@ function TechniqueNode({ data }) {
 
 const NODE_TYPES = { step: StepNode, input: InputNode, output: OutputNode, technique: TechniqueNode };
 
-export default function AttackChainViewer({ input, output, trace = [], mitre = [] }) {
+export default function AttackChainViewer({ input, output, trace = [], mitre = [], fullHeight = false }) {
   const { nodes, edges } = useMemo(() => {
     const n = []; const e = [];
     const xStep = 210; const y0 = 200;
@@ -150,7 +150,7 @@ export default function AttackChainViewer({ input, output, trace = [], mitre = [
   }
 
   return (
-    <div className="h-96 rounded-md border border-slate-800 bg-slate-950" data-testid="attack-chain-viewer">
+    <div className={`${fullHeight ? "h-full" : "h-96"} rounded-md border border-slate-800 bg-slate-950`} data-testid="attack-chain-viewer">
       <ReactFlow
         nodes={nodes} edges={edges} nodeTypes={NODE_TYPES}
         fitView fitViewOptions={{ padding: 0.2, minZoom: 0.4, maxZoom: 1.2 }}

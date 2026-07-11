@@ -19,6 +19,7 @@ import VerdictBanner from "@/components/cyberlab/VerdictBanner";
 import EnrichedIocsPanel from "@/components/cyberlab/EnrichedIocsPanel";
 import PowerShellBadge from "@/components/cyberlab/PowerShellBadge";
 import TroubleshootButton from "@/components/cyberlab/TroubleshootButton";
+import GraphPopout, { GraphPopoutToggle } from "@/components/cyberlab/GraphPopout";
 
 const CATEGORY_STYLE = {
   Encoding:      { chip: "bg-blue-500/10 text-blue-300 border-blue-500/30",         dot: "bg-blue-400" },
@@ -104,6 +105,7 @@ export default function CyberLab() {
   const [shareOpen, setShareOpen] = useState(false);
   const [ruleModalOpen, setRuleModalOpen] = useState(false);
   const [graphMode, setGraphMode] = useState("chain"); // "chain" | "process"
+  const [graphPopped, setGraphPopped] = useState(false); // fullscreen modal toggle
 
   useEffect(() => {
     listPlugins().then(setPlugins).catch((e) => toast.error(`Load plugins: ${e.message}`));
@@ -1054,40 +1056,68 @@ export default function CyberLab() {
 
               {tab === "graph" && (
                 <div>
-                  {/* Data-Source toggle */}
-                  <div className="mb-3 inline-flex rounded-md border border-slate-800 bg-slate-950 p-0.5">
-                    <button
-                      data-testid="graph-mode-chain"
-                      onClick={() => setGraphMode("chain")}
-                      className={`px-2.5 py-1 text-[10px] font-semibold rounded transition-colors ${
-                        graphMode === "chain"
-                          ? "bg-cyan-500 text-slate-900"
-                          : "text-slate-400 hover:text-white"
-                      }`}
-                    >Decoding Chain</button>
-                    <button
-                      data-testid="graph-mode-process"
-                      onClick={() => setGraphMode("process")}
-                      className={`px-2.5 py-1 text-[10px] font-semibold rounded transition-colors ${
-                        graphMode === "process"
-                          ? "bg-cyan-500 text-slate-900"
-                          : "text-slate-400 hover:text-white"
-                      }`}
-                    >Process Tree (Sysmon / EDR)</button>
+                  {/* Data-Source toggle + popout control */}
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div className="inline-flex rounded-md border border-slate-800 bg-slate-950 p-0.5">
+                      <button
+                        data-testid="graph-mode-chain"
+                        onClick={() => setGraphMode("chain")}
+                        className={`px-2.5 py-1 text-[10px] font-semibold rounded transition-colors ${
+                          graphMode === "chain"
+                            ? "bg-cyan-500 text-slate-900"
+                            : "text-slate-400 hover:text-white"
+                        }`}
+                      >Decoding Chain</button>
+                      <button
+                        data-testid="graph-mode-process"
+                        onClick={() => setGraphMode("process")}
+                        className={`px-2.5 py-1 text-[10px] font-semibold rounded transition-colors ${
+                          graphMode === "process"
+                            ? "bg-cyan-500 text-slate-900"
+                            : "text-slate-400 hover:text-white"
+                        }`}
+                      >Process Tree (Sysmon / EDR)</button>
+                    </div>
+                    <GraphPopoutToggle popped={graphPopped} onToggle={() => setGraphPopped((v) => !v)} />
                   </div>
-                  {graphMode === "chain" ? (
-                    <AttackChainViewer
-                      input={input}
-                      output={result?.output || ""}
-                      trace={result?.trace || []}
-                      mitre={analysis?.mitre || []}
-                    />
-                  ) : (
-                    <ProcessTreeViewer
-                      initialTree={processTreeData}
-                      initialText={processTreeData ? input : ""}
-                    />
-                  )}
+                  <GraphPopout
+                    popped={graphPopped}
+                    onClose={() => setGraphPopped(false)}
+                    title={graphMode === "chain" ? "Decoding Chain — Graph" : "Process Tree — Graph"}
+                  >
+                    {/* Clickable overlay: single-click anywhere on the canvas opens popout.
+                        Kept lightweight (pointer-events on a tiny corner strip) so it doesn't
+                        interfere with ReactFlow pan/zoom/node-drag interactions. */}
+                    {!graphPopped && (
+                      <button
+                        type="button"
+                        onClick={() => setGraphPopped(true)}
+                        data-testid="graph-canvas-popout-hotspot"
+                        title="Click to pop out for deep analysis"
+                        aria-label="Pop the graph out to a full-screen modal"
+                        className="absolute top-2 right-2 z-10 inline-flex items-center gap-1 text-[9px] font-semibold text-cyan-300/80 bg-slate-950/80 border border-cyan-500/30 hover:border-cyan-400 hover:text-cyan-200 rounded px-1.5 py-0.5 backdrop-blur-sm transition-colors"
+                      >
+                        ⤢ Pop out
+                      </button>
+                    )}
+                    <div className={graphPopped ? "absolute inset-0" : "relative"}>
+                      {graphMode === "chain" ? (
+                        <AttackChainViewer
+                          input={input}
+                          output={result?.output || ""}
+                          trace={result?.trace || []}
+                          mitre={analysis?.mitre || []}
+                          fullHeight={graphPopped}
+                        />
+                      ) : (
+                        <ProcessTreeViewer
+                          initialTree={processTreeData}
+                          initialText={processTreeData ? input : ""}
+                          fullHeight={graphPopped}
+                        />
+                      )}
+                    </div>
+                  </GraphPopout>
                 </div>
               )}
             </div>

@@ -139,7 +139,7 @@ function computeLayout(nodes, edges) {
   return { rfNodes, rfEdges };
 }
 
-export default function ProcessTreeViewer({ initialTree = null, initialText = "" }) {
+export default function ProcessTreeViewer({ initialTree = null, initialText = "", fullHeight = false }) {
   const [text, setText] = useState(initialText);
   const [busy, setBusy] = useState(false);
   const [tree, setTree] = useState(initialTree);
@@ -280,7 +280,7 @@ export default function ProcessTreeViewer({ initialTree = null, initialText = ""
       )}
 
       {/* Canvas */}
-      <div className="h-[520px] rounded-md border border-slate-800 bg-slate-950">
+      <div className={`${fullHeight ? "h-full" : "h-[520px]"} rounded-md border border-slate-800 bg-slate-950`}>
         {tree ? (
           <ReactFlow
             nodes={layout.rfNodes}
