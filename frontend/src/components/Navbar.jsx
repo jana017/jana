@@ -122,17 +122,17 @@ export default function Navbar() {
             className="group relative inline-flex items-center gap-1.5 text-sm font-bold transition-all hover:-translate-y-0.5"
           >
             <Beaker
-              className="w-3.5 h-3.5 text-cyan-500 drop-shadow-[0_0_6px_rgba(6,182,212,0.6)] group-hover:text-fuchsia-500 group-hover:drop-shadow-[0_0_8px_rgba(217,70,239,0.6)] transition-all"
+              className="w-3.5 h-3.5 text-[#2E7DF5] drop-shadow-[0_0_6px_rgba(46,125,245,0.5)] group-hover:text-[#F5821F] group-hover:drop-shadow-[0_0_8px_rgba(245,130,31,0.55)] transition-all"
               strokeWidth={2.4}
             />
             <span
-              className="bg-gradient-to-r from-cyan-500 via-sky-500 to-fuchsia-500 bg-clip-text text-transparent bg-[length:200%_100%] bg-[position:0%_50%] group-hover:bg-[position:100%_50%] transition-[background-position] duration-500"
+              className="bg-gradient-to-r from-[#2E7DF5] via-[#2E7DF5] to-[#F5821F] bg-clip-text text-transparent bg-[length:200%_100%] bg-[position:0%_50%] group-hover:bg-[position:100%_50%] transition-[background-position] duration-500"
             >
               NivX Forge
             </span>
             <span
               aria-hidden="true"
-              className={`absolute -bottom-1 left-0 h-[2px] bg-gradient-to-r from-cyan-500 to-fuchsia-500 transition-all duration-300 ${(location.pathname === "/nivx-forge" || location.pathname === "/cyberlab") ? "w-full" : "w-0 group-hover:w-full"}`}
+              className={`absolute -bottom-1 left-0 h-[2px] bg-gradient-to-r from-[#2E7DF5] to-[#F5821F] transition-all duration-300 ${(location.pathname === "/nivx-forge" || location.pathname === "/cyberlab") ? "w-full" : "w-0 group-hover:w-full"}`}
             ></span>
           </Link>
         </div>
@@ -167,8 +167,8 @@ export default function Navbar() {
             </span>
           </Link>
           <Link to="/nivx-forge" data-testid="mobile-nav-cyberlab" onClick={() => setOpen(false)} className="inline-flex items-center gap-2 text-left text-sm font-bold">
-            <Beaker className="w-4 h-4 text-cyan-500 drop-shadow-[0_0_6px_rgba(6,182,212,0.5)]" strokeWidth={2.4} />
-            <span className="bg-gradient-to-r from-cyan-500 to-fuchsia-500 bg-clip-text text-transparent">
+            <Beaker className="w-4 h-4 text-[#2E7DF5] drop-shadow-[0_0_6px_rgba(46,125,245,0.5)]" strokeWidth={2.4} />
+            <span className="bg-gradient-to-r from-[#2E7DF5] to-[#F5821F] bg-clip-text text-transparent">
               NivX Forge
             </span>
           </Link>
