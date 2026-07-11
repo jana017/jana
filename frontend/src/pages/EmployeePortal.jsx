@@ -42,6 +42,7 @@ function fmtBytes(n) {
 }
 
 function LoginCard({ onLoggedIn }) {
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -51,8 +52,15 @@ function LoginCard({ onLoggedIn }) {
     try {
       const r = await api.post("/auth/login", { email, password });
       const token = r.data?.access_token;
+      const role = (r.data?.user?.role || "").toLowerCase();
       if (!token) throw new Error("no token");
       setToken(token);
+      // Server-side role determines destination — spec requirement.
+      if (role === "admin") {
+        toast.success("Signed in as admin — redirecting");
+        navigate("/admin", { replace: true });
+        return;
+      }
       onLoggedIn?.();
     } catch (err) {
       toast.error(err?.response?.data?.detail || "Invalid credentials");
@@ -350,8 +358,11 @@ export default function EmployeePortal() {
       if (!getToken()) { setProfile(null); return; }
       const r = await api.get("/me/profile");
       if (r.data?.role === "admin") {
-        // Admin visiting /employee — redirect to /admin
-        navigate("/admin", { replace: true });
+        // Admin visiting /employee — do NOT silently redirect. Show a clear
+        // wrong-role screen so the admin can choose to go to /admin or sign
+        // out and log back in as an employee. Prevents the confusing "click
+        // Employee Login and land on Admin dashboard" bug.
+        setProfile({ ...r.data, __wrong_role: true });
         return;
       }
       setProfile(r.data);
@@ -364,7 +375,7 @@ export default function EmployeePortal() {
         toast.error("Could not load profile");
       }
     } finally { setLoading(false); }
-  }, [navigate]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -372,6 +383,35 @@ export default function EmployeePortal() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>;
   if (!profile) return <LoginCard onLoggedIn={load} />;
+  if (profile.__wrong_role) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+        <div className="w-full max-w-md bg-white rounded-xl shadow-xl border border-slate-200 p-8 text-center" data-testid="employee-wrong-role">
+          <Shield className="w-10 h-10 mx-auto text-amber-500" />
+          <h1 className="mt-3 text-xl font-bold text-slate-900">You&rsquo;re signed in as an admin</h1>
+          <p className="mt-2 text-sm text-slate-500">
+            The Employee Portal is only for employee accounts. You&rsquo;re currently signed in as <strong>{profile.email}</strong> (admin).
+          </p>
+          <div className="mt-6 flex flex-col sm:flex-row gap-2 justify-center">
+            <button
+              onClick={() => navigate("/admin")}
+              data-testid="employee-wrong-role-goto-admin"
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-md bg-[#2E7DF5] text-white text-sm font-semibold hover:bg-[#2563EB]"
+            >
+              Go to Admin Panel
+            </button>
+            <button
+              onClick={() => { clearToken(); setProfile(null); }}
+              data-testid="employee-wrong-role-signout"
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-md border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50"
+            >
+              Sign out &amp; log in as employee
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
     <>
       <Portal profile={profile} onLogout={logout} onProfileRefresh={load} />

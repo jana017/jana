@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { LogOut, Plus, Pencil, Trash2, ArrowLeft, ShieldCheck, Download, LayoutDashboard, Settings, Webhook, Activity, Code2, Users, Ticket } from "lucide-react";
@@ -497,6 +497,15 @@ export default function Admin() {
     noindex: true,
   });
   const { user } = useAuth();
+  const navigate = useNavigate();
+  // Server-side check happens on every API call; this frontend guard just
+  // avoids flashing the admin UI when a non-admin lands on /admin by mistake.
+  useEffect(() => {
+    if (user && (user.role || "").toLowerCase() !== "admin") {
+      navigate("/employee", { replace: true });
+    }
+  }, [user, navigate]);
   if (user === null) return <div className="min-h-screen flex items-center justify-center text-slate-400 text-sm bg-slate-50">Loading…</div>;
+  if (user && (user.role || "").toLowerCase() !== "admin") return null;
   return user ? <Dashboard /> : <LoginView />;
 }
