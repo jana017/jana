@@ -15,9 +15,10 @@ import { getToken, setToken, clearToken } from "@/lib/auth";
 import { toast } from "sonner";
 import {
   User, LogOut, FileText, Upload, Download, Trash2, KeyRound,
-  Shield, Loader2, HardDrive, CheckCircle2, Building2,
+  Shield, Loader2, HardDrive, CheckCircle2, Plus, Ticket,
 } from "lucide-react";
 import useSeo from "@/lib/useSeo";
+import { NewTicketModal, TicketDetail, TicketRow } from "@/components/TicketWidgets";
 
 const DOC_TYPES = [
   { id: "payslip",           label: "Payslip" },
@@ -132,6 +133,11 @@ function Portal({ profile, onLogout, onProfileRefresh }) {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [docType, setDocType] = useState("payslip");
+  const [tickets, setTickets] = useState([]);
+  const [ticketsLoading, setTicketsLoading] = useState(true);
+  const [newTicketOpen, setNewTicketOpen] = useState(false);
+  const [activeTicket, setActiveTicket] = useState(null);
+  const [ticketFilter, setTicketFilter] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -143,7 +149,19 @@ function Portal({ profile, onLogout, onProfileRefresh }) {
     } finally { setLoading(false); }
   }, []);
 
+  const loadTickets = useCallback(async () => {
+    setTicketsLoading(true);
+    try {
+      const params = ticketFilter ? `?status=${ticketFilter}` : "";
+      const r = await api.get(`/tickets/mine${params}`);
+      setTickets(r.data?.items || []);
+    } catch (err) {
+      /* ignore */
+    } finally { setTicketsLoading(false); }
+  }, [ticketFilter]);
+
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadTickets(); }, [loadTickets]);
 
   const upload = async (file) => {
     if (!file) return;
@@ -279,7 +297,42 @@ function Portal({ profile, onLogout, onProfileRefresh }) {
             </div>
           )}
         </section>
+
+        {/* Service Tickets */}
+        <section data-testid="employee-tickets-section">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5"><Ticket className="w-4 h-4" /> Support Tickets</h2>
+            <div className="flex items-center gap-2">
+              <select value={ticketFilter} onChange={e => setTicketFilter(e.target.value)} data-testid="employee-tickets-filter"
+                className="px-2 py-1 rounded border border-slate-200 text-xs">
+                <option value="">All statuses</option>
+                <option value="open">Open</option>
+                <option value="in_progress">In Progress</option>
+                <option value="resolved">Resolved</option>
+                <option value="closed">Closed</option>
+              </select>
+              <button onClick={() => setNewTicketOpen(true)} data-testid="employee-new-ticket-btn"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#2E7DF5] text-white text-sm font-semibold hover:bg-[#2563EB]">
+                <Plus className="w-4 h-4" /> Raise Ticket
+              </button>
+            </div>
+          </div>
+          {ticketsLoading ? (
+            <div className="text-center py-6 text-slate-400"><Loader2 className="w-4 h-4 animate-spin inline mr-1.5" /> Loading tickets…</div>
+          ) : tickets.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-200 bg-white p-8 text-center" data-testid="employee-tickets-empty">
+              <Ticket className="w-8 h-8 mx-auto text-slate-300" />
+              <p className="mt-2 text-sm text-slate-500">No tickets yet. Have a laptop issue, email problem, or HR request? <strong>Raise Ticket</strong> and we&rsquo;ll help.</p>
+            </div>
+          ) : (
+            <div className="space-y-2" data-testid="employee-tickets-list">
+              {tickets.map(t => <TicketRow key={t.id} ticket={t} onOpen={setActiveTicket} />)}
+            </div>
+          )}
+        </section>
       </main>
+      <NewTicketModal open={newTicketOpen} onClose={() => setNewTicketOpen(false)} onCreated={() => loadTickets()} />
+      {activeTicket && <TicketDetail ticket={activeTicket} mode="employee" onClose={() => setActiveTicket(null)} onUpdated={loadTickets} />}
     </div>
   );
 }
