@@ -489,24 +489,24 @@ export default function CyberLab() {
       <div className="pointer-events-none absolute inset-0 -z-0 opacity-[0.03]"
         style={{ backgroundImage: "linear-gradient(#22d3ee 1px, transparent 1px), linear-gradient(90deg, #22d3ee 1px, transparent 1px)", backgroundSize: "56px 56px" }} />
 
-      <main className="relative mx-auto max-w-[1600px] px-4 lg:px-8 pt-24 pb-8">
+      <main className="relative mx-auto max-w-[1600px] px-3 sm:px-4 lg:px-8 pt-20 sm:pt-24 pb-8">
         {/* Header */}
         <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-cyan-400 mb-2">
+          <div className="min-w-0 w-full lg:w-auto lg:flex-1">
+            <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-cyan-400 mb-2">
               <Cpu className="w-3.5 h-3.5" /> NivX Forge
-              <span className="ml-2 inline-flex items-center gap-1 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+              <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
                 <Radar className="w-3 h-3" /> Auto-decode · MITRE · YARA · IOC
               </span>
             </div>
-            <h1 className="font-heading text-3xl md:text-4xl font-semibold tracking-tight text-white">
+            <h1 className="font-heading text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight text-white break-words">
               Decoder &amp; Threat Analysis Platform
             </h1>
-            <p className="mt-2 text-sm text-slate-400 max-w-3xl">
+            <p className="mt-2 text-xs sm:text-sm text-slate-400 max-w-3xl">
               DFIR-grade payload triage — chain 28+ decoders, auto-solve nested encodings, and get MITRE ATT&amp;CK mapping, YARA-lite rule hits, IOC extraction &amp; risk scoring in a single click.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto" data-testid="cyberlab-actions">
             <button
               data-testid="auto-investigate-btn"
               onClick={runAutoInvestigate}

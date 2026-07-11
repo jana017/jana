@@ -312,8 +312,8 @@ export default function IocDatabase() {
 
       {/* Table */}
       <div className="rounded-xl border border-slate-200 overflow-hidden">
-        <div className="max-h-[520px] overflow-auto">
-          <table className="w-full text-sm">
+        <div className="max-h-[520px] overflow-auto overflow-x-auto">
+          <table className="w-full min-w-[720px] text-sm">
             <thead className="sticky top-0 bg-slate-50 z-10">
               <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
                 {isAdmin && <th className="px-3 py-3 w-10"><input type="checkbox" data-testid="ioc-db-select-all" checked={items.length > 0 && selected.size === items.length} onChange={toggleAll} /></th>}
