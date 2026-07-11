@@ -22,9 +22,10 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import {
-  Wrench, CheckCircle2, AlertTriangle, X, ArrowRight, Loader2, ShieldQuestion,
+  Wrench, CheckCircle2, AlertTriangle, X, ArrowRight, Loader2, ShieldQuestion, Lock,
 } from "lucide-react";
 import { diagnosePayload, refinePayload } from "@/lib/cyberlabApi";
+import { useAuth } from "@/context/AuthContext";
 
 export default function TroubleshootButton({
   input,
@@ -34,11 +35,24 @@ export default function TroubleshootButton({
   disabled = false,
   className = "",
 }) {
+  const { user } = useAuth();
+  // Feb 2026: Troubleshoot is admin-only. A repair heuristic bug could
+  // corrupt an analyst's payload before they realize (see the b64_padding
+  // incident) — so the tool is restricted to admins who can vet its
+  // behavior. Employees hitting the button see a "requires admin" tooltip.
+  const isAdmin = !!(user && user.role === "admin");
   const [busy, setBusy] = useState(false);
   const [applying, setApplying] = useState(false);
   const [diagnosis, setDiagnosis] = useState(null);
 
   const openDiagnosis = async () => {
+    if (!isAdmin) {
+      toast.error("Troubleshoot is admin-only", {
+        description:
+          "This deterministic repair tool is restricted to administrators. Ask an admin to run it on your behalf, or pin the payload to the Regression Suite for permanent coverage.",
+      });
+      return;
+    }
     const text = (input || "").trim();
     if (!text) {
       toast.error("Paste a payload first — nothing to troubleshoot.");
@@ -98,17 +112,24 @@ export default function TroubleshootButton({
     <>
       <button
         onClick={openDiagnosis}
-        disabled={disabled || busy}
+        disabled={disabled || busy || !isAdmin}
         data-testid="troubleshoot-btn"
-        title="Scan the payload for paste artifacts and known obfuscation tricks, then show you exactly what can be fixed before applying anything. Deterministic, no LLM."
-        className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-md border font-semibold text-sm transition-colors disabled:opacity-40 ${className || "bg-slate-800 hover:bg-amber-500/10 border-amber-500/40 text-amber-300 hover:text-amber-100"}`}
+        title={
+          isAdmin
+            ? "Scan the payload for paste artifacts and known obfuscation tricks, then show you exactly what can be fixed before applying anything. Deterministic, no LLM."
+            : "Troubleshoot is admin-only. Ask an administrator to run it on your behalf."
+        }
+        className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-md border font-semibold text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${className || "bg-slate-800 hover:bg-amber-500/10 border-amber-500/40 text-amber-300 hover:text-amber-100"}`}
       >
         {busy ? (
           <Loader2 className="w-4 h-4 animate-spin" />
-        ) : (
+        ) : isAdmin ? (
           <Wrench className="w-4 h-4" />
+        ) : (
+          <Lock className="w-4 h-4" />
         )}
         Troubleshoot
+        {!isAdmin && <span className="text-[10px] font-mono opacity-70 ml-0.5">admin</span>}
       </button>
 
       {diagnosis && (

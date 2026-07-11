@@ -53,6 +53,15 @@ router = APIRouter(prefix="/api/cyberlab", tags=["cyberlab"])
 admin_router = APIRouter(prefix="/api/admin/cyberlab", tags=["cyberlab-admin"])
 
 
+# ---------------------------------------------------------------------------
+# Admin auth dependency (defined early — referenced by multiple routes below)
+# ---------------------------------------------------------------------------
+async def _require_admin(request: Request):
+    """Reuse the existing JWT cookie/bearer admin auth from server.py."""
+    from server import get_current_user  # deferred to avoid import cycle
+    return await get_current_user(request)
+
+
 # ============================================================================
 # Public endpoints
 # ============================================================================
@@ -153,10 +162,15 @@ class RefineRequest(BaseModel):
 
 
 @router.post("/refine")
-async def refine_payload(req: RefineRequest):
+async def refine_payload(req: RefineRequest, user=Depends(_require_admin)):
     """Run a chain of deterministic repairs (Unicode normalization, base64
     padding, CMD caret strip, email quote removal, ...) and return the
     cleaned text plus an audit list of what changed.
+
+    ADMIN-ONLY (Feb 2026): restricted to authenticated admins so a bug in
+    a repair heuristic can never damage an analyst's evidence chain-of-
+    custody. Employees using NivX Forge see a disabled Troubleshoot
+    button with a tooltip explaining they need admin access.
 
     This endpoint does NOT call any LLM and has no external dependencies
     beyond the Python standard library — it continues to work identically
@@ -166,15 +180,14 @@ async def refine_payload(req: RefineRequest):
 
 
 @router.post("/diagnose")
-async def diagnose_payload(req: RefineRequest):
+async def diagnose_payload(req: RefineRequest, user=Depends(_require_admin)):
     """Dry-run diagnostic pass.  Reports every paste artifact Troubleshoot
     *could* fix — plus anomalies it *can't* — without touching the
     original payload.
 
-    The frontend calls this before applying `refine()` so the analyst
-    can review the proposed fixes ("Here are 3 issues I found — apply?")
-    and only click Proceed when they're comfortable. This is what
-    Troubleshoot should have looked like from day one.
+    ADMIN-ONLY: gated so only admins can see the "here's what I would
+    change" preview and click Proceed. Prevents an employee from
+    accidentally applying a fixer with a latent bug.
     """
     return repair_mod.diagnose(req.input or "")
 
@@ -688,11 +701,6 @@ async def session_remove(rule_id: str, session_id: str):
 # ============================================================================
 # Phase 4: Admin custom rules (global)
 # ============================================================================
-
-async def _require_admin(request: Request):
-    """Reuse the existing JWT cookie/bearer admin auth from server.py."""
-    from server import get_current_user  # deferred to avoid import cycle
-    return await get_current_user(request)
 
 
 @admin_router.get("/rules")
