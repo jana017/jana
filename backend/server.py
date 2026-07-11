@@ -4336,6 +4336,14 @@ from healthbot.router import (  # noqa: E402
 _attach_healthbot_routes(healthbot_router, get_current_user)
 app.include_router(healthbot_router)
 
+from ui_scanner import (  # noqa: E402
+    router as ui_scanner_router,
+    attach_routes as _attach_ui_scanner_routes,
+    ensure_indexes as _ui_scanner_ensure_indexes,
+)
+_attach_ui_scanner_routes(ui_scanner_router, get_current_user)
+app.include_router(ui_scanner_router)
+
 
 # Site CMS — admin tab visibility, landing sections, announcement, custom pages
 from cms.router import (  # noqa: E402
@@ -4407,6 +4415,15 @@ async def _healthbot_startup():
         logger.info("healthbot: indexes ensured, hourly cron scheduled")
     except Exception as e:
         logger.warning("healthbot startup failed: %s", e)
+
+
+@app.on_event("startup")
+async def _ui_scanner_startup():
+    try:
+        await _ui_scanner_ensure_indexes()
+        logger.info("ui_scanner: indexes ensured")
+    except Exception as e:
+        logger.warning("ui_scanner startup failed: %s", e)
 
 
 @app.on_event("startup")

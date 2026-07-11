@@ -60,7 +60,7 @@ export default function AnnouncementBanner() {
           <button
             onClick={dismiss}
             data-testid="announcement-dismiss"
-            className="ml-2 opacity-70 hover:opacity-100"
+            className="ml-2 -mr-1 opacity-70 hover:opacity-100 inline-flex items-center justify-center w-10 h-10 rounded-md hover:bg-black/10 transition-colors"
             aria-label="Dismiss announcement"
           >
             <X className="w-4 h-4" />

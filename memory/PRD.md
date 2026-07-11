@@ -57,6 +57,23 @@ NivX Machines (Cyber Security, AI, Tech firm) landing site. Tabs: About Us, Gall
 - **16 pytest cases** in `/app/backend/tests/test_auto_ingest.py` — 13 unit tests for the scorer, 3 HTTP integration tests exercising the live backend (parallel-safe, motor-loop-safe).
 - Verified end-to-end with EICAR SHA256 → auto-inserted with `risk_score=100`, severity=critical, tags=[`auto-ingest`, `verdict:malicious`, `ha:malicious`, `circl:known-malicious`], `source="OSINT Auto-Ingest"`.
 
+## Implemented (2026-07-11 — Site-wide UI/UX Fixes + Admin UI/UX Scanner)
+### Global mobile / iOS / responsive hardening
+- `index.css` — added `overflow-x: clip` + `max-width: 100%` on **html** and **body**, `min-height: 100dvh` for iOS dynamic viewport, transitional background-color.
+- `App.js` — new `<RouteEffects>` inside `<BrowserRouter>` running `useRouteBodyBg()` which sets html+body+`<meta theme-color>` background per route (dark for `/cyberlab`, `/nivx-forge`; light otherwise). Eliminates the mobile white-gap bleed.
+- **Tap-target fixes** — announcement banner X (16→40px), mobile hamburger (24→44px), Admin nav shield icon (16→40px min height).
+- **GraphPopout** (Threat Analysis) — CSS-only promotion using same-tree render (state preserved), backdrop + X + ESC + a11y attributes.
+- **CyberLab header** — button row wraps on mobile; h1 scales `text-2xl sm:text-3xl md:text-4xl`.
+- **IocDatabase table** — `min-w-[720px]` inside `overflow-x-auto` for mobile.
+- **Comprehensive scan across 56 route × viewport combos** (7 routes × 8 viewports from iPhone SE → 1920 Desktop) → 0 horizontal overflow, 0 missing meta, 0 missing alt, 0 fixed-element overflow.
+
+### Admin UI/UX Scanner (new module)
+- **Backend** — `/app/backend/ui_scanner/` module with `POST /scan`, `GET /history`, `GET /latest`, `GET /report/{id}`, `DELETE /report/{id}`, `GET /health`. Zero LLM, zero external HTTP. Idempotent index on `finished_at`.
+- **Frontend** — new Admin → "UI/UX Scanner" tab (`AdminUiScanner.jsx`). Drives a hidden iframe across 6 default routes × 8 viewport presets, runs 8 deterministic DOM audits inside each (h-overflow, missing viewport/theme-color meta, small tap targets, images missing alt, fixed-overflow, buttons without labels, transparent body-bg).
+- **UI**: Progress bar during scan, severity filter chips, findings table grouped by severity, CSV/JSON export, history list of last 10 scans persisted to Mongo `ui_scans`.
+- **Tests** — 8 pytest cases in `/app/backend/tests/test_ui_scanner.py` cover auth-gate, persist, aggregate counts, history, latest, delete, 404, empty payload. All passing.
+
+
 
 
 

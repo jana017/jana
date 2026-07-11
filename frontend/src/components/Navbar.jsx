@@ -110,13 +110,13 @@ export default function Navbar() {
         </div>
 
         <div className="flex items-center gap-3">
-          <Link to="/admin" data-testid="nav-admin-link" onMouseEnter={() => prefetchRoute("/admin")} onFocus={() => prefetchRoute("/admin")} className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">
+          <Link to="/admin" data-testid="nav-admin-link" onMouseEnter={() => prefetchRoute("/admin")} onFocus={() => prefetchRoute("/admin")} aria-label="Admin" className="inline-flex items-center justify-center gap-1.5 min-h-[40px] sm:min-h-[36px] px-2 sm:px-1 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">
             <ShieldCheck className="w-4 h-4" /> <span className="hidden sm:inline">Admin</span>
           </Link>
           <a href="tel:9059565125" data-testid="nav-contact-cta" className="hidden sm:inline-flex items-center gap-2 bg-[#2E7DF5] hover:bg-[#2563EB] text-white text-sm font-semibold px-4 py-2 rounded-md transition-colors">
             <Phone className="w-4 h-4" strokeWidth={2} /> Get Secured
           </a>
-          <button data-testid="mobile-menu-toggle" className="lg:hidden text-slate-700" onClick={() => setOpen((o) => !o)}>
+          <button data-testid="mobile-menu-toggle" aria-label={open ? "Close menu" : "Open menu"} className="lg:hidden inline-flex items-center justify-center w-11 h-11 -mr-1 rounded-md text-slate-700 hover:bg-slate-100 transition-colors" onClick={() => setOpen((o) => !o)}>
             {open ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
         </div>

@@ -12,6 +12,7 @@ import AdminCyberLabRules from "@/components/AdminCyberLabRules";
 import AdminWebhooks from "@/components/AdminWebhooks";
 import AdminHealthBot from "@/components/AdminHealthBot";
 import AdminSiteCMS from "@/components/AdminSiteCMS";
+import AdminUiScanner from "@/components/AdminUiScanner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -257,6 +258,13 @@ function Dashboard() {
             <Activity className="w-4 h-4" /> HealthBot
           </button>
           <button
+            data-testid="tab-ui-scanner"
+            onClick={() => setView("ui-scanner")}
+            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${view === "ui-scanner" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+          >
+            <ShieldCheck className="w-4 h-4" /> UI/UX Scanner
+          </button>
+          <button
             data-testid="tab-developer"
             onClick={() => setView("developer")}
             className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${view === "developer" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
@@ -274,6 +282,8 @@ function Dashboard() {
         <AdminWebhooks />
       ) : view === "healthbot" ? (
         <AdminHealthBot />
+      ) : view === "ui-scanner" ? (
+        <AdminUiScanner />
       ) : view === "developer" ? (
         <AdminSiteCMS />
       ) : view === "cyberlab-rules" ? (
