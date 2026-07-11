@@ -119,9 +119,21 @@ export default function Navbar() {
             data-testid="nav-cyberlab"
             onMouseEnter={() => prefetchRoute("/nivx-forge")}
             onFocus={() => prefetchRoute("/nivx-forge")}
-            className={`inline-flex items-center gap-1 text-sm font-medium transition-colors ${(location.pathname === "/nivx-forge" || location.pathname === "/cyberlab") ? "text-cyan-500" : "text-slate-600 hover:text-slate-900"}`}
+            className="group relative inline-flex items-center gap-1.5 text-sm font-bold transition-all hover:-translate-y-0.5"
           >
-            <Beaker className="w-3.5 h-3.5" /> NivX Forge
+            <Beaker
+              className="w-3.5 h-3.5 text-cyan-500 drop-shadow-[0_0_6px_rgba(6,182,212,0.6)] group-hover:text-fuchsia-500 group-hover:drop-shadow-[0_0_8px_rgba(217,70,239,0.6)] transition-all"
+              strokeWidth={2.4}
+            />
+            <span
+              className="bg-gradient-to-r from-cyan-500 via-sky-500 to-fuchsia-500 bg-clip-text text-transparent bg-[length:200%_100%] bg-[position:0%_50%] group-hover:bg-[position:100%_50%] transition-[background-position] duration-500"
+            >
+              NivX Forge
+            </span>
+            <span
+              aria-hidden="true"
+              className={`absolute -bottom-1 left-0 h-[2px] bg-gradient-to-r from-cyan-500 to-fuchsia-500 transition-all duration-300 ${(location.pathname === "/nivx-forge" || location.pathname === "/cyberlab") ? "w-full" : "w-0 group-hover:w-full"}`}
+            ></span>
           </Link>
         </div>
 
@@ -154,8 +166,11 @@ export default function Navbar() {
               Threat Intelligence
             </span>
           </Link>
-          <Link to="/nivx-forge" data-testid="mobile-nav-cyberlab" onClick={() => setOpen(false)} className="inline-flex items-center gap-1.5 text-left text-sm font-medium text-cyan-600">
-            <Beaker className="w-4 h-4" /> NivX Forge
+          <Link to="/nivx-forge" data-testid="mobile-nav-cyberlab" onClick={() => setOpen(false)} className="inline-flex items-center gap-2 text-left text-sm font-bold">
+            <Beaker className="w-4 h-4 text-cyan-500 drop-shadow-[0_0_6px_rgba(6,182,212,0.5)]" strokeWidth={2.4} />
+            <span className="bg-gradient-to-r from-cyan-500 to-fuchsia-500 bg-clip-text text-transparent">
+              NivX Forge
+            </span>
           </Link>
           <Link to="/admin" data-testid="mobile-nav-admin-link" onClick={() => setOpen(false)} className="inline-flex items-center gap-2 text-left text-sm font-semibold text-slate-700 pt-3 mt-1 border-t border-slate-200">
             <ShieldCheck className="w-4 h-4" /> Admin sign in
