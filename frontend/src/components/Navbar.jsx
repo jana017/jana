@@ -30,7 +30,7 @@ export default function Navbar() {
   useEffect(() => {
     const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 800));
     const handle = idle(() => {
-      ["/blog", "/learn", "/threat-intelligence", "/cybersecurity-101", "/nivx-forge", "/admin"].forEach(prefetchRoute);
+      ["/blog", "/learn", "/threat-intelligence", "/cybersecurity-101", "/nivx-forge", "/employee", "/admin"].forEach(prefetchRoute);
     });
     return () => {
       if (window.cancelIdleCallback) window.cancelIdleCallback(handle);
@@ -82,6 +82,15 @@ export default function Navbar() {
             Learn
           </Link>
           <Link
+            to="/employee"
+            data-testid="nav-employee"
+            onMouseEnter={() => prefetchRoute("/employee")}
+            onFocus={() => prefetchRoute("/employee")}
+            className={`text-sm font-medium transition-colors ${location.pathname.startsWith("/employee") ? "text-[#2E7DF5]" : "text-slate-600 hover:text-slate-900"}`}
+          >
+            Employee Login
+          </Link>
+          <Link
             to="/threat-intelligence"
             data-testid="nav-threat-intelligence"
             onMouseEnter={() => prefetchRoute("/threat-intelligence")}
@@ -120,6 +129,7 @@ export default function Navbar() {
             <button key={l.id} onClick={() => go(l.id)} className="text-left text-sm font-medium text-slate-700">{l.label}</button>
           ))}
           <Link to="/learn" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Learn</Link>
+          <Link to="/employee" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Employee Login</Link>
           <Link to="/threat-intelligence" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-[#2E7DF5]">Threat Intelligence</Link>
           <Link to="/nivx-forge" data-testid="mobile-nav-cyberlab" onClick={() => setOpen(false)} className="inline-flex items-center gap-1.5 text-left text-sm font-medium text-cyan-600">
             <Beaker className="w-4 h-4" /> NivX Forge

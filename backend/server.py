@@ -4352,6 +4352,14 @@ from employees import (  # noqa: E402
 _attach_employees_routes(employees_router, get_current_user)
 app.include_router(employees_router)
 
+from tickets import (  # noqa: E402
+    router as tickets_router,
+    attach_routes as _attach_tickets_routes,
+    ensure_indexes as _tickets_ensure_indexes,
+)
+_attach_tickets_routes(tickets_router, get_current_user)
+app.include_router(tickets_router)
+
 
 # Site CMS — admin tab visibility, landing sections, announcement, custom pages
 from cms.router import (  # noqa: E402
