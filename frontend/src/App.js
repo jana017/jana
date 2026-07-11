@@ -18,6 +18,7 @@ const BlogPost = lazy(() => import("@/pages/BlogPost"));
 const BlogIndex = lazy(() => import("@/pages/BlogIndex"));
 const CommunityCd = lazy(() => import("@/pages/CommunityCd"));
 const CommunityFeed = lazy(() => import("@/pages/CommunityFeed"));
+const Learn = lazy(() => import("@/pages/Learn"));
 const CyberLab = lazy(() => import("@/pages/CyberLab"));
 const CyberLabShare = lazy(() => import("@/pages/CyberLabShare"));
 const CmsPage = lazy(() => import("@/pages/CmsPage"));
@@ -54,9 +55,10 @@ function App() {
               <Routes>
                 <Route path="/" element={<Landing />} />
                 <Route path="/threat-intelligence" element={<ThreatIntelligence />} />
-                <Route path="/cybersecurity-101" element={<KnowledgeBase />} />
+                <Route path="/learn" element={<Learn />} />
+                <Route path="/cybersecurity-101" element={<Navigate to="/learn?tab=cyber101" replace />} />
                 <Route path="/cybersecurity-101/:slug" element={<KnowledgeBase />} />
-                <Route path="/blog" element={<BlogIndex />} />
+                <Route path="/blog" element={<Navigate to="/learn?tab=blog" replace />} />
                 <Route path="/blog/:slug" element={<BlogPost />} />
                 <Route path="/community/cd/:topic" element={<CommunityCd />} />
                 <Route path="/community/:source" element={<CommunityFeed />} />

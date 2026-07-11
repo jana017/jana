@@ -30,7 +30,7 @@ export default function Navbar() {
   useEffect(() => {
     const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 800));
     const handle = idle(() => {
-      ["/blog", "/threat-intelligence", "/cybersecurity-101", "/nivx-forge", "/admin"].forEach(prefetchRoute);
+      ["/blog", "/learn", "/threat-intelligence", "/cybersecurity-101", "/nivx-forge", "/admin"].forEach(prefetchRoute);
     });
     return () => {
       if (window.cancelIdleCallback) window.cancelIdleCallback(handle);
@@ -54,6 +54,7 @@ export default function Navbar() {
   const isIntel = location.pathname === "/threat-intelligence";
   const isKb = location.pathname.startsWith("/cybersecurity-101");
   const isBlog = location.pathname === "/blog" || location.pathname.startsWith("/blog/");
+  const isLearn = location.pathname.startsWith("/learn") || isKb || isBlog;
 
   return (
     <header
@@ -72,22 +73,13 @@ export default function Navbar() {
             </button>
           ))}
           <Link
-            to="/blog"
-            data-testid="nav-blog"
-            onMouseEnter={() => prefetchRoute("/blog")}
-            onFocus={() => prefetchRoute("/blog")}
-            className={`text-sm font-medium transition-colors ${isBlog ? "text-[#2E7DF5]" : "text-slate-600 hover:text-slate-900"}`}
+            to="/learn"
+            data-testid="nav-learn"
+            onMouseEnter={() => prefetchRoute("/learn")}
+            onFocus={() => prefetchRoute("/learn")}
+            className={`text-sm font-medium transition-colors ${isLearn ? "text-[#2E7DF5]" : "text-slate-600 hover:text-slate-900"}`}
           >
-            Blog
-          </Link>
-          <Link
-            to="/cybersecurity-101"
-            data-testid="nav-cyber-101"
-            onMouseEnter={() => prefetchRoute("/cybersecurity-101")}
-            onFocus={() => prefetchRoute("/cybersecurity-101")}
-            className={`text-sm font-medium transition-colors ${isKb ? "text-[#2E7DF5]" : "text-slate-600 hover:text-slate-900"}`}
-          >
-            Cyber 101
+            Learn
           </Link>
           <Link
             to="/threat-intelligence"
@@ -127,8 +119,7 @@ export default function Navbar() {
           {SECTION_LINKS.map((l) => (
             <button key={l.id} onClick={() => go(l.id)} className="text-left text-sm font-medium text-slate-700">{l.label}</button>
           ))}
-          <Link to="/blog" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Blog</Link>
-          <Link to="/cybersecurity-101" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Cyber 101</Link>
+          <Link to="/learn" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Learn</Link>
           <Link to="/threat-intelligence" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-[#2E7DF5]">Threat Intelligence</Link>
           <Link to="/nivx-forge" data-testid="mobile-nav-cyberlab" onClick={() => setOpen(false)} className="inline-flex items-center gap-1.5 text-left text-sm font-medium text-cyan-600">
             <Beaker className="w-4 h-4" /> NivX Forge

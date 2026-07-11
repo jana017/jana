@@ -14,7 +14,7 @@ const TOPIC_MAP = {
   soc:     { label: "SOC & Threat Hunting Playbooks",   cats: ["SOC Playbook", "Case Study", "Forensics"] },
 };
 
-export default function BlogIndex() {
+export default function BlogIndex({ embedded = false }) {
   const [params, setParams] = useSearchParams();
   const topic = (params.get("topic") || "").toLowerCase();
   const filter = TOPIC_MAP[topic];
@@ -38,9 +38,9 @@ export default function BlogIndex() {
 
   return (
     <div data-testid="blog-index-page" className="bg-white min-h-screen">
-      <Navbar />
+      {!embedded && <Navbar />}
 
-      <section className="pt-28 pb-14 lg:pt-32 bg-[#0A1220] relative overflow-hidden border-b border-slate-800">
+      <section className={`${embedded ? "pt-10 pb-14 lg:pt-14" : "pt-28 pb-14 lg:pt-32"} bg-[#0A1220] relative overflow-hidden border-b border-slate-800`}>
         <div className="absolute inset-0 dot-grid opacity-40" aria-hidden="true" />
         <div className="relative mx-auto max-w-7xl px-6">
           <div className="inline-flex items-center gap-2 bg-white/5 border border-white/10 text-orange-300 rounded-full px-3 py-1 text-xs font-semibold mb-5">

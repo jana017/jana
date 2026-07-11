@@ -6,7 +6,7 @@ import Contact from "@/components/Contact";
 import { KB_ARTICLES, findArticle } from "@/lib/knowledgeArticles";
 import useSeo from "@/lib/useSeo";
 
-function IndexView() {
+function IndexView({ embedded = false }) {
   useSeo({
     title: "Cybersecurity 101 · Knowledge Base | NivX Machines",
     description: "In-depth explainers on malware analysis, advanced persistent threats (APT), incident response and man-in-the-middle attacks — the fundamentals every defender should know.",
@@ -14,8 +14,8 @@ function IndexView() {
   });
   return (
     <div className="min-h-screen bg-white">
-      <Navbar />
-      <section className="pt-28 pb-14 lg:pt-32 lg:pb-20 bg-gradient-to-b from-slate-50 to-white border-b border-slate-100">
+      {!embedded && <Navbar />}
+      <section className={`${embedded ? "pt-10 pb-14 lg:pt-14 lg:pb-20" : "pt-28 pb-14 lg:pt-32 lg:pb-20"} bg-gradient-to-b from-slate-50 to-white border-b border-slate-100`}>
         <div className="mx-auto max-w-5xl px-6">
           <div className="text-xs font-bold uppercase tracking-[0.2em] text-orange-500 mb-3">Cybersecurity 101</div>
           <h1 className="font-heading text-4xl md:text-5xl lg:text-6xl font-semibold tracking-tight text-slate-900 max-w-3xl">
@@ -200,7 +200,7 @@ function ArticleView({ slug }) {
   );
 }
 
-export default function KnowledgeBase() {
+export default function KnowledgeBase({ embedded = false }) {
   const { slug } = useParams();
-  return slug ? <ArticleView slug={slug} /> : <IndexView />;
+  return slug ? <ArticleView slug={slug} /> : <IndexView embedded={embedded} />;
 }
