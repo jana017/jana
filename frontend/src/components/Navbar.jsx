@@ -118,7 +118,7 @@ export default function Navbar() {
             className="group relative inline-flex items-center gap-2 text-sm font-bold transition-all hover:-translate-y-0.5"
           >
             <img
-              src="/favicon.svg"
+              src="/favicon-32x32.png"
               alt=""
               aria-hidden="true"
               width="18"
@@ -302,7 +302,7 @@ export default function Navbar() {
             </span>
           </Link>
           <Link to="/nivx-forge" data-testid="mobile-nav-cyberlab" onClick={() => setOpen(false)} className="inline-flex items-center gap-2 text-left text-sm font-bold">
-            <img src="/favicon.svg" alt="" aria-hidden="true" width="18" height="18" className="rounded-[3px]" />
+            <img src="/favicon-32x32.png" alt="" aria-hidden="true" width="18" height="18" className="rounded-[3px]" />
             <span className="bg-gradient-to-r from-[#2E7DF5] to-[#F5821F] bg-clip-text text-transparent">
               NivX Forge
             </span>
