@@ -2453,6 +2453,7 @@ async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
                 "hostnames": sh.get("hostnames", []),
                 "tags": sh.get("tags", []),
                 "vulns": sh.get("vulns", []),
+                "cpes": sh.get("cpes", []),  # Software fingerprint (OS, services). Feb 2026 for bulk dossier.
                 "sources": ["Shodan InternetDB", "ip-api.com"],
             }
         elif kind in ("domain", "url"):

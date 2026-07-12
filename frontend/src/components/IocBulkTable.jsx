@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Loader2, Download, ListChecks, ShieldQuestion, ExternalLink, ShieldPlus, Check, ChevronDown, FileText, FileJson, FileSpreadsheet } from "lucide-react";
+import { Loader2, Download, ListChecks, ShieldQuestion, ExternalLink, ShieldPlus, Check, ChevronDown, ChevronRight, FileText, FileJson, FileSpreadsheet } from "lucide-react";
 import { api, formatApiErrorDetail } from "@/lib/api";
 import {
   FAVICON, TYPE_LABEL, iocSummary, severityStyle,
@@ -10,6 +10,7 @@ import {
 } from "@/lib/iocUtils";
 import { useAuth } from "@/context/AuthContext";
 import ReputationBadges from "./ReputationBadges";
+import IocBulkDetailPanel from "./IocBulkDetailPanel";
 
 const TYPE_TONE = {
   ip: "bg-blue-50 text-blue-700 border-blue-200",
@@ -51,6 +52,17 @@ export default function IocBulkTable({ initialText, autoRun, prefillKey }) {
   const [saveMsg, setSaveMsg] = useState(null); // {kind, text}
   const [exportOpen, setExportOpen] = useState(false);
   const exportRef = useRef(null);
+  // Which rows are expanded to show the full OSINT dossier.
+  const [expanded, setExpanded] = useState(() => new Set());
+  const toggleRow = (idx) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      return next;
+    });
+  };
+  const expandAll = () => setExpanded(new Set((results || []).map((_, i) => i)));
+  const collapseAll = () => setExpanded(new Set());
 
   // Close the export dropdown on outside click.
   useEffect(() => {
@@ -212,10 +224,25 @@ export default function IocBulkTable({ initialText, autoRun, prefillKey }) {
 
       {results?.length > 0 && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} data-testid="ioc-bulk-results" className="mt-5 rounded-xl border border-slate-200 overflow-hidden">
+          <div className="px-4 py-2 border-b border-slate-100 bg-slate-50/60 flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={expanded.size === results.length ? collapseAll : expandAll}
+              data-testid="ioc-bulk-toggle-all"
+              className="text-xs font-semibold text-[#2E7DF5] hover:text-[#1E5FCC] inline-flex items-center gap-1"
+            >
+              {expanded.size === results.length ? (
+                <>Collapse all <ChevronDown className="w-3 h-3 rotate-180" /></>
+              ) : (
+                <>Expand all dossiers <ChevronDown className="w-3 h-3" /></>
+              )}
+            </button>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th className="px-2 py-3 font-semibold w-8"></th>
                   <th className="px-4 py-3 font-semibold">Indicator</th>
                   <th className="px-4 py-3 font-semibold">Type</th>
                   <th className="px-4 py-3 font-semibold">Summary</th>
@@ -224,8 +251,22 @@ export default function IocBulkTable({ initialText, autoRun, prefillKey }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {results.map((r, i) => (
-                  <tr key={i} data-testid={`ioc-bulk-row-${i}`} className="bg-white hover:bg-slate-50/60 transition-colors align-top">
+                {results.map((r, i) => {
+                  const isOpen = expanded.has(i);
+                  return (
+                  <React.Fragment key={i}>
+                  <tr data-testid={`ioc-bulk-row-${i}`} className="bg-white hover:bg-slate-50/60 transition-colors align-top">
+                    <td className="px-2 py-3">
+                      <button
+                        onClick={() => toggleRow(i)}
+                        data-testid={`ioc-bulk-expand-${i}`}
+                        className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-[#2E7DF5] hover:bg-slate-100 rounded transition-colors"
+                        aria-label={isOpen ? "Collapse dossier" : "Expand dossier"}
+                        title={isOpen ? "Hide OSINT dossier" : "Show full OSINT dossier"}
+                      >
+                        {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      </button>
+                    </td>
                     <td className="px-4 py-3"><code className="font-mono-data text-xs text-slate-800 break-all">{r.value}</code></td>
                     <td className="px-4 py-3"><span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-md border ${TYPE_TONE[r.type] || TYPE_TONE.unknown}`}>{TYPE_LABEL[r.type] || r.type}</span></td>
                     <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{iocSummary(r)}</td>
@@ -250,7 +291,15 @@ export default function IocBulkTable({ initialText, autoRun, prefillKey }) {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  {isOpen && (
+                    <tr key={`row-${i}-detail`} className="bg-slate-50/60">
+                      <td colSpan={6} className="p-0 border-t border-slate-100">
+                        <IocBulkDetailPanel row={r} />
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
+                );})}
               </tbody>
             </table>
           </div>
