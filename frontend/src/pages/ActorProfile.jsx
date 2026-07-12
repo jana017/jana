@@ -99,8 +99,18 @@ export default function ActorProfile() {
         </Link>
       )}
       <main className="mx-auto max-w-5xl px-6 py-10" data-testid="actor-profile">
-        <Link to="/threatbox" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-[#2E7DF5] mb-4">
-          <ArrowLeft className="w-4 h-4" /> All ThreatBox profiles
+        {/* Prominent top-left back button — always visible on every screen size.
+            This is the primary "return to ThreatBox" affordance the user asked
+            for.  The sticky floating button above is a secondary desktop-only
+            convenience while scrolling. */}
+        <Link
+          to="/threatbox"
+          data-testid="actor-back-top"
+          aria-label="Back to ThreatBox"
+          className="inline-flex items-center gap-2 mb-6 px-4 py-2 rounded-lg bg-white border border-slate-200 text-sm font-semibold text-slate-700 hover:border-[#F5821F] hover:text-[#F5821F] hover:shadow-sm transition-all"
+        >
+          <ArrowLeft className="w-4 h-4" strokeWidth={2.4} />
+          Back to ThreatBox
         </Link>
 
         {err === "notfound" ? (
