@@ -34,8 +34,19 @@ export default function UserAuth() {
 
   useEffect(() => {
     if (user && user.role) {
-      const redirect = location.state?.from || "/";
-      navigate(redirect, { replace: true });
+      // Role-aware post-login redirect. Explicit `from` in navigation state
+      // wins (e.g. protected route redirected to /login). Otherwise route to
+      // the appropriate landing page for the role.
+      const from = location.state?.from;
+      if (from) {
+        navigate(from, { replace: true });
+        return;
+      }
+      const role = (user.role || "user").toLowerCase();
+      const landing = role === "admin" ? "/admin"
+                    : role === "employee" ? "/employee"
+                    : "/";
+      navigate(landing, { replace: true });
     }
   }, [user, navigate, location.state]);
 
@@ -170,13 +181,6 @@ export default function UserAuth() {
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (tab === "signup" ? <UserPlus className="w-4 h-4" /> : <LogIn className="w-4 h-4" />)}
               {tab === "signup" ? "Create account" : "Sign in"}
             </button>
-
-            <div className="text-center text-xs text-slate-500 pt-2 border-t border-slate-100">
-              Are you a NivX staff member?
-              <Link to="/employee" className="ml-1 text-[#2E7DF5] hover:underline font-medium">Employee login</Link>
-              <span className="mx-1 text-slate-300">·</span>
-              <Link to="/admin" className="text-[#2E7DF5] hover:underline font-medium">Admin login</Link>
-            </div>
           </form>
         </div>
       </main>

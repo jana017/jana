@@ -379,10 +379,19 @@ export default function EmployeePortal() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Unified sign-in: if the user is not authenticated, redirect them to /login
+  // instead of showing an inline login card. Preserves the "/employee" bookmark
+  // by passing `from` state so /login sends them back here after sign-in.
+  useEffect(() => {
+    if (!loading && !profile) {
+      navigate("/login", { replace: true, state: { from: "/employee" } });
+    }
+  }, [loading, profile, navigate]);
+
   const logout = () => { clearToken(); setProfile(null); };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>;
-  if (!profile) return <LoginCard onLoggedIn={load} />;
+  if (!profile) return null;                        // redirecting to /login
   if (profile.__wrong_role) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">

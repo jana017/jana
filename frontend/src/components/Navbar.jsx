@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useLenis } from "lenis/react";
-import { Menu, X, ShieldCheck, FileSearch, LayoutGrid, GraduationCap, Briefcase, LogIn, Bookmark, Eye, LogOut, User as UserIcon } from "lucide-react";
+import { Menu, X, ShieldCheck, FileSearch, LayoutGrid, GraduationCap, Briefcase, LifeBuoy, LogIn, Bookmark, Eye, LogOut, User as UserIcon } from "lucide-react";
 import { prefetchRoute } from "@/lib/routePrefetch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAuth } from "@/context/AuthContext";
@@ -10,7 +10,6 @@ const SECTION_LINKS = [
   { label: "About", id: "about" },
   { label: "Services", id: "services" },
   { label: "Gallery", id: "gallery" },
-  { label: "Support", id: "support" },
 ];
 
 export default function Navbar() {
@@ -196,6 +195,18 @@ export default function Navbar() {
                   <div className="text-[11px] text-slate-400 font-normal">Join the NivX team</div>
                 </div>
               </button>
+              <button
+                type="button"
+                data-testid="more-menu-support"
+                onClick={() => go("support")}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium text-left text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-all"
+              >
+                <LifeBuoy className="w-4 h-4 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div>Support</div>
+                  <div className="text-[11px] text-slate-400 font-normal">Get in touch with our team</div>
+                </div>
+              </button>
             </PopoverContent>
           </Popover>
 
@@ -289,6 +300,7 @@ export default function Navbar() {
             <button key={l.id} onClick={() => go(l.id)} className="text-left text-sm font-medium text-slate-700">{l.label}</button>
           ))}
           <button data-testid="mobile-nav-careers" onClick={() => { go("careers"); setOpen(false); }} className="text-left text-sm font-medium text-slate-700">Careers</button>
+          <button data-testid="mobile-nav-support" onClick={() => { go("support"); setOpen(false); }} className="text-left text-sm font-medium text-slate-700">Support</button>
           <Link to="/learn" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Learn</Link>
           <Link to="/login" data-testid="mobile-nav-login" onClick={() => setOpen(false)} className="text-left text-sm font-semibold text-[#2E7DF5]">Login / Sign up</Link>
           <Link to="/employee" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Employee Login</Link>

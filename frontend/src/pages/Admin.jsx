@@ -513,11 +513,17 @@ export default function Admin() {
   // Server-side check happens on every API call; this frontend guard just
   // avoids flashing the admin UI when a non-admin lands on /admin by mistake.
   useEffect(() => {
+    if (user === false) {
+      navigate("/login", { replace: true, state: { from: "/admin" } });
+      return;
+    }
     if (user && (user.role || "").toLowerCase() !== "admin") {
-      navigate("/employee", { replace: true });
+      const role = (user.role || "").toLowerCase();
+      navigate(role === "employee" ? "/employee" : "/", { replace: true });
     }
   }, [user, navigate]);
   if (user === null) return <div className="min-h-screen flex items-center justify-center text-slate-400 text-sm bg-slate-50">Loading…</div>;
-  if (user && (user.role || "").toLowerCase() !== "admin") return null;
-  return user ? <Dashboard /> : <LoginView />;
+  if (user === false) return null;                                               // redirecting
+  if (user && (user.role || "").toLowerCase() !== "admin") return null;          // redirecting
+  return <Dashboard />;
 }
