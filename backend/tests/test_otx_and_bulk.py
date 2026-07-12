@@ -54,7 +54,10 @@ class TestOTX:
         pytest.otx_first = summary
 
     def test_otx_iocs_persisted(self, auth_headers):
-        r = requests.get(f"{BASE_URL}/api/iocs", params={"limit": 50}, headers=auth_headers, timeout=15)
+        # Feb 2026: with URLhaus/CINS Army/ThreatFox syncs in place, OTX no
+        # longer appears in the first 50 by created_at.  Explicitly query for
+        # OTX-sourced docs via the built-in search parameter.
+        r = requests.get(f"{BASE_URL}/api/iocs", params={"limit": 50, "q": "AlienVault OTX"}, headers=auth_headers, timeout=15)
         assert r.status_code == 200
         body = r.json()
         items = body.get("items") if isinstance(body, dict) else body

@@ -3478,10 +3478,15 @@ async def ioc_ai_summary(payload: AiSummaryInput):
 
 
 @api_router.get("/live-feed")
-async def live_feed():
+async def live_feed(limit: int = 50):
+    """CISA KEV feed. Caps to 50 items by default (bounded via `?limit=`,
+    hard max 500) — sending the full 1600+ entry catalog is unnecessary
+    and adds 400KB+ to every page load."""
+    limit = max(1, min(int(limit), 500))
     now = datetime.now(timezone.utc)
     if _feed_cache["data"] and _feed_cache["ts"] and (now - _feed_cache["ts"]) < timedelta(minutes=5):
-        return _feed_cache["data"]
+        cached = _feed_cache["data"]
+        return {**cached, "returned": min(limit, len(cached.get("items", []))), "items": cached["items"][:limit]}
     try:
         async with httpx.AsyncClient(timeout=15) as hc:
             r = await hc.get(CISA_FEED_URL)
@@ -3503,22 +3508,24 @@ async def live_feed():
             }
             for v in vulns_sorted
         ]
-        result = {
+        # Cache the FULL sorted feed once; slice per-request. Prevents a re-fetch
+        # every time the frontend asks for a different page size.
+        full = {
             "source": "CISA Known Exploited Vulnerabilities",
             "catalog_version": raw.get("catalogVersion"),
             "total_count": raw.get("count", len(vulns)),
             "ransomware_linked": sum(1 for v in vulns if v.get("knownRansomwareCampaignUse") == "Known"),
             "updated": now.isoformat(),
-            "returned": len(recent),
             "items": recent,
         }
-        _feed_cache["data"] = result
+        _feed_cache["data"] = full
         _feed_cache["ts"] = now
-        return result
+        return {**full, "returned": min(limit, len(recent)), "items": recent[:limit]}
     except Exception as e:
         logger.error(f"Live feed error: {e}")
         if _feed_cache["data"]:
-            return _feed_cache["data"]
+            cached = _feed_cache["data"]
+            return {**cached, "returned": min(limit, len(cached.get("items", []))), "items": cached["items"][:limit]}
         raise HTTPException(status_code=502, detail="Unable to reach live threat feed")
 
 
