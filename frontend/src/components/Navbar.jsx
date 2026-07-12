@@ -302,7 +302,6 @@ export default function Navbar() {
           <button data-testid="mobile-nav-careers" onClick={() => { go("careers"); setOpen(false); }} className="text-left text-sm font-medium text-slate-700">Careers</button>
           <button data-testid="mobile-nav-support" onClick={() => { go("support"); setOpen(false); }} className="text-left text-sm font-medium text-slate-700">Support</button>
           <Link to="/learn" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Learn</Link>
-          <Link to="/login" data-testid="mobile-nav-login" onClick={() => setOpen(false)} className="text-left text-sm font-semibold text-[#2E7DF5]">Login / Sign up</Link>
           <Link to="/threat-intelligence" onClick={() => setOpen(false)} className="inline-flex items-center gap-2 text-left text-sm font-bold">
             <span className="relative flex h-2 w-2" aria-hidden="true">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-70"></span>
@@ -324,6 +323,7 @@ export default function Navbar() {
               ThreatBox
             </span>
           </Link>
+          <Link to="/login" data-testid="mobile-nav-login" onClick={() => setOpen(false)} className="mt-2 pt-3 border-t border-slate-200 text-left text-sm font-semibold text-[#2E7DF5]">Login / Sign up</Link>
         </div>
       )}
     </header>
