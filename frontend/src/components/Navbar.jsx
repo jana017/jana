@@ -180,44 +180,16 @@ export default function Navbar() {
             </PopoverContent>
           </Popover>
 
-          {/* Prominent Login button — visible on top-right for normal audience */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <button
-                data-testid="nav-login-btn"
-                className="hidden lg:inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-slate-900 hover:bg-[#2E7DF5] text-white text-sm font-semibold transition-all hover:shadow-md hover:-translate-y-0.5"
-              >
-                <LogIn className="w-4 h-4" strokeWidth={2.2} /> Login
-              </button>
-            </PopoverTrigger>
-            <PopoverContent align="end" sideOffset={10} className="w-64 p-2 bg-white/95 backdrop-blur-md border-slate-200 shadow-lg">
-              <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-400">Sign in as</div>
-              <Link
-                to="/employee"
-                data-testid="login-menu-employee"
-                onMouseEnter={() => prefetchRoute("/employee")}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${location.pathname.startsWith("/employee") ? "bg-blue-50 text-[#2E7DF5]" : "text-slate-700 hover:bg-slate-50 hover:text-slate-900"}`}
-              >
-                <LogIn className="w-4 h-4 shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <div>Employee</div>
-                  <div className="text-[11px] text-slate-400 font-normal">Access the internal portal</div>
-                </div>
-              </Link>
-              <Link
-                to="/admin"
-                data-testid="login-menu-admin"
-                onMouseEnter={() => prefetchRoute("/admin")}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${location.pathname.startsWith("/admin") ? "bg-blue-50 text-[#2E7DF5]" : "text-slate-700 hover:bg-slate-50 hover:text-slate-900"}`}
-              >
-                <ShieldCheck className="w-4 h-4 shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <div>Admin</div>
-                  <div className="text-[11px] text-slate-400 font-normal">SOC & platform administration</div>
-                </div>
-              </Link>
-            </PopoverContent>
-          </Popover>
+          {/* Prominent Login button — direct link to /login (User account) */}
+          <Link
+            to="/login"
+            data-testid="nav-login-btn"
+            onMouseEnter={() => prefetchRoute("/login")}
+            onFocus={() => prefetchRoute("/login")}
+            className="hidden lg:inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-slate-900 hover:bg-[#2E7DF5] text-white text-sm font-semibold transition-all hover:shadow-md hover:-translate-y-0.5"
+          >
+            <LogIn className="w-4 h-4" strokeWidth={2.2} /> Login
+          </Link>
 
           <button data-testid="mobile-menu-toggle" aria-label={open ? "Close menu" : "Open menu"} className="lg:hidden inline-flex items-center justify-center w-11 h-11 -mr-1 rounded-md text-slate-700 hover:bg-slate-100 transition-colors" onClick={() => setOpen((o) => !o)}>
             {open ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -232,6 +204,7 @@ export default function Navbar() {
           ))}
           <button data-testid="mobile-nav-careers" onClick={() => { go("careers"); setOpen(false); }} className="text-left text-sm font-medium text-slate-700">Careers</button>
           <Link to="/learn" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Learn</Link>
+          <Link to="/login" data-testid="mobile-nav-login" onClick={() => setOpen(false)} className="text-left text-sm font-semibold text-[#2E7DF5]">Login / Sign up</Link>
           <Link to="/employee" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Employee Login</Link>
           <Link to="/threat-intelligence" onClick={() => setOpen(false)} className="inline-flex items-center gap-2 text-left text-sm font-bold">
             <span className="relative flex h-2 w-2" aria-hidden="true">

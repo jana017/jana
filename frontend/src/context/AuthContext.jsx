@@ -36,13 +36,24 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const signup = async (email, password, name) => {
+    try {
+      const { data } = await api.post("/auth/signup", { email, password, name: name || null });
+      setToken(data.access_token);
+      setUser(data.user);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: formatApiErrorDetail(e.response?.data?.detail) || e.message };
+    }
+  };
+
   const logout = () => {
     clearToken();
     setUser(false);
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user, login, signup, logout }}>{children}</AuthContext.Provider>
   );
 };
 

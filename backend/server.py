@@ -115,6 +115,25 @@ class LoginInput(BaseModel):
     password: str
 
 
+class SignupInput(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=128)
+    name: Optional[str] = Field(None, max_length=80)
+
+
+def require_role(*allowed_roles: str):
+    """Dependency factory — enforce that the authenticated user has one of the
+    given roles. Falls back to admin for missing role (backwards-compat with
+    pre-refactor accounts)."""
+    allowed = set(r.lower() for r in allowed_roles)
+    async def _dep(user: dict = Depends(get_current_user)) -> dict:
+        role = (user.get("role") or "admin").lower()
+        if role not in allowed:
+            raise HTTPException(status_code=403, detail=f"Access denied — requires role: {', '.join(sorted(allowed))}")
+        return user
+    return _dep
+
+
 class ProcessNode(BaseModel):
     name: str
     pid: Optional[str] = None
@@ -259,6 +278,52 @@ async def login(payload: LoginInput):
     }
 
 
+SIGNUP_RATE_MAX = 5       # max signups per IP per hour
+SIGNUP_RATE_WINDOW = 3600 # seconds
+
+
+@api_router.post("/auth/signup")
+async def signup(payload: SignupInput, request: Request):
+    """Public sign-up — creates a `role: "user"` account. Rate-limited to
+    5 signups per IP per hour to deter abuse. Employees/admins are created
+    only via the admin panel — this endpoint always assigns role='user'."""
+    email = payload.email.lower().strip()
+    ip = (request.headers.get("x-forwarded-for") or request.client.host or "unknown").split(",")[0].strip()
+
+    # IP rate limit — Mongo counter with sliding-window using TTL.
+    since = datetime.now(timezone.utc) - timedelta(seconds=SIGNUP_RATE_WINDOW)
+    recent_count = await db.signup_attempts.count_documents({"ip": ip, "created_at": {"$gte": since.isoformat()}})
+    if recent_count >= SIGNUP_RATE_MAX:
+        raise HTTPException(status_code=429, detail="Too many signups from this IP, please try again later")
+
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        raise HTTPException(status_code=409, detail="An account with this email already exists")
+
+    # Weak-password guard beyond min_length: at least 1 letter + 1 digit
+    if not (any(c.isalpha() for c in payload.password) and any(c.isdigit() for c in payload.password)):
+        raise HTTPException(status_code=422, detail="Password must contain at least one letter and one digit")
+
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "email": email,
+        "password_hash": hash_password(payload.password),
+        "name": (payload.name or email.split("@")[0]).strip()[:80],
+        "role": "user",           # always 'user' — no privilege escalation via this endpoint
+        "created_at": now,
+        "bookmarks": [],          # for future: ThreatBox actor bookmarks
+        "watchlist": [],          # for future: IOC watchlist
+    }
+    res = await db.users.insert_one(doc)
+    await db.signup_attempts.insert_one({"ip": ip, "email": email, "created_at": now})
+
+    token = create_access_token(str(res.inserted_id), email)
+    return {
+        "access_token": token,
+        "user": {"id": str(res.inserted_id), "email": email, "name": doc["name"], "role": "user"},
+    }
+
+
 @api_router.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
     return {"id": user["_id"], "email": user["email"], "name": user.get("name", "Admin"), "role": user.get("role", "admin")}
@@ -282,14 +347,14 @@ async def get_threat(threat_id: str):
 
 
 @api_router.post("/threats", response_model=ThreatReport)
-async def create_threat(payload: ThreatReportCreate, user: dict = Depends(get_current_user)):
+async def create_threat(payload: ThreatReportCreate, user: dict = Depends(require_role("admin", "employee"))):
     report = ThreatReport(**payload.model_dump())
     await db.threat_reports.insert_one(report.model_dump())
     return report
 
 
 @api_router.put("/threats/{threat_id}", response_model=ThreatReport)
-async def update_threat(threat_id: str, payload: ThreatReportCreate, user: dict = Depends(get_current_user)):
+async def update_threat(threat_id: str, payload: ThreatReportCreate, user: dict = Depends(require_role("admin", "employee"))):
     existing = await db.threat_reports.find_one({"id": threat_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Threat report not found")
@@ -301,7 +366,7 @@ async def update_threat(threat_id: str, payload: ThreatReportCreate, user: dict 
 
 
 @api_router.delete("/threats/{threat_id}")
-async def delete_threat(threat_id: str, user: dict = Depends(get_current_user)):
+async def delete_threat(threat_id: str, user: dict = Depends(require_role("admin", "employee"))):
     res = await db.threat_reports.delete_one({"id": threat_id})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Threat report not found")

@@ -25,6 +25,7 @@ const CyberLabShare = lazy(() => import("@/pages/CyberLabShare"));
 const CmsPage = lazy(() => import("@/pages/CmsPage"));
 const ActorsIndex = lazy(() => import("@/pages/ActorsIndex"));
 const ActorProfile = lazy(() => import("@/pages/ActorProfile"));
+const UserAuth = lazy(() => import("@/pages/UserAuth"));
 
 function RouteFallback() {
   return (
@@ -75,6 +76,8 @@ function App() {
                 <Route path="/threatbox/:slug" element={<ActorProfile />} />
                 <Route path="/actors" element={<Navigate to="/threatbox" replace />} />
                 <Route path="/actors/:slug" element={<ActorProfile />} />
+                <Route path="/login" element={<UserAuth />} />
+                <Route path="/signup" element={<UserAuth />} />
                 <Route path="/admin" element={<Admin />} />
                 <Route path="/employee" element={<EmployeePortal />} />
                 <Route path="/pages/:slug" element={<CmsPage />} />
