@@ -303,7 +303,6 @@ export default function Navbar() {
           <button data-testid="mobile-nav-support" onClick={() => { go("support"); setOpen(false); }} className="text-left text-sm font-medium text-slate-700">Support</button>
           <Link to="/learn" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Learn</Link>
           <Link to="/login" data-testid="mobile-nav-login" onClick={() => setOpen(false)} className="text-left text-sm font-semibold text-[#2E7DF5]">Login / Sign up</Link>
-          <Link to="/employee" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Employee Login</Link>
           <Link to="/threat-intelligence" onClick={() => setOpen(false)} className="inline-flex items-center gap-2 text-left text-sm font-bold">
             <span className="relative flex h-2 w-2" aria-hidden="true">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-70"></span>
@@ -324,9 +323,6 @@ export default function Navbar() {
             <span className="bg-gradient-to-r from-[#DC2626] to-[#F5821F] bg-clip-text text-transparent">
               ThreatBox
             </span>
-          </Link>
-          <Link to="/admin" data-testid="mobile-nav-admin-link" onClick={() => setOpen(false)} className="inline-flex items-center gap-2 text-left text-sm font-semibold text-slate-700 pt-3 mt-1 border-t border-slate-200">
-            <ShieldCheck className="w-4 h-4" /> Admin sign in
           </Link>
         </div>
       )}
