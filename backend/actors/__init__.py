@@ -72,6 +72,22 @@ async def get_actor(slug: str):
     return _serialize(doc)
 
 
+@router.get("/{slug}/incidents")
+async def get_actor_incidents(slug: str, limit: int = 20):
+    """Public — Related incident case studies from NivX Threat Intel that
+    attribute to this actor.  Enforces single-source-of-truth: incidents live
+    in `threat_reports`, actor profile lives in `threat_actors`, joined by
+    `actor_slug`.  No duplication of actor metadata in the incident payload."""
+    slug = slug.lower()
+    cursor = _db.threat_reports.find(
+        {"actor_slug": slug},
+        {"_id": 0, "id": 1, "title": 1, "summary": 1, "severity": 1,
+         "category": 1, "created_at": 1, "image_url": 1, "attack_chain": 1},
+    ).sort("created_at", -1).limit(max(1, min(int(limit), 100)))
+    incidents = [d async for d in cursor]
+    return {"slug": slug, "count": len(incidents), "incidents": incidents}
+
+
 @admin_router.post("")
 async def create_actor(payload: ActorIn, user=Depends(_require_admin)):
     doc = payload.model_dump()

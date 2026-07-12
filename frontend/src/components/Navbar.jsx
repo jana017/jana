@@ -1,14 +1,14 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useLenis } from "lenis/react";
-import { Menu, X, Phone, ShieldCheck, Beaker, FileSearch } from "lucide-react";
+import { Menu, X, ShieldCheck, Beaker, FileSearch, LayoutGrid, GraduationCap, Briefcase, LogIn } from "lucide-react";
 import { prefetchRoute } from "@/lib/routePrefetch";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 const SECTION_LINKS = [
   { label: "About", id: "about" },
   { label: "Services", id: "services" },
   { label: "Gallery", id: "gallery" },
-  { label: "Careers", id: "careers" },
   { label: "Support", id: "support" },
 ];
 
@@ -72,24 +72,6 @@ export default function Navbar() {
               {l.label}
             </button>
           ))}
-          <Link
-            to="/learn"
-            data-testid="nav-learn"
-            onMouseEnter={() => prefetchRoute("/learn")}
-            onFocus={() => prefetchRoute("/learn")}
-            className={`text-sm font-medium transition-colors ${isLearn ? "text-[#2E7DF5]" : "text-slate-600 hover:text-slate-900"}`}
-          >
-            Learn
-          </Link>
-          <Link
-            to="/employee"
-            data-testid="nav-employee"
-            onMouseEnter={() => prefetchRoute("/employee")}
-            onFocus={() => prefetchRoute("/employee")}
-            className={`text-sm font-medium transition-colors ${location.pathname.startsWith("/employee") ? "text-[#2E7DF5]" : "text-slate-600 hover:text-slate-900"}`}
-          >
-            Employee Login
-          </Link>
           <Link
             to="/threat-intelligence"
             data-testid="nav-threat-intelligence"
@@ -159,12 +141,69 @@ export default function Navbar() {
         </div>
 
         <div className="flex items-center gap-3">
-          <Link to="/admin" data-testid="nav-admin-link" onMouseEnter={() => prefetchRoute("/admin")} onFocus={() => prefetchRoute("/admin")} aria-label="Admin" className="inline-flex items-center justify-center gap-1.5 min-h-[40px] sm:min-h-[36px] px-2 sm:px-1 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">
-            <ShieldCheck className="w-4 h-4" /> <span className="hidden sm:inline">Admin</span>
-          </Link>
-          <a href="tel:9059565125" data-testid="nav-contact-cta" className="hidden sm:inline-flex items-center gap-2 bg-[#2E7DF5] hover:bg-[#2563EB] text-white text-sm font-semibold px-4 py-2 rounded-md transition-colors">
-            <Phone className="w-4 h-4" strokeWidth={2} /> Get Secured
-          </a>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                data-testid="nav-more-menu"
+                aria-label="More links"
+                className="hidden lg:inline-flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:border-[#2E7DF5] hover:shadow-sm transition-all group"
+              >
+                <LayoutGrid className="w-4 h-4 group-hover:text-[#2E7DF5] transition-colors" strokeWidth={2.2} />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" sideOffset={10} className="w-64 p-2 bg-white/95 backdrop-blur-md border-slate-200 shadow-lg">
+              <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-400">More</div>
+              <Link
+                to="/learn"
+                data-testid="more-menu-learn"
+                onMouseEnter={() => prefetchRoute("/learn")}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${isLearn ? "bg-blue-50 text-[#2E7DF5]" : "text-slate-700 hover:bg-slate-50 hover:text-slate-900"}`}
+              >
+                <GraduationCap className="w-4 h-4 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div>Learn</div>
+                  <div className="text-[11px] text-slate-400 font-normal">Blog · Cyber 101 · SOC playbooks</div>
+                </div>
+              </Link>
+              <button
+                type="button"
+                data-testid="more-menu-careers"
+                onClick={() => go("careers")}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium text-left text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-all"
+              >
+                <Briefcase className="w-4 h-4 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div>Careers</div>
+                  <div className="text-[11px] text-slate-400 font-normal">Join the NivX team</div>
+                </div>
+              </button>
+              <div className="mt-1 pt-1 border-t border-slate-100 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-400">Login</div>
+              <Link
+                to="/employee"
+                data-testid="more-menu-employee"
+                onMouseEnter={() => prefetchRoute("/employee")}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${location.pathname.startsWith("/employee") ? "bg-blue-50 text-[#2E7DF5]" : "text-slate-700 hover:bg-slate-50 hover:text-slate-900"}`}
+              >
+                <LogIn className="w-4 h-4 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div>Employee Login</div>
+                  <div className="text-[11px] text-slate-400 font-normal">Access the internal portal</div>
+                </div>
+              </Link>
+              <Link
+                to="/admin"
+                data-testid="more-menu-admin"
+                onMouseEnter={() => prefetchRoute("/admin")}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${location.pathname.startsWith("/admin") ? "bg-blue-50 text-[#2E7DF5]" : "text-slate-700 hover:bg-slate-50 hover:text-slate-900"}`}
+              >
+                <ShieldCheck className="w-4 h-4 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div>Admin Login</div>
+                  <div className="text-[11px] text-slate-400 font-normal">SOC & platform administration</div>
+                </div>
+              </Link>
+            </PopoverContent>
+          </Popover>
           <button data-testid="mobile-menu-toggle" aria-label={open ? "Close menu" : "Open menu"} className="lg:hidden inline-flex items-center justify-center w-11 h-11 -mr-1 rounded-md text-slate-700 hover:bg-slate-100 transition-colors" onClick={() => setOpen((o) => !o)}>
             {open ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
@@ -176,6 +215,7 @@ export default function Navbar() {
           {SECTION_LINKS.map((l) => (
             <button key={l.id} onClick={() => go(l.id)} className="text-left text-sm font-medium text-slate-700">{l.label}</button>
           ))}
+          <button data-testid="mobile-nav-careers" onClick={() => { go("careers"); setOpen(false); }} className="text-left text-sm font-medium text-slate-700">Careers</button>
           <Link to="/learn" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Learn</Link>
           <Link to="/employee" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Employee Login</Link>
           <Link to="/threat-intelligence" onClick={() => setOpen(false)} className="inline-flex items-center gap-2 text-left text-sm font-bold">

@@ -129,6 +129,7 @@ class ThreatReportBase(BaseModel):
     severity: str = "high"  # critical | high | medium | low
     category: str = "Malware"
     threat_actor: Optional[str] = None
+    actor_slug: Optional[str] = None  # FK to ThreatBox (`threat_actors.slug`) — single source of truth
     image_url: Optional[str] = None
     attack_chain: List[str] = []  # MITRE ATT&CK ordered tactics
     iocs: List[str] = []
@@ -1596,6 +1597,9 @@ SYNC_SOURCES = [
     ("malwarebytes",    "Malwarebytes Labs", True,  None),
     ("virustotal",      "VirusTotal (Enterprise)", True, None),
     ("talos",           "Talos-Community Blocklists (ET + Feodo)", True,  None),
+    ("urlhaus",         "URLhaus (abuse.ch)", True, None),
+    ("threatfox",       "ThreatFox (abuse.ch)", True, None),
+    ("cins_army",       "CINS Army (Sentinel IPS)", True, None),
     ("urlscan",         "URLScan.io",        False, "Bulk 'malicious verdicts' search requires urlscan Pro"),
     ("shodan",          "Shodan",            False, "Not a curated IOC feed (internet scan engine)"),
 ]
@@ -1620,6 +1624,9 @@ async def iocs_sync_status():
         "urlscan": bool(URLSCAN_API_KEY) if 'URLSCAN_API_KEY' in globals() else False,
         "virustotal": bool(VT_API_KEY) if 'VT_API_KEY' in globals() else False,
         "talos": True,
+        "urlhaus": True,                          # abuse.ch — auth key optional
+        "threatfox": bool(ABUSECH_AUTH_KEY),      # requires ABUSECH_AUTH_KEY since May 2025
+        "cins_army": True,                        # sentinel IPS — no key needed
         "shodan": False,
     }
     sources = []
@@ -4886,6 +4893,7 @@ SAMPLE_THREATS = [
         "severity": "critical",
         "category": "APT / Supply Chain",
         "threat_actor": "APT41 (Double Dragon)",
+        "actor_slug": "apt41",
         "image_url": "https://images.unsplash.com/photo-1555066931-4365d14bab8c?crop=entropy&cs=srgb&fm=jpg&q=85&w=1200",
         "attack_chain": ["Initial Access", "Execution", "Persistence", "Defense Evasion", "Command & Control", "Exfiltration"],
         "iocs": ["sha256:9f2b...c41a", "domain:cdn-update[.]net", "ip:45.61.136.9"],
@@ -4941,6 +4949,7 @@ SAMPLE_THREATS = [
         "severity": "critical",
         "category": "Identity / Social Engineering",
         "threat_actor": "Scattered Spider (UNC3944)",
+        "actor_slug": "scattered-spider",
         "image_url": "https://images.pexels.com/photos/5380664/pexels-photo-5380664.jpeg?auto=compress&cs=tinysrgb&w=1200",
         "attack_chain": ["Reconnaissance", "Initial Access", "Privilege Escalation", "Lateral Movement", "Collection", "Exfiltration"],
         "iocs": ["ip:104.28.246.11", "email:it-support@nivx-helpdesk[.]com", "ua:Mozilla/5.0 (okta-bypass)"],
@@ -4960,6 +4969,7 @@ SAMPLE_THREATS = [
         "severity": "critical",
         "category": "Ransomware",
         "threat_actor": "LockBit 3.0 affiliate",
+        "actor_slug": "lockbit",
         "image_url": "https://images.pexels.com/photos/60504/security-protection-anti-virus-software-60504.jpeg?auto=compress&cs=tinysrgb&w=1200",
         "attack_chain": ["Initial Access", "Discovery", "Lateral Movement", "Collection", "Exfiltration", "Impact"],
         "iocs": ["sha256:c9d3...81be", "ext:.lockbit", "ip:193.201.9.55", "tool:rclone.exe"],
@@ -4997,6 +5007,7 @@ SAMPLE_THREATS = [
         "severity": "high",
         "category": "APT / Critical Infrastructure",
         "threat_actor": "Volt Typhoon",
+        "actor_slug": "volt-typhoon",
         "image_url": "https://images.pexels.com/photos/2881229/pexels-photo-2881229.jpeg?auto=compress&cs=tinysrgb&w=1200",
         "attack_chain": ["Initial Access", "Persistence", "Defense Evasion", "Discovery", "Lateral Movement"],
         "iocs": ["ip:45.32.174.20", "lolbin:wmic.exe", "lolbin:netsh.exe", "cred:cached NTLM"],
@@ -5017,7 +5028,13 @@ async def seed_threats():
         if existing is None:
             report = ThreatReport(**t)
             await db.threat_reports.insert_one(report.model_dump())
-    logger.info("Threat reports seeded/verified")
+        elif t.get("actor_slug") and not existing.get("actor_slug"):
+            # Backfill FK on docs seeded before ThreatBox launched.
+            await db.threat_reports.update_one(
+                {"title": t["title"]},
+                {"$set": {"actor_slug": t["actor_slug"], "updated_at": now_iso()}},
+            )
+    logger.info("Threat reports seeded/verified (ThreatBox FK backfilled)")
 
 
 @app.on_event("startup")

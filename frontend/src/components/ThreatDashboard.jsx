@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import AttackChain from "@/components/AttackChain";
 import KillChainDiagram from "@/components/KillChainDiagram";
 import ProcessTree from "@/components/ProcessTree";
-import { GitBranch, Crosshair, Fingerprint, ArrowUpRight } from "lucide-react";
+import { GitBranch, Crosshair, Fingerprint, ArrowUpRight, ExternalLink } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -53,7 +54,13 @@ function FeaturedBrief({ r }) {
           {r.threat_actor && (
             <div className="text-sm mb-5">
               <span className="text-slate-400">Attributed to: </span>
-              <span className="font-semibold text-[#F5821F]">{r.threat_actor}</span>
+              {r.actor_slug ? (
+                <Link to={`/threatbox/${r.actor_slug}`} data-testid={`brief-actor-link-${r.actor_slug}`} className="font-semibold text-[#F5821F] hover:text-[#DC2626] hover:underline inline-flex items-center gap-1 transition-colors">
+                  {r.threat_actor} <ExternalLink className="w-3 h-3" />
+                </Link>
+              ) : (
+                <span className="font-semibold text-[#F5821F]">{r.threat_actor}</span>
+              )}
             </div>
           )}
           {r.image_url && (
@@ -152,7 +159,16 @@ export default function ThreatDashboard() {
               {active.image_url && <img src={active.image_url} alt={active.title} className="w-full h-48 object-cover rounded-lg border border-slate-200" />}
               <p className="text-sm text-slate-600 leading-relaxed">{active.summary}</p>
               {active.threat_actor && (
-                <div className="text-sm"><span className="text-slate-400">Threat actor: </span><span className="font-semibold text-[#F5821F]">{active.threat_actor}</span></div>
+                <div className="text-sm">
+                  <span className="text-slate-400">Threat actor: </span>
+                  {active.actor_slug ? (
+                    <Link to={`/threatbox/${active.actor_slug}`} data-testid={`dialog-actor-link-${active.actor_slug}`} className="font-semibold text-[#F5821F] hover:text-[#DC2626] hover:underline inline-flex items-center gap-1 transition-colors">
+                      {active.threat_actor} <ExternalLink className="w-3 h-3" />
+                    </Link>
+                  ) : (
+                    <span className="font-semibold text-[#F5821F]">{active.threat_actor}</span>
+                  )}
+                </div>
               )}
               <Panel label="MITRE ATT&CK · Kill Chain" icon={Crosshair}><KillChainDiagram steps={active.attack_chain} /></Panel>
               {active.process_tree && <Panel label="Process Tree · Execution Forensics" icon={GitBranch}><ProcessTree tree={active.process_tree} /></Panel>}

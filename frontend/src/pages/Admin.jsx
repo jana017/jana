@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const EMPTY = {
-  title: "", summary: "", severity: "high", category: "Malware", threat_actor: "",
+  title: "", summary: "", severity: "high", category: "Malware", threat_actor: "", actor_slug: "",
   image_url: "", attack_chain: "", iocs: "", process_tree: "", source: "NivX Threat Intel",
 };
 
@@ -87,7 +87,8 @@ function toPayload(f) {
   }
   return {
     title: f.title, summary: f.summary, severity: f.severity, category: f.category,
-    threat_actor: f.threat_actor || null, image_url: f.image_url || null,
+    threat_actor: f.threat_actor || null, actor_slug: (f.actor_slug || "").trim().toLowerCase() || null,
+    image_url: f.image_url || null,
     attack_chain: f.attack_chain.split(",").map((s) => s.trim()).filter(Boolean),
     iocs: f.iocs.split(",").map((s) => s.trim()).filter(Boolean),
     process_tree, source: f.source || "NivX Threat Intel",
@@ -97,6 +98,7 @@ function toPayload(f) {
 function Dashboard() {
   const { user, logout } = useAuth();
   const [reports, setReports] = useState([]);
+  const [actors, setActors] = useState([]);   // for actor_slug picker
   const [form, setForm] = useState(EMPTY);
   const [editId, setEditId] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
@@ -107,10 +109,13 @@ function Dashboard() {
   const load = useCallback(() => {
     api.get("/threats").then(({ data }) => setReports(data)).catch(() => {});
   }, []);
+  const loadActors = useCallback(() => {
+    api.get("/actors").then(({ data }) => setActors(data.actors || [])).catch(() => {});
+  }, []);
   const loadLeads = useCallback(() => {
     api.get("/leads").then(({ data }) => setLeads(data)).catch(() => {});
   }, []);
-  useEffect(() => { load(); loadLeads(); }, [load, loadLeads]);
+  useEffect(() => { load(); loadLeads(); loadActors(); }, [load, loadLeads, loadActors]);
   useEffect(() => {
     const h = (e) => { if (e.detail) setView(e.detail); };
     window.addEventListener("nivx-admin-goto", h);
@@ -149,7 +154,8 @@ function Dashboard() {
     setEditId(r.id);
     setForm({
       title: r.title, summary: r.summary, severity: r.severity, category: r.category,
-      threat_actor: r.threat_actor || "", image_url: r.image_url || "",
+      threat_actor: r.threat_actor || "", actor_slug: r.actor_slug || "",
+      image_url: r.image_url || "",
       attack_chain: (r.attack_chain || []).join(", "), iocs: (r.iocs || []).join(", "),
       process_tree: r.process_tree ? JSON.stringify(r.process_tree, null, 2) : "",
       source: r.source || "NivX Threat Intel",
@@ -306,7 +312,32 @@ function Dashboard() {
             </select>
             <input data-testid="form-category" placeholder="Category" value={form.category} onChange={set("category")} className={inputCls} />
           </div>
-          <input data-testid="form-actor" placeholder="Threat actor (optional)" value={form.threat_actor} onChange={set("threat_actor")} className={inputCls} />
+          <input data-testid="form-actor" placeholder="Threat actor (display name — optional)" value={form.threat_actor} onChange={set("threat_actor")} className={inputCls} />
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-stretch">
+            <div>
+              <input
+                data-testid="form-actor-slug"
+                placeholder="ThreatBox slug (e.g. lockbit) — single source of truth"
+                value={form.actor_slug}
+                onChange={set("actor_slug")}
+                list="threatbox-actor-slugs"
+                className={inputCls}
+              />
+              <datalist id="threatbox-actor-slugs">
+                {actors.map((a) => (
+                  <option key={a.slug} value={a.slug}>{a.name}</option>
+                ))}
+              </datalist>
+              {form.actor_slug && (
+                <a href={`/threatbox/${form.actor_slug}`} target="_blank" rel="noopener noreferrer" className="text-[11px] text-[#2E7DF5] hover:underline mt-1 inline-block" data-testid="form-actor-slug-preview">
+                  Open /threatbox/{form.actor_slug} ↗
+                </a>
+              )}
+            </div>
+            <a href="/threatbox" target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-1 whitespace-nowrap text-xs text-slate-600 hover:text-[#2E7DF5] hover:underline px-2 self-start pt-2.5" data-testid="form-actor-slug-browse">
+              Browse ThreatBox ↗
+            </a>
+          </div>
           <input data-testid="form-image" placeholder="Image URL (optional)" value={form.image_url} onChange={set("image_url")} className={inputCls} />
           <input data-testid="form-chain" placeholder="Attack chain (comma separated)" value={form.attack_chain} onChange={set("attack_chain")} className={inputCls} />
           <input data-testid="form-iocs" placeholder="IOCs (comma separated)" value={form.iocs} onChange={set("iocs")} className={inputCls} />

@@ -4,7 +4,7 @@
  */
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Loader2, ShieldAlert, Globe2, Target, Calendar, ListChecks, Fingerprint, ExternalLink, AlertTriangle, BookOpen } from "lucide-react";
+import { ArrowLeft, Loader2, ShieldAlert, Globe2, Target, Calendar, ListChecks, Fingerprint, ExternalLink, AlertTriangle, BookOpen, Newspaper } from "lucide-react";
 import { api } from "@/lib/api";
 import useSeo from "@/lib/useSeo";
 import Navbar from "@/components/Navbar";
@@ -24,6 +24,7 @@ function Section({ id, icon: Icon, title, children }) {
 export default function ActorProfile() {
   const { slug } = useParams();
   const [actor, setActor] = useState(null);
+  const [incidents, setIncidents] = useState([]);
   const [err, setErr] = useState(null);
 
   useSeo({
@@ -33,10 +34,16 @@ export default function ActorProfile() {
 
   useEffect(() => {
     setActor(null);
+    setIncidents([]);
     setErr(null);
     api.get(`/actors/${encodeURIComponent(slug)}`)
        .then(({ data }) => setActor(data))
        .catch((e) => setErr(e.response?.status === 404 ? "notfound" : "error"));
+    // Related incidents from NivX Threat Intel — single-source-of-truth join
+    // via `actor_slug` FK. Silently no-op if none exist.
+    api.get(`/actors/${encodeURIComponent(slug)}/incidents`)
+       .then(({ data }) => setIncidents(data.incidents || []))
+       .catch(() => setIncidents([]));
   }, [slug]);
 
   return (
@@ -181,6 +188,30 @@ export default function ActorProfile() {
                     </tbody>
                   </table>
                 </div>
+              </Section>
+            )}
+
+            {/* Related Incidents — NivX Threat Intel case studies attributed to this actor */}
+            {incidents.length > 0 && (
+              <Section id="incidents" icon={Newspaper} title={`Related Incidents from NivX Threat Intel (${incidents.length})`}>
+                <div className="space-y-2" data-testid="actor-incidents">
+                  {incidents.map((inc) => (
+                    <div key={inc.id} className="flex items-start gap-3 p-3 rounded-lg border border-slate-200 hover:border-[#2E7DF5] bg-slate-50 hover:bg-white transition-colors">
+                      <span className={`shrink-0 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded border mt-0.5 ${
+                        inc.severity === "critical" ? "bg-red-50 text-red-700 border-red-200" :
+                        inc.severity === "high" ? "bg-orange-50 text-orange-700 border-orange-200" :
+                        inc.severity === "medium" ? "bg-blue-50 text-blue-700 border-blue-200" :
+                        "bg-slate-100 text-slate-600 border-slate-200"
+                      }`}>{inc.severity}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold text-slate-900">{inc.title}</div>
+                        <div className="text-xs text-slate-600 line-clamp-2 mt-0.5">{inc.summary}</div>
+                        <div className="text-[11px] text-slate-400 mt-1 font-mono">{inc.category}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 text-[11px] text-slate-400">Incident case studies live in NivX Threat Intel, linked to this ThreatBox dossier by <code className="font-mono">actor_slug</code>.</div>
               </Section>
             )}
 
