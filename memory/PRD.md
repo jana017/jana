@@ -1,5 +1,12 @@
 # NivX Machines — PRD
 
+## Implemented (2026-02-12 — ThreatBox enrichment: +12 tracked adversary groups)
+- Added 12 curated dossiers, bringing ThreatBox to **16 total tracked groups**:
+  - **Nation-state**: Volt Typhoon (CN), APT28/Fancy Bear (RU-GRU), APT41/Winnti (CN), Sandworm (RU-GRU), Turla (RU-FSB), Kimsuky (KP), MuddyWater (IR-MOIS), Charming Kitten/APT35 (IR-IRGC)
+  - **eCrime**: Scattered Spider (UNC3944), Clop (MFT extortion), BlackCat/ALPHV, Black Basta
+  - Each dossier includes: aliases, motivation, targeted sectors/regions, 3–5 MITRE ATT&CK TTPs (auto-linked), 3–5 attack-timeline milestones, MITRE + CISA references.
+- Seed is idempotent — existing edits/entries are never overwritten.
+
 ## Implemented (2026-02-12 — ThreatBox launch: Threat Actor Attribution)
 - **ThreatBox** (formerly "Threat Actor Attribution Profiles" — user-branded as ThreatBox for memorability, "Freedom Oil"-style) shipped end-to-end.
 - **Backend**: `/api/actors` (list) + `/api/actors/{slug}` (detail) public routes; `/api/admin/actors` full CRUD (admin auth). Mongo collection `threat_actors` with idempotent seed of 4 curated groups: LockBit, APT29 (Cozy Bear), Lazarus, FIN7. Each includes bio, aliases, motivation, targeted sectors/regions, MITRE ATT&CK TTPs, incident timeline, related IOCs, references.
