@@ -880,6 +880,9 @@ async def _bulk_ioc_sync_loop():
                 _sync_malwarebytes_iocs(),
                 _sync_virustotal_intel()      if VT_API_KEY              else None,
                 _sync_talos_blocklist(),
+                _sync_urlhaus_feed(),
+                _sync_threatfox_feed(),
+                _sync_cins_army(),
             ]
             active = [t for t in tasks if t is not None]
             await asyncio.gather(*active, return_exceptions=True)
@@ -1373,6 +1376,173 @@ async def _sync_talos_blocklist() -> dict:
     except Exception:
         pass
     logger.info(f"Talos-community blocklist sync complete: {summary}")
+    return summary
+
+
+# ---------------------------------------------------------------------------
+# Abuse.ch URLhaus + ThreatFox + CINS Army feed collectors
+# All free, no API key required. Added Feb 2026 to complete the P1 Threat
+# Intelligence Feed Collector: URLhaus (malicious URLs), ThreatFox (mixed IOCs
+# with malware family attribution), and CINS Army (Sentinel IPS bad-actor IPs).
+# ---------------------------------------------------------------------------
+URLHAUS_RECENT_JSON = "https://urlhaus.abuse.ch/downloads/json_recent/"
+THREATFOX_RECENT_JSON = "https://threatfox-api.abuse.ch/api/v1/"
+CINS_ARMY_LIST = "http://cinsscore.com/list/ci-badguys.txt"
+
+
+async def _sync_urlhaus_feed(max_items: int = 2500) -> dict:
+    """Pulls the URLhaus recent JSON feed (last ~1000 malicious URLs) and
+    upserts each URL into the curated IOC DB with malware-family attribution
+    where available."""
+    added = updated = skipped = 0
+    try:
+        async with httpx.AsyncClient(timeout=25, follow_redirects=True, headers={"User-Agent": "NivX-ThreatIntel/1.0"}) as hc:
+            r = await hc.get(URLHAUS_RECENT_JSON)
+            if r.status_code != 200:
+                summary = {"error": f"HTTP {r.status_code}", "synced_at": now_iso()}
+                await db.sync_meta.update_one({"_id": "urlhaus"}, {"$set": summary}, upsert=True)
+                return summary
+            payload = r.json() or {}
+        entries = []
+        # URLhaus recent feed returns {"<id>": [{...}]} shape
+        for k, v in payload.items():
+            if isinstance(v, list):
+                entries.extend(v)
+            elif isinstance(v, dict):
+                entries.append(v)
+        entries = entries[:max_items]
+        for e in entries:
+            url = (e.get("url") or "").strip()
+            if not url or _classify_ioc(url) != "url":
+                skipped += 1
+                continue
+            malware = e.get("threat") or e.get("tags") or []
+            if isinstance(malware, list):
+                threat_name = ", ".join([str(t) for t in malware][:5]) or "URLhaus malicious URL"
+            else:
+                threat_name = str(malware) or "URLhaus malicious URL"
+            tags = ["urlhaus", "abuse.ch", "malicious-url"]
+            if e.get("threat"):
+                tags.append(f"threat:{e.get('threat')}")
+            try:
+                _, created = await _upsert_ioc(url, threat_name, tags, "URLhaus", "high",
+                                                f"URLhaus ref: {e.get('urlhaus_reference', '')}".strip())
+                added += 1 if created else 0
+                updated += 0 if created else 1
+            except Exception:
+                skipped += 1
+    except Exception as e:
+        summary = {"error": str(e)[:200], "synced_at": now_iso()}
+        try:
+            await db.sync_meta.update_one({"_id": "urlhaus"}, {"$set": summary}, upsert=True)
+        except Exception:
+            pass
+        logger.warning(f"URLhaus sync failed: {e}")
+        return summary
+    summary = {"items": len(entries), "added": added, "updated": updated, "skipped": skipped, "synced_at": now_iso()}
+    try:
+        await db.sync_meta.update_one({"_id": "urlhaus"}, {"$set": summary}, upsert=True)
+    except Exception:
+        pass
+    logger.info(f"URLhaus sync complete: {summary}")
+    return summary
+
+
+async def _sync_threatfox_feed(days: int = 1, max_items: int = 2500) -> dict:
+    """Pulls the abuse.ch ThreatFox recent-IOC feed via their POST API.
+    Returns hashes, URLs, domains, IPs — each tagged with a malware family."""
+    added = updated = skipped = 0
+    try:
+        async with httpx.AsyncClient(timeout=25, follow_redirects=True, headers={"User-Agent": "NivX-ThreatIntel/1.0"}) as hc:
+            r = await hc.post(THREATFOX_RECENT_JSON, json={"query": "get_iocs", "days": days})
+            if r.status_code != 200:
+                summary = {"error": f"HTTP {r.status_code}", "synced_at": now_iso()}
+                await db.sync_meta.update_one({"_id": "threatfox"}, {"$set": summary}, upsert=True)
+                return summary
+            data = r.json() or {}
+        if data.get("query_status") != "ok":
+            summary = {"error": f"threatfox query_status={data.get('query_status')}", "synced_at": now_iso()}
+            await db.sync_meta.update_one({"_id": "threatfox"}, {"$set": summary}, upsert=True)
+            return summary
+        entries = (data.get("data") or [])[:max_items]
+        for e in entries:
+            val = (e.get("ioc") or "").strip()
+            if not val or _classify_ioc(val) == "unknown":
+                skipped += 1
+                continue
+            family = e.get("malware_printable") or e.get("malware") or "ThreatFox IOC"
+            confidence = e.get("confidence_level") or 0
+            tags = ["threatfox", "abuse.ch"]
+            if e.get("malware"):
+                tags.append(f"family:{e.get('malware')}")
+            if e.get("threat_type"):
+                tags.append(f"type:{e.get('threat_type')}")
+            severity = "critical" if confidence >= 90 else ("high" if confidence >= 75 else "medium")
+            try:
+                _, created = await _upsert_ioc(val, family, tags, "ThreatFox", severity,
+                                                f"ThreatFox first-seen: {e.get('first_seen', '')}")
+                added += 1 if created else 0
+                updated += 0 if created else 1
+            except Exception:
+                skipped += 1
+    except Exception as e:
+        summary = {"error": str(e)[:200], "synced_at": now_iso()}
+        try:
+            await db.sync_meta.update_one({"_id": "threatfox"}, {"$set": summary}, upsert=True)
+        except Exception:
+            pass
+        logger.warning(f"ThreatFox sync failed: {e}")
+        return summary
+    summary = {"items": len(entries), "added": added, "updated": updated, "skipped": skipped, "synced_at": now_iso()}
+    try:
+        await db.sync_meta.update_one({"_id": "threatfox"}, {"$set": summary}, upsert=True)
+    except Exception:
+        pass
+    logger.info(f"ThreatFox sync complete: {summary}")
+    return summary
+
+
+async def _sync_cins_army(max_items: int = 5000) -> dict:
+    """CINS Army list — Sentinel IPS-published bad-actor IPs (attackers observed
+    across multiple honeypots).  ~15k IPs, no key required."""
+    added = updated = skipped = total = 0
+    try:
+        async with httpx.AsyncClient(timeout=25, follow_redirects=True, headers={"User-Agent": "NivX-ThreatIntel/1.0"}) as hc:
+            r = await hc.get(CINS_ARMY_LIST)
+            if r.status_code != 200:
+                summary = {"error": f"HTTP {r.status_code}", "synced_at": now_iso()}
+                await db.sync_meta.update_one({"_id": "cins_army"}, {"$set": summary}, upsert=True)
+                return summary
+            for line in r.text.splitlines():
+                s = line.strip()
+                if not s or s.startswith("#"):
+                    continue
+                if _classify_ioc(s) != "ip":
+                    continue
+                total += 1
+                if total > max_items:
+                    break
+                try:
+                    _, created = await _upsert_ioc(s, "CINS Army bad-actor IP", ["cins-army", "sentinel-ips", "attacker-ip"],
+                                                    "CINS Army", "high", "Observed attacking Sentinel IPS honeypots")
+                    added += 1 if created else 0
+                    updated += 0 if created else 1
+                except Exception:
+                    skipped += 1
+    except Exception as e:
+        summary = {"error": str(e)[:200], "synced_at": now_iso()}
+        try:
+            await db.sync_meta.update_one({"_id": "cins_army"}, {"$set": summary}, upsert=True)
+        except Exception:
+            pass
+        logger.warning(f"CINS Army sync failed: {e}")
+        return summary
+    summary = {"items": total, "added": added, "updated": updated, "skipped": skipped, "synced_at": now_iso()}
+    try:
+        await db.sync_meta.update_one({"_id": "cins_army"}, {"$set": summary}, upsert=True)
+    except Exception:
+        pass
+    logger.info(f"CINS Army sync complete: {summary}")
     return summary
 
 

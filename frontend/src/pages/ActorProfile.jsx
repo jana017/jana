@@ -186,6 +186,20 @@ export default function ActorProfile() {
                 </ul>
               </Section>
             )}
+
+            {/* Bottom back-to-index navigation */}
+            <div className="mt-6 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4">
+              <div className="text-xs text-slate-500">
+                End of dossier · <span className="font-mono text-slate-700">{actor.name}</span>
+              </div>
+              <Link
+                to="/threatbox"
+                data-testid="actor-back-to-threatbox"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-[#DC2626] to-[#F5821F] text-white text-sm font-semibold shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all"
+              >
+                <ArrowLeft className="w-4 h-4" /> Back to ThreatBox
+              </Link>
+            </div>
           </>
         )}
       </main>
