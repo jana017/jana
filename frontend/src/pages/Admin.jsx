@@ -2,13 +2,14 @@ import { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import { LogOut, Plus, Pencil, Trash2, ArrowLeft, ShieldCheck, Download, LayoutDashboard, Activity, Code2, Users, Ticket } from "lucide-react";
+import { LogOut, Plus, Pencil, Trash2, ArrowLeft, ShieldCheck, Download, LayoutDashboard, Activity, Code2, Users, Ticket, KeyRound } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import useSeo from "@/lib/useSeo";
 import SocDashboard from "@/components/SocDashboard";
 import AdminSiteCMS from "@/components/AdminSiteCMS";
 import AdminMaster from "@/components/AdminMaster";
+import AdminSecurityAccess from "@/components/AdminSecurityAccess";
 import AdminEmployees from "@/components/AdminEmployees";
 import AdminTickets from "@/components/AdminTickets";
 import PreflightBanner from "@/components/PreflightBanner";
@@ -132,7 +133,7 @@ function Dashboard() {
       if (q === "settings") setView("settings");
       else if (q === "rules" || q === "cyberlab-rules") setView("cyberlab-rules");
       else if (q === "edr" || q === "siem" || q === "webhooks") setView("webhooks");
-      else if (["overview", "reports", "leads", "master", "employees", "tickets", "developer", "healthbot", "ui-scanner"].includes(q)) setView(q);
+      else if (["overview", "reports", "leads", "master", "employees", "tickets", "developer", "healthbot", "ui-scanner", "security"].includes(q)) setView(q);
     } catch { /* ignore */ }
   }, []);
 
@@ -272,6 +273,13 @@ function Dashboard() {
             <Ticket className="w-4 h-4" /> Tickets
           </button>
           <button
+            data-testid="tab-security"
+            onClick={() => setView("security")}
+            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${view === "security" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+          >
+            <KeyRound className="w-4 h-4" /> Security
+          </button>
+          <button
             data-testid="tab-developer"
             onClick={() => setView("developer")}
             className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${view === "developer" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
@@ -295,6 +303,10 @@ function Dashboard() {
         <AdminEmployees />
       ) : view === "tickets" ? (
         <AdminTickets />
+      ) : view === "security" ? (
+        <div className="mx-auto max-w-7xl px-6 py-10">
+          <AdminSecurityAccess currentAdminId={user?.id} />
+        </div>
       ) : view === "developer" ? (
         <AdminSiteCMS />
       ) : view === "reports" ? (

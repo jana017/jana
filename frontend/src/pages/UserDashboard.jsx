@@ -6,7 +6,7 @@
  */
 import { useEffect, useState, useCallback } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
-import { Bookmark, Eye, Plus, Trash2, Loader2, AlertTriangle, ExternalLink, Fingerprint, ShieldAlert } from "lucide-react";
+import { Bookmark, Eye, Plus, Trash2, Loader2, AlertTriangle, ExternalLink, Fingerprint, ShieldAlert, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import Navbar from "@/components/Navbar";
 import useSeo from "@/lib/useSeo";
@@ -203,10 +203,67 @@ function WatchlistTab() {
   );
 }
 
+function ChangePasswordTab() {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async (e) => {
+    e.preventDefault();
+    if (next !== confirm) {
+      toast.error("New passwords do not match");
+      return;
+    }
+    if (next.length < 8 || !/[a-zA-Z]/.test(next) || !/\d/.test(next)) {
+      toast.error("Password must be 8+ characters with at least one letter and one digit");
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.post("/auth/change-password", { current_password: current, new_password: next });
+      toast.success("Password changed. Sign in again next time with the new one.");
+      setCurrent(""); setNext(""); setConfirm("");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to change password");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form onSubmit={submit} className="max-w-md space-y-4" data-testid="me-change-password">
+      <div>
+        <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Current password</label>
+        <input type="password" data-testid="pw-current" required value={current} onChange={(e) => setCurrent(e.target.value)}
+               className="w-full px-3 py-2.5 rounded-md border border-slate-300 focus:border-[#2E7DF5] focus:ring-2 focus:ring-blue-100 outline-none text-sm" autoComplete="current-password" />
+      </div>
+      <div>
+        <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">New password</label>
+        <input type="password" data-testid="pw-new" required minLength={8} value={next} onChange={(e) => setNext(e.target.value)}
+               placeholder="8+ chars, letter + digit"
+               className="w-full px-3 py-2.5 rounded-md border border-slate-300 focus:border-[#2E7DF5] focus:ring-2 focus:ring-blue-100 outline-none text-sm" autoComplete="new-password" />
+      </div>
+      <div>
+        <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Confirm new password</label>
+        <input type="password" data-testid="pw-confirm" required minLength={8} value={confirm} onChange={(e) => setConfirm(e.target.value)}
+               className="w-full px-3 py-2.5 rounded-md border border-slate-300 focus:border-[#2E7DF5] focus:ring-2 focus:ring-blue-100 outline-none text-sm" autoComplete="new-password" />
+      </div>
+      <button type="submit" disabled={busy} data-testid="pw-submit"
+              className="inline-flex items-center gap-2 bg-slate-900 hover:bg-[#2E7DF5] text-white text-sm font-semibold px-5 py-2.5 rounded-md transition-colors disabled:opacity-60">
+        {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />} Update password
+      </button>
+      <div className="text-[11px] text-slate-400 pt-3 border-t border-slate-100 flex items-start gap-1.5">
+        <AlertTriangle className="w-3.5 h-3.5 mt-px shrink-0" />
+        Passwords are stored as one-way bcrypt hashes — nobody, including NivX admins, can view your password.
+      </div>
+    </form>
+  );
+}
+
 export default function UserDashboard() {
   const { user } = useAuth();
   const [params, setParams] = useSearchParams();
-  const tab = params.get("tab") === "watchlist" ? "watchlist" : "bookmarks";
+  const rawTab = params.get("tab");
+  const tab = rawTab === "watchlist" ? "watchlist" : rawTab === "password" ? "password" : "bookmarks";
 
   useSeo({ title: "My NivX — Bookmarks & Watchlist", description: "Manage your ThreatBox bookmarks and IOC watchlist." });
 
@@ -233,9 +290,10 @@ export default function UserDashboard() {
         <div className="border-b border-slate-200 mb-6">
           <TabBtn id="bookmarks" active={tab} onClick={(id) => setParams({ tab: id })} icon={Bookmark} label="Bookmarks" />
           <TabBtn id="watchlist" active={tab} onClick={(id) => setParams({ tab: id })} icon={Eye} label="IOC Watchlist" />
+          <TabBtn id="password"  active={tab} onClick={(id) => setParams({ tab: id })} icon={KeyRound} label="Password" />
         </div>
 
-        {tab === "bookmarks" ? <BookmarksTab /> : <WatchlistTab />}
+        {tab === "bookmarks" ? <BookmarksTab /> : tab === "watchlist" ? <WatchlistTab /> : <ChangePasswordTab />}
 
         <div className="mt-8 text-xs text-slate-400 flex items-center gap-1.5">
           <AlertTriangle className="w-3.5 h-3.5" />

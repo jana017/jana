@@ -337,6 +337,16 @@ class WatchlistItem(BaseModel):
     note: Optional[str] = Field(None, max_length=280)
 
 
+class ChangePasswordInput(BaseModel):
+    current_password: str = Field(..., min_length=1, max_length=200)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+
+class AdminResetPasswordInput(BaseModel):
+    new_password: Optional[str] = Field(None, min_length=8, max_length=128, description="If omitted, a temp password is generated")
+    must_change: bool = True
+
+
 @api_router.get("/me/bookmarks")
 async def me_get_bookmarks(user: dict = Depends(get_current_user)):
     """Returns the user's ThreatBox actor bookmarks, hydrated with the actor
@@ -415,6 +425,102 @@ async def me_remove_watchlist(value: str, user: dict = Depends(get_current_user)
         {"$pull": {"watchlist": {"key": key}}},
     )
     return {"removed": r.modified_count > 0, "key": key}
+
+
+# ---------------------------------------------------------------------------
+# Password management — role-agnostic self-service + admin reset
+# ---------------------------------------------------------------------------
+@api_router.post("/auth/change-password")
+async def change_own_password(payload: ChangePasswordInput, user: dict = Depends(get_current_user)):
+    """Any signed-in user (admin, employee, or public user) can change their
+    own password. Requires the current password for verification."""
+    if not (any(c.isalpha() for c in payload.new_password) and any(c.isdigit() for c in payload.new_password)):
+        raise HTTPException(status_code=422, detail="Password must contain at least one letter and one digit")
+    doc = await db.users.find_one({"_id": ObjectId(user["_id"])})
+    if not doc or not verify_password(payload.current_password, doc["password_hash"]):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+    if verify_password(payload.new_password, doc["password_hash"]):
+        raise HTTPException(status_code=422, detail="New password must be different from the current password")
+    await db.users.update_one(
+        {"_id": doc["_id"]},
+        {"$set": {"password_hash": hash_password(payload.new_password),
+                  "must_change_password": False,
+                  "password_changed_at": now_iso()}},
+    )
+    return {"changed": True}
+
+
+@api_router.get("/admin/users")
+async def admin_list_users(user: dict = Depends(require_role("admin"))):
+    """Admin view of every account with role + password-hygiene metadata (no
+    hashes ever leave the server — bcrypt is one-way, unrecoverable)."""
+    cursor = db.users.find(
+        {},
+        {"password_hash": 0},   # NEVER expose hash — security-critical
+    ).sort([("role", 1), ("email", 1)])
+    users = []
+    async for u in cursor:
+        users.append({
+            "id": str(u["_id"]),
+            "email": u.get("email"),
+            "name": u.get("name"),
+            "role": (u.get("role") or "admin").lower(),
+            "must_change_password": bool(u.get("must_change_password")),
+            "password_changed_at": u.get("password_changed_at") or u.get("password_reset_at"),
+            "last_login_at": u.get("last_login_at"),
+            "created_at": u.get("created_at"),
+        })
+    return {"count": len(users), "users": users}
+
+
+@api_router.post("/admin/users/{user_id}/reset-password")
+async def admin_reset_user_password(user_id: str, payload: AdminResetPasswordInput, admin: dict = Depends(require_role("admin"))):
+    """Force-reset any user's password. Returns the new password ONCE — the
+    admin must securely deliver it to the user out-of-band (Signal, phone,
+    encrypted email, in-person). NivX never stores or displays it again."""
+    try:
+        oid = ObjectId(user_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="Invalid user id") from e
+    target = await db.users.find_one({"_id": oid}, {"password_hash": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    # Self-reset guard: admin should use /auth/change-password for their OWN account
+    if str(oid) == str(admin.get("_id")):
+        raise HTTPException(status_code=422, detail="Use /auth/change-password to change your own password (requires current password).")
+    if payload.new_password:
+        if not (any(c.isalpha() for c in payload.new_password) and any(c.isdigit() for c in payload.new_password)):
+            raise HTTPException(status_code=422, detail="Password must contain at least one letter and one digit")
+        new_pw = payload.new_password
+    else:
+        # Generate a 16-char temp password with letters + digits + safe punctuation
+        import secrets, string
+        alphabet = string.ascii_letters + string.digits + "!@#$%"
+        new_pw = "".join(secrets.choice(alphabet) for _ in range(16))
+    await db.users.update_one(
+        {"_id": oid},
+        {"$set": {"password_hash": hash_password(new_pw),
+                  "must_change_password": bool(payload.must_change),
+                  "password_reset_at": now_iso(),
+                  "password_reset_by": str(admin.get("_id"))}},
+    )
+    return {"reset": True, "new_password": new_pw, "must_change_password": bool(payload.must_change),
+            "target_email": target.get("email"), "target_role": target.get("role")}
+
+
+@api_router.post("/admin/users/{user_id}/must-change-password")
+async def admin_toggle_must_change(user_id: str, force: bool = True, admin: dict = Depends(require_role("admin"))):
+    """Force the target user to change their password on next login without
+    changing the current password. Useful when you suspect a password may
+    have leaked but haven't confirmed."""
+    try:
+        oid = ObjectId(user_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="Invalid user id") from e
+    r = await db.users.update_one({"_id": oid}, {"$set": {"must_change_password": bool(force)}})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"user_id": user_id, "must_change_password": bool(force)}
 
 
 # ---------------------------------------------------------------------------

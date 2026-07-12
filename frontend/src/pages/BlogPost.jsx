@@ -4,6 +4,7 @@ import Navbar from "@/components/Navbar";
 import Contact from "@/components/Contact";
 import { BLOG_POSTS, findBlogPost } from "@/lib/blogPosts";
 import useSeo from "@/lib/useSeo";
+import useActorLinker from "@/lib/useActorLinker";
 
 // --- Rich section blocks --------------------------------------------------
 function CodeBlock({ language, code }) {
@@ -113,6 +114,7 @@ function SectionImage({ src, alt, caption }) {
 export default function BlogPost() {
   const { slug } = useParams();
   const article = findBlogPost(slug);
+  const linkify = useActorLinker();
 
   useSeo({
     title: article ? `${article.title} | NivX Machines Blog` : "Article not found",
@@ -172,14 +174,14 @@ export default function BlogPost() {
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
               <BookOpen className="w-3.5 h-3.5" /> At a glance
             </div>
-            <p className="text-slate-700 leading-relaxed">{article.excerpt}</p>
+            <p className="text-slate-700 leading-relaxed">{linkify(article.excerpt)}</p>
           </div>
 
           {article.sections.map((s, si) => (
             <section key={si} className="mb-12">
               <h2 className="font-heading text-2xl md:text-3xl font-semibold text-slate-900 tracking-tight mb-5">{s.heading}</h2>
               {s.body && s.body.map((p, pi) => (
-                <p key={pi} className="text-slate-700 leading-relaxed mb-4">{p}</p>
+                <p key={pi} className="text-slate-700 leading-relaxed mb-4">{linkify(p)}</p>
               ))}
               {s.list && (
                 <ul className="space-y-3 mt-4">
@@ -187,8 +189,8 @@ export default function BlogPost() {
                     <li key={lii} className="flex gap-3 items-start">
                       <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-orange-500 shrink-0" />
                       <div>
-                        <div className="font-semibold text-slate-900">{li.t}</div>
-                        <div className="text-slate-600 leading-relaxed mt-0.5">{li.d}</div>
+                        <div className="font-semibold text-slate-900">{linkify(li.t)}</div>
+                        <div className="text-slate-600 leading-relaxed mt-0.5">{linkify(li.d)}</div>
                       </div>
                     </li>
                   ))}

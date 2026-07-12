@@ -5,6 +5,7 @@ import Navbar from "@/components/Navbar";
 import Contact from "@/components/Contact";
 import { KB_ARTICLES, findArticle } from "@/lib/knowledgeArticles";
 import useSeo from "@/lib/useSeo";
+import useActorLinker from "@/lib/useActorLinker";
 
 function IndexView({ embedded = false }) {
   useSeo({
@@ -77,6 +78,7 @@ function IndexView({ embedded = false }) {
 
 function ArticleView({ slug }) {
   const article = findArticle(slug);
+  const linkify = useActorLinker();
   useSeo({
     title: article ? `${article.title} | NivX Cybersecurity 101` : "Article not found",
     description: article?.tagline || "NivX Cybersecurity 101 article.",
@@ -116,7 +118,7 @@ function ArticleView({ slug }) {
           <h1 className="font-heading text-3xl md:text-4xl lg:text-5xl font-semibold tracking-tight text-slate-900 leading-tight">
             {article.title}
           </h1>
-          <p className="mt-5 text-lg text-slate-600 leading-relaxed max-w-3xl">{article.tagline}</p>
+          <p className="mt-5 text-lg text-slate-600 leading-relaxed max-w-3xl">{linkify(article.tagline)}</p>
           <div className="mt-6 flex items-center gap-4 text-xs text-slate-500">
             <span className="inline-flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {article.read_mins} min read</span>
             <span className="inline-flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> Updated {article.updated}</span>
@@ -133,7 +135,7 @@ function ArticleView({ slug }) {
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
               <BookOpen className="w-3.5 h-3.5" /> Executive summary
             </div>
-            <p className="text-slate-700 leading-relaxed">{article.summary}</p>
+            <p className="text-slate-700 leading-relaxed">{linkify(article.summary)}</p>
           </div>
 
           {/* Sections */}
@@ -148,7 +150,7 @@ function ArticleView({ slug }) {
               )}
 
               {s.body && s.body.map((p, pi) => (
-                <p key={pi} className="text-slate-700 leading-relaxed mb-4">{p}</p>
+                <p key={pi} className="text-slate-700 leading-relaxed mb-4">{linkify(p)}</p>
               ))}
 
               {s.subs && (
@@ -157,7 +159,7 @@ function ArticleView({ slug }) {
                     <div key={sbi}>
                       <h3 className="font-heading text-lg font-semibold text-slate-900 mb-2">{sub.title}</h3>
                       {sub.body.map((p, pi) => (
-                        <p key={pi} className="text-slate-700 leading-relaxed mb-3">{p}</p>
+                        <p key={pi} className="text-slate-700 leading-relaxed mb-3">{linkify(p)}</p>
                       ))}
                     </div>
                   ))}
@@ -170,8 +172,8 @@ function ArticleView({ slug }) {
                     <li key={lii} className="flex gap-3 items-start">
                       <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-orange-500 shrink-0" />
                       <div>
-                        <div className="font-semibold text-slate-900">{li.t}</div>
-                        <div className="text-slate-600 leading-relaxed mt-0.5">{li.d}</div>
+                        <div className="font-semibold text-slate-900">{linkify(li.t)}</div>
+                        <div className="text-slate-600 leading-relaxed mt-0.5">{linkify(li.d)}</div>
                       </div>
                     </li>
                   ))}

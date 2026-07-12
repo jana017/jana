@@ -94,7 +94,7 @@ function LoginCard({ onLoggedIn }) {
   );
 }
 
-function ChangePasswordModal({ onDone }) {
+function ChangePasswordModal({ onDone, isForced = false, onClose }) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -114,29 +114,39 @@ function ChangePasswordModal({ onDone }) {
   };
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" data-testid="employee-password-modal">
-      <div className="absolute inset-0 bg-slate-950/80" />
+      <div className="absolute inset-0 bg-slate-950/80" onClick={!isForced && onClose ? onClose : undefined} />
       <div className="relative w-full max-w-md bg-white rounded-xl shadow-2xl p-6">
         <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2"><KeyRound className="w-5 h-5 text-[#2E7DF5]" /> Change your password</h3>
-        <p className="mt-1 text-xs text-slate-500">This is your first login — set a new password to continue.</p>
+        <p className="mt-1 text-xs text-slate-500">
+          {isForced ? "This is your first login — set a new password to continue." : "Enter your current password and choose a new one."}
+        </p>
         <form onSubmit={submit} className="mt-4 space-y-3">
-          <input type="password" required placeholder="Current (temp) password" value={current} onChange={e => setCurrent(e.target.value)}
-            data-testid="employee-password-current" className="w-full px-3 py-2 rounded-md border border-slate-200 text-sm" />
+          <input type="password" required placeholder={isForced ? "Current (temp) password" : "Current password"} value={current} onChange={e => setCurrent(e.target.value)}
+            data-testid="employee-password-current" autoComplete="current-password" className="w-full px-3 py-2 rounded-md border border-slate-200 text-sm" />
           <input type="password" required placeholder="New password (min 10 chars)" value={next} onChange={e => setNext(e.target.value)}
-            data-testid="employee-password-new" className="w-full px-3 py-2 rounded-md border border-slate-200 text-sm" />
+            data-testid="employee-password-new" autoComplete="new-password" className="w-full px-3 py-2 rounded-md border border-slate-200 text-sm" />
           <input type="password" required placeholder="Confirm new password" value={confirm} onChange={e => setConfirm(e.target.value)}
-            data-testid="employee-password-confirm" className="w-full px-3 py-2 rounded-md border border-slate-200 text-sm" />
-          <button type="submit" disabled={saving} data-testid="employee-password-submit"
-            className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-[#2E7DF5] text-white text-sm font-semibold disabled:opacity-60">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-            Update password
-          </button>
+            data-testid="employee-password-confirm" autoComplete="new-password" className="w-full px-3 py-2 rounded-md border border-slate-200 text-sm" />
+          <div className="flex items-center gap-2">
+            <button type="submit" disabled={saving} data-testid="employee-password-submit"
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md bg-[#2E7DF5] text-white text-sm font-semibold disabled:opacity-60">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+              Update password
+            </button>
+            {!isForced && onClose && (
+              <button type="button" onClick={onClose} data-testid="employee-password-cancel"
+                className="px-3 py-2 rounded-md border border-slate-200 text-slate-600 text-sm hover:bg-slate-50">
+                Cancel
+              </button>
+            )}
+          </div>
         </form>
       </div>
     </div>
   );
 }
 
-function Portal({ profile, onLogout, onProfileRefresh }) {
+function Portal({ profile, onLogout, onProfileRefresh, onOpenPasswordChange }) {
   const [docs, setDocs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -229,6 +239,7 @@ function Portal({ profile, onLogout, onProfileRefresh }) {
               <div className="text-xs text-slate-500">{profile.email} · {profile.employee_id}</div>
             </div>
           </div>
+          <button onClick={onOpenPasswordChange} data-testid="employee-change-password" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50" title="Change your password"><KeyRound className="w-4 h-4" /> Change password</button>
           <button onClick={onLogout} data-testid="employee-logout" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50"><LogOut className="w-4 h-4" /> Sign out</button>
         </div>
       </header>
@@ -423,8 +434,14 @@ export default function EmployeePortal() {
   }
   return (
     <>
-      <Portal profile={profile} onLogout={logout} onProfileRefresh={load} />
-      {needsPwdChange && <ChangePasswordModal onDone={() => { setNeedsPwdChange(false); load(); }} />}
+      <Portal profile={profile} onLogout={logout} onProfileRefresh={load} onOpenPasswordChange={() => setNeedsPwdChange("manual")} />
+      {needsPwdChange && (
+        <ChangePasswordModal
+          isForced={needsPwdChange !== "manual" && !!profile?.must_change_password}
+          onClose={() => setNeedsPwdChange(false)}
+          onDone={() => { setNeedsPwdChange(false); load(); }}
+        />
+      )}
     </>
   );
 }
