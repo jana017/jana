@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { ArrowRight, Globe, ShieldCheck } from "lucide-react";
 import LiveThreatMap from "./LiveThreatMap";
+import { SOCIALS } from "@/lib/socials";
 
 const fade = {
   hidden: { opacity: 0, y: 12 },
@@ -82,7 +83,9 @@ export default function Hero() {
             <div className="flex items-center gap-3" data-testid="hero-socials">
               {/* WhatsApp */}
               <a
-                href="#"
+                href={SOCIALS.whatsapp}
+                target="_blank"
+                rel="noopener noreferrer"
                 aria-label="WhatsApp"
                 data-testid="hero-social-whatsapp"
                 className="w-11 h-11 rounded-full bg-white border border-slate-200 hover:border-[#25D366] hover:bg-[#25D366]/5 flex items-center justify-center transition-colors group"
@@ -93,7 +96,9 @@ export default function Hero() {
               </a>
               {/* Twitter / X */}
               <a
-                href="#"
+                href={SOCIALS.twitter}
+                target="_blank"
+                rel="noopener noreferrer"
                 aria-label="Twitter"
                 data-testid="hero-social-twitter"
                 className="w-11 h-11 rounded-full bg-white border border-slate-200 hover:border-slate-900 hover:bg-slate-900/5 flex items-center justify-center transition-colors group"
@@ -104,7 +109,9 @@ export default function Hero() {
               </a>
               {/* LinkedIn */}
               <a
-                href="#"
+                href={SOCIALS.linkedin}
+                target="_blank"
+                rel="noopener noreferrer"
                 aria-label="LinkedIn"
                 data-testid="hero-social-linkedin"
                 className="w-11 h-11 rounded-full bg-white border border-slate-200 hover:border-[#0A66C2] hover:bg-[#0A66C2]/5 flex items-center justify-center transition-colors group"
