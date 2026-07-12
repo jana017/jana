@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useLenis } from "lenis/react";
-import { Menu, X, ShieldCheck, Beaker, FileSearch, LayoutGrid, GraduationCap, Briefcase, LogIn } from "lucide-react";
+import { Menu, X, ShieldCheck, Beaker, FileSearch, LayoutGrid, GraduationCap, Briefcase, LogIn, Bookmark, Eye, LogOut, User as UserIcon } from "lucide-react";
 import { prefetchRoute } from "@/lib/routePrefetch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useAuth } from "@/context/AuthContext";
 
 const SECTION_LINKS = [
   { label: "About", id: "about" },
@@ -18,6 +19,19 @@ export default function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
   const lenis = useLenis();
+  const { user, logout } = useAuth();
+
+  // Only treat as signed-in when we have a real user object.
+  const signedIn = Boolean(user && typeof user === "object" && user.id);
+  const initials = signedIn
+    ? (user.name || user.email || "?").trim().split(/\s+/).map((s) => s[0]).slice(0, 2).join("").toUpperCase()
+    : "";
+  const roleBadge = signedIn ? (user.role || "user").toLowerCase() : "";
+  const roleTone = roleBadge === "admin"
+    ? "bg-red-50 text-red-700 border-red-200"
+    : roleBadge === "employee"
+      ? "bg-blue-50 text-blue-700 border-blue-200"
+      : "bg-slate-50 text-slate-700 border-slate-200";
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -180,16 +194,83 @@ export default function Navbar() {
             </PopoverContent>
           </Popover>
 
-          {/* Prominent Login button — direct link to /login (User account) */}
-          <Link
-            to="/login"
-            data-testid="nav-login-btn"
-            onMouseEnter={() => prefetchRoute("/login")}
-            onFocus={() => prefetchRoute("/login")}
-            className="hidden lg:inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-slate-900 hover:bg-[#2E7DF5] text-white text-sm font-semibold transition-all hover:shadow-md hover:-translate-y-0.5"
-          >
-            <LogIn className="w-4 h-4" strokeWidth={2.2} /> Login
-          </Link>
+          {/* Signed-in avatar or Login button — depends on auth state */}
+          {signedIn ? (
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  data-testid="nav-user-avatar"
+                  className="hidden lg:inline-flex items-center gap-2 pl-1 pr-3 py-1 rounded-full border border-slate-200 bg-white hover:border-[#2E7DF5] hover:shadow-sm transition-all"
+                >
+                  <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gradient-to-br from-[#2E7DF5] to-[#F5821F] text-white text-[11px] font-bold">
+                    {initials || <UserIcon className="w-3.5 h-3.5" />}
+                  </span>
+                  <span className="text-sm font-semibold text-slate-700 max-w-[8rem] truncate">{user.name || user.email}</span>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="end" sideOffset={10} className="w-64 p-2 bg-white/95 backdrop-blur-md border-slate-200 shadow-lg">
+                <div className="px-3 py-2 border-b border-slate-100 mb-1">
+                  <div className="text-sm font-semibold text-slate-900 truncate">{user.name || "NivX user"}</div>
+                  <div className="text-xs text-slate-500 truncate">{user.email}</div>
+                  <span className={`inline-block mt-1.5 text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border ${roleTone}`}>{roleBadge}</span>
+                </div>
+                {roleBadge === "user" && (
+                  <>
+                    <Link
+                      to="/me"
+                      data-testid="user-menu-bookmarks"
+                      className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                    >
+                      <Bookmark className="w-4 h-4" /> My bookmarks
+                    </Link>
+                    <Link
+                      to="/me?tab=watchlist"
+                      data-testid="user-menu-watchlist"
+                      className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                    >
+                      <Eye className="w-4 h-4" /> IOC watchlist
+                    </Link>
+                  </>
+                )}
+                {roleBadge === "employee" && (
+                  <Link
+                    to="/employee"
+                    data-testid="user-menu-portal"
+                    className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                  >
+                    <UserIcon className="w-4 h-4" /> Employee portal
+                  </Link>
+                )}
+                {roleBadge === "admin" && (
+                  <Link
+                    to="/admin"
+                    data-testid="user-menu-admin"
+                    className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                  >
+                    <ShieldCheck className="w-4 h-4" /> Admin console
+                  </Link>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { logout(); navigate("/"); }}
+                  data-testid="user-menu-logout"
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-red-600 hover:bg-red-50 transition-colors text-left"
+                >
+                  <LogOut className="w-4 h-4" /> Log out
+                </button>
+              </PopoverContent>
+            </Popover>
+          ) : (
+            <Link
+              to="/login"
+              data-testid="nav-login-btn"
+              onMouseEnter={() => prefetchRoute("/login")}
+              onFocus={() => prefetchRoute("/login")}
+              className="hidden lg:inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-slate-900 hover:bg-[#2E7DF5] text-white text-sm font-semibold transition-all hover:shadow-md hover:-translate-y-0.5"
+            >
+              <LogIn className="w-4 h-4" strokeWidth={2.2} /> Login
+            </Link>
+          )}
 
           <button data-testid="mobile-menu-toggle" aria-label={open ? "Close menu" : "Open menu"} className="lg:hidden inline-flex items-center justify-center w-11 h-11 -mr-1 rounded-md text-slate-700 hover:bg-slate-100 transition-colors" onClick={() => setOpen((o) => !o)}>
             {open ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}

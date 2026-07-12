@@ -330,6 +330,94 @@ async def me(user: dict = Depends(get_current_user)):
 
 
 # ---------------------------------------------------------------------------
+# Personal /me routes — bookmarks + IOC watchlist for any signed-in user
+# ---------------------------------------------------------------------------
+class WatchlistItem(BaseModel):
+    value: str = Field(..., min_length=1, max_length=500)
+    note: Optional[str] = Field(None, max_length=280)
+
+
+@api_router.get("/me/bookmarks")
+async def me_get_bookmarks(user: dict = Depends(get_current_user)):
+    """Returns the user's ThreatBox actor bookmarks, hydrated with the actor
+    display name so the client doesn't need N+1 lookups."""
+    doc = await db.users.find_one({"_id": ObjectId(user["_id"])}, {"bookmarks": 1})
+    slugs = list((doc or {}).get("bookmarks", []))
+    if not slugs:
+        return {"count": 0, "bookmarks": []}
+    cursor = db.threat_actors.find(
+        {"slug": {"$in": slugs}},
+        {"_id": 0, "slug": 1, "name": 1, "motivation": 1, "origin_country": 1},
+    )
+    actors = [a async for a in cursor]
+    # Preserve user's chronological add order
+    order = {s: i for i, s in enumerate(slugs)}
+    actors.sort(key=lambda a: order.get(a["slug"], 9999))
+    return {"count": len(actors), "bookmarks": actors}
+
+
+@api_router.post("/me/bookmarks/threatbox/{slug}")
+async def me_add_bookmark(slug: str, user: dict = Depends(get_current_user)):
+    slug = slug.lower().strip()
+    actor = await db.threat_actors.find_one({"slug": slug}, {"_id": 1, "slug": 1, "name": 1})
+    if not actor:
+        raise HTTPException(status_code=404, detail=f"ThreatBox actor '{slug}' not found")
+    await db.users.update_one({"_id": ObjectId(user["_id"])}, {"$addToSet": {"bookmarks": slug}})
+    return {"bookmarked": True, "slug": slug, "name": actor.get("name")}
+
+
+@api_router.delete("/me/bookmarks/threatbox/{slug}")
+async def me_remove_bookmark(slug: str, user: dict = Depends(get_current_user)):
+    slug = slug.lower().strip()
+    r = await db.users.update_one({"_id": ObjectId(user["_id"])}, {"$pull": {"bookmarks": slug}})
+    return {"bookmarked": False, "slug": slug, "removed": r.modified_count > 0}
+
+
+@api_router.get("/me/watchlist")
+async def me_get_watchlist(user: dict = Depends(get_current_user)):
+    doc = await db.users.find_one({"_id": ObjectId(user["_id"])}, {"watchlist": 1})
+    return {"count": len((doc or {}).get("watchlist", []) or []),
+            "watchlist": (doc or {}).get("watchlist", []) or []}
+
+
+@api_router.post("/me/watchlist")
+async def me_add_watchlist(item: WatchlistItem, user: dict = Depends(get_current_user)):
+    value = item.value.strip()
+    if _classify_ioc(value) == "unknown":
+        raise HTTPException(status_code=422, detail="Value is not a recognized hash, IP, domain or URL")
+    key = _ioc_key(value)
+    # Check current watchlist for duplicates
+    doc = await db.users.find_one({"_id": ObjectId(user["_id"])}, {"watchlist": 1})
+    current = (doc or {}).get("watchlist", []) or []
+    if any(w.get("key") == key for w in current):
+        raise HTTPException(status_code=409, detail="Already in watchlist")
+    if len(current) >= 100:
+        raise HTTPException(status_code=422, detail="Watchlist limit reached (100 items)")
+    entry = {
+        "value": value,
+        "key": key,
+        "type": _classify_ioc(value),
+        "note": (item.note or "").strip()[:280],
+        "added_at": now_iso(),
+    }
+    await db.users.update_one({"_id": ObjectId(user["_id"])}, {"$push": {"watchlist": entry}})
+    # Check if this value already exists in the curated IOC DB → indicate hit
+    existing_hit = await db.iocs.find_one({"key": key}, {"_id": 0, "severity": 1, "threat_name": 1, "source": 1, "tags": 1})
+    entry["curated_match"] = existing_hit
+    return entry
+
+
+@api_router.delete("/me/watchlist/{value}")
+async def me_remove_watchlist(value: str, user: dict = Depends(get_current_user)):
+    key = _ioc_key(value)
+    r = await db.users.update_one(
+        {"_id": ObjectId(user["_id"])},
+        {"$pull": {"watchlist": {"key": key}}},
+    )
+    return {"removed": r.modified_count > 0, "key": key}
+
+
+# ---------------------------------------------------------------------------
 # Threat report routes
 # ---------------------------------------------------------------------------
 @api_router.get("/threats", response_model=List[ThreatReport])

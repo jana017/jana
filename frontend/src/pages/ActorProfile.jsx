@@ -4,10 +4,12 @@
  */
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Loader2, ShieldAlert, Globe2, Target, Calendar, ListChecks, Fingerprint, ExternalLink, AlertTriangle, BookOpen, Newspaper } from "lucide-react";
+import { ArrowLeft, Loader2, ShieldAlert, Globe2, Target, Calendar, ListChecks, Fingerprint, ExternalLink, AlertTriangle, BookOpen, Newspaper, Bookmark, BookmarkCheck } from "lucide-react";
 import { api } from "@/lib/api";
 import useSeo from "@/lib/useSeo";
 import Navbar from "@/components/Navbar";
+import { useAuth } from "@/context/AuthContext";
+import { toast } from "sonner";
 
 function Section({ id, icon: Icon, title, children }) {
   return (
@@ -23,9 +25,14 @@ function Section({ id, icon: Icon, title, children }) {
 
 export default function ActorProfile() {
   const { slug } = useParams();
+  const { user } = useAuth();
   const [actor, setActor] = useState(null);
   const [incidents, setIncidents] = useState([]);
+  const [bookmarked, setBookmarked] = useState(false);
+  const [bookmarkBusy, setBookmarkBusy] = useState(false);
   const [err, setErr] = useState(null);
+
+  const signedIn = Boolean(user && typeof user === "object" && user.id);
 
   useSeo({
     title: actor ? `${actor.name} — ThreatBox — NivX Machines` : "ThreatBox — Threat Actor Profile",
@@ -35,16 +42,46 @@ export default function ActorProfile() {
   useEffect(() => {
     setActor(null);
     setIncidents([]);
+    setBookmarked(false);
     setErr(null);
     api.get(`/actors/${encodeURIComponent(slug)}`)
        .then(({ data }) => setActor(data))
        .catch((e) => setErr(e.response?.status === 404 ? "notfound" : "error"));
-    // Related incidents from NivX Threat Intel — single-source-of-truth join
-    // via `actor_slug` FK. Silently no-op if none exist.
     api.get(`/actors/${encodeURIComponent(slug)}/incidents`)
        .then(({ data }) => setIncidents(data.incidents || []))
        .catch(() => setIncidents([]));
-  }, [slug]);
+    // Load bookmark state for signed-in users
+    if (signedIn) {
+      api.get("/me/bookmarks")
+         .then(({ data }) => setBookmarked((data.bookmarks || []).some((b) => b.slug === slug)))
+         .catch(() => {});
+    }
+  }, [slug, signedIn]);
+
+  const toggleBookmark = async () => {
+    if (!signedIn) {
+      toast.info("Sign in to bookmark this dossier", {
+        action: { label: "Login", onClick: () => (window.location.href = "/login") },
+      });
+      return;
+    }
+    setBookmarkBusy(true);
+    try {
+      if (bookmarked) {
+        await api.delete(`/me/bookmarks/threatbox/${encodeURIComponent(slug)}`);
+        setBookmarked(false);
+        toast.success("Removed from bookmarks");
+      } else {
+        await api.post(`/me/bookmarks/threatbox/${encodeURIComponent(slug)}`);
+        setBookmarked(true);
+        toast.success(`Bookmarked ${actor?.name || slug}`);
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Bookmark failed");
+    } finally {
+      setBookmarkBusy(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -86,9 +123,26 @@ export default function ActorProfile() {
             {/* Header + Bio */}
             <div className="rounded-xl border border-slate-200 bg-white p-6 mb-4">
               <div className="text-xs font-mono uppercase tracking-widest text-[#F5821F] mb-2">ThreatBox · Threat Actor Attribution</div>
-              <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
-                <ShieldAlert className="w-7 h-7 text-red-500" /> {actor.name}
-              </h1>
+              <div className="flex items-start justify-between gap-3">
+                <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
+                  <ShieldAlert className="w-7 h-7 text-red-500" /> {actor.name}
+                </h1>
+                <button
+                  type="button"
+                  onClick={toggleBookmark}
+                  disabled={bookmarkBusy}
+                  data-testid="actor-bookmark-toggle"
+                  aria-label={bookmarked ? "Remove bookmark" : "Bookmark this dossier"}
+                  className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold border transition-all disabled:opacity-60 ${
+                    bookmarked
+                      ? "bg-[#F5821F] text-white border-[#F5821F] hover:bg-[#DC2626] hover:border-[#DC2626]"
+                      : "bg-white text-slate-700 border-slate-200 hover:border-[#F5821F] hover:text-[#F5821F]"
+                  }`}
+                >
+                  {bookmarked ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
+                  <span className="hidden sm:inline">{bookmarked ? "Bookmarked" : "Bookmark"}</span>
+                </button>
+              </div>
               {actor.aliases?.length > 0 && (
                 <div className="text-sm text-slate-500 mt-1">a.k.a. {actor.aliases.join(", ")}</div>
               )}
