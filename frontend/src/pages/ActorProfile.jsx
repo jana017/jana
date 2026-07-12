@@ -27,8 +27,8 @@ export default function ActorProfile() {
   const [err, setErr] = useState(null);
 
   useSeo({
-    title: actor ? `${actor.name} — Threat Actor Profile — NivX Machines` : "Threat Actor Profile",
-    description: actor ? `${actor.name} attribution profile: bio, TTPs, timeline, and related IOCs.` : "",
+    title: actor ? `${actor.name} — MalDossier — NivX Machines` : "MalDossier — Threat Actor Profile",
+    description: actor ? `${actor.name} MalDossier: bio, TTPs, timeline, and related IOCs.` : "",
   });
 
   useEffect(() => {
@@ -43,8 +43,8 @@ export default function ActorProfile() {
     <div className="min-h-screen bg-slate-50">
       <Navbar />
       <main className="mx-auto max-w-5xl px-6 py-10" data-testid="actor-profile">
-        <Link to="/actors" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-[#2E7DF5] mb-4">
-          <ArrowLeft className="w-4 h-4" /> All threat actor profiles
+        <Link to="/maldossier" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-[#2E7DF5] mb-4">
+          <ArrowLeft className="w-4 h-4" /> All MalDossier profiles
         </Link>
 
         {err === "notfound" ? (
@@ -53,8 +53,8 @@ export default function ActorProfile() {
             <div>
               <div className="font-semibold text-amber-900">Actor not found</div>
               <div className="text-sm text-amber-800 mt-1">
-                We don&apos;t have an attribution profile for <code className="font-mono bg-white/60 px-1 rounded">{slug}</code> yet.
-                &nbsp;<Link to="/actors" className="underline hover:text-amber-900">Browse tracked actors →</Link>
+                We don&apos;t have a MalDossier for <code className="font-mono bg-white/60 px-1 rounded">{slug}</code> yet.
+                &nbsp;<Link to="/maldossier" className="underline hover:text-amber-900">Browse tracked actors →</Link>
               </div>
             </div>
           </div>
@@ -66,7 +66,7 @@ export default function ActorProfile() {
           <>
             {/* Header + Bio */}
             <div className="rounded-xl border border-slate-200 bg-white p-6 mb-4">
-              <div className="text-xs font-mono uppercase tracking-widest text-[#F5821F] mb-2">Threat Actor Attribution Profile</div>
+              <div className="text-xs font-mono uppercase tracking-widest text-[#F5821F] mb-2">MalDossier · Threat Actor Attribution</div>
               <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-3">
                 <ShieldAlert className="w-7 h-7 text-red-500" /> {actor.name}
               </h1>

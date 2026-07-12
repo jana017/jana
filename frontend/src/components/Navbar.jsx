@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useLenis } from "lenis/react";
-import { Menu, X, Phone, ShieldCheck, Beaker } from "lucide-react";
+import { Menu, X, Phone, ShieldCheck, Beaker, FileSearch } from "lucide-react";
 import { prefetchRoute } from "@/lib/routePrefetch";
 
 const SECTION_LINKS = [
@@ -30,7 +30,7 @@ export default function Navbar() {
   useEffect(() => {
     const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 800));
     const handle = idle(() => {
-      ["/blog", "/learn", "/threat-intelligence", "/cybersecurity-101", "/nivx-forge", "/employee", "/admin"].forEach(prefetchRoute);
+      ["/blog", "/learn", "/threat-intelligence", "/cybersecurity-101", "/nivx-forge", "/maldossier", "/employee", "/admin"].forEach(prefetchRoute);
     });
     return () => {
       if (window.cancelIdleCallback) window.cancelIdleCallback(handle);
@@ -135,6 +135,27 @@ export default function Navbar() {
               className={`absolute -bottom-1 left-0 h-[2px] bg-gradient-to-r from-[#2E7DF5] to-[#F5821F] transition-all duration-300 ${(location.pathname === "/nivx-forge" || location.pathname === "/cyberlab") ? "w-full" : "w-0 group-hover:w-full"}`}
             ></span>
           </Link>
+          <Link
+            to="/maldossier"
+            data-testid="nav-maldossier"
+            onMouseEnter={() => prefetchRoute("/maldossier")}
+            onFocus={() => prefetchRoute("/maldossier")}
+            className="group relative inline-flex items-center gap-1.5 text-sm font-bold transition-all hover:-translate-y-0.5"
+          >
+            <FileSearch
+              className="w-3.5 h-3.5 text-[#DC2626] drop-shadow-[0_0_6px_rgba(220,38,38,0.45)] group-hover:text-[#F5821F] group-hover:drop-shadow-[0_0_8px_rgba(245,130,31,0.55)] transition-all"
+              strokeWidth={2.4}
+            />
+            <span
+              className="bg-gradient-to-r from-[#DC2626] via-[#0F172A] to-[#F5821F] bg-clip-text text-transparent bg-[length:200%_100%] bg-[position:0%_50%] group-hover:bg-[position:100%_50%] transition-[background-position] duration-500"
+            >
+              MalDossier
+            </span>
+            <span
+              aria-hidden="true"
+              className={`absolute -bottom-1 left-0 h-[2px] bg-gradient-to-r from-[#DC2626] to-[#F5821F] transition-all duration-300 ${location.pathname.startsWith("/maldossier") || location.pathname.startsWith("/actors") ? "w-full" : "w-0 group-hover:w-full"}`}
+            ></span>
+          </Link>
         </div>
 
         <div className="flex items-center gap-3">
@@ -170,6 +191,12 @@ export default function Navbar() {
             <Beaker className="w-4 h-4 text-[#2E7DF5] drop-shadow-[0_0_6px_rgba(46,125,245,0.5)]" strokeWidth={2.4} />
             <span className="bg-gradient-to-r from-[#2E7DF5] to-[#F5821F] bg-clip-text text-transparent">
               NivX Forge
+            </span>
+          </Link>
+          <Link to="/maldossier" data-testid="mobile-nav-maldossier" onClick={() => setOpen(false)} className="inline-flex items-center gap-2 text-left text-sm font-bold">
+            <FileSearch className="w-4 h-4 text-[#DC2626] drop-shadow-[0_0_6px_rgba(220,38,38,0.45)]" strokeWidth={2.4} />
+            <span className="bg-gradient-to-r from-[#DC2626] to-[#F5821F] bg-clip-text text-transparent">
+              MalDossier
             </span>
           </Link>
           <Link to="/admin" data-testid="mobile-nav-admin-link" onClick={() => setOpen(false)} className="inline-flex items-center gap-2 text-left text-sm font-semibold text-slate-700 pt-3 mt-1 border-t border-slate-200">

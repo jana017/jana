@@ -23,8 +23,8 @@ function motivationTone(m) {
 
 export default function ActorsIndex() {
   useSeo({
-    title: "Threat Actor Attribution Profiles — NivX Machines",
-    description: "Curated attribution profiles for tracked threat actor groups — bio, TTPs, timeline and related IOCs.",
+    title: "MalDossier — Threat Actor Attribution — NivX Machines",
+    description: "MalDossier: curated attribution profiles for tracked threat actor groups — bio, TTPs, timeline and related IOCs.",
   });
   const [actors, setActors] = useState(null);
 
@@ -37,12 +37,12 @@ export default function ActorsIndex() {
       <Navbar />
       <main className="mx-auto max-w-7xl px-6 py-12" data-testid="actors-index">
         <div className="mb-8">
-          <div className="text-xs font-mono uppercase tracking-widest text-[#F5821F] mb-2">Threat Intelligence</div>
+          <div className="text-xs font-mono uppercase tracking-widest text-[#F5821F] mb-2">MalDossier · Threat Intelligence</div>
           <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 flex items-center gap-3">
-            <ShieldAlert className="w-7 h-7 text-red-500" /> Threat Actor Attribution Profiles
+            <ShieldAlert className="w-7 h-7 text-red-500" /> MalDossier
           </h1>
           <p className="mt-2 text-sm sm:text-base text-slate-600 max-w-3xl">
-            Curated attribution dossiers for actively-tracked adversary groups. Each profile covers biography, known TTPs (MITRE ATT&amp;CK), an incident timeline and related IOCs — reviewed by NivX analysts and updated as new intelligence emerges.
+            NivX MalDossier is a curated intelligence library of actively-tracked adversary groups. Each dossier covers biography, known TTPs (MITRE ATT&amp;CK), an incident timeline and related IOCs — reviewed by NivX analysts and updated as new intelligence emerges.
           </p>
         </div>
 
@@ -55,7 +55,7 @@ export default function ActorsIndex() {
             {actors.map((a) => (
               <Link
                 key={a.slug}
-                to={`/actors/${a.slug}`}
+                to={`/maldossier/${a.slug}`}
                 data-testid={`actor-card-${a.slug}`}
                 className="group rounded-xl border border-slate-200 bg-white p-5 hover:border-[#2E7DF5] hover:shadow-md transition-all"
               >

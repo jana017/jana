@@ -71,6 +71,10 @@ function App() {
                 <Route path="/nivx-forge" element={<CyberLab />} />
                 <Route path="/cyberlab/share/:shareId" element={<CyberLabShare />} />
                 <Route path="/nivx-forge/share/:shareId" element={<CyberLabShare />} />
+                <Route path="/maldossier" element={<ActorsIndex />} />
+                <Route path="/maldossier/:slug" element={<ActorProfile />} />
+                <Route path="/actors" element={<Navigate to="/maldossier" replace />} />
+                <Route path="/actors/:slug" element={<ActorProfile />} />
                 <Route path="/admin" element={<Admin />} />
                 <Route path="/employee" element={<EmployeePortal />} />
                 <Route path="/pages/:slug" element={<CmsPage />} />
