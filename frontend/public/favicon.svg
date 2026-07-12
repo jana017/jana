@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  NivX Forge — circuit-emblem favicon (text removed).
+  Bilaterally symmetric circuit "stag/forge" head. Cyan (#22D3EE) left half,
+  Orange (#F5821F) right half, Midnight Navy (#060B1C) background.
+  Flat vector, no shadows / gradients / glow.  Optimized for tiny sizes
+  (16-32px) with generous padding around the emblem.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="NivX Forge">
+  <rect width="512" height="512" rx="96" ry="96" fill="#060B1C"/>
+
+  <!-- Left half — cyan -->
+  <g fill="none" stroke="#22D3EE" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+    <!-- upper antler shaft: down from top terminal to central junction -->
+    <polyline points="184,120 184,168 208,192 208,240 232,264 232,300"/>
+    <!-- open triangular blade tip (bottom of upper arc) -->
+    <polyline points="130,232 176,232 208,264"/>
+    <!-- mid tap: horizontal from square terminal into the central spine -->
+    <polyline points="88,320 168,320 200,352"/>
+    <!-- lower curl: swoops down from central junction, then out -->
+    <polyline points="200,352 200,400 168,432 144,432"/>
+    <!-- inner central rail (short vertical inside the "face") -->
+    <line x1="232" y1="332" x2="232" y2="384"/>
+    <!-- square terminals -->
+    <rect x="172" y="104" width="24" height="24" fill="#060B1C"/>
+    <rect x="72"  y="304" width="24" height="24" fill="#060B1C"/>
+    <!-- inline nodes (filled dots on the blade tip line) -->
+    <circle cx="188" cy="248" r="6" fill="#22D3EE" stroke="none"/>
+  </g>
+
+  <!-- Right half — orange (mirrored) -->
+  <g fill="none" stroke="#F5821F" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="328,120 328,168 304,192 304,240 280,264 280,300"/>
+    <polyline points="382,232 336,232 304,264"/>
+    <polyline points="424,320 344,320 312,352"/>
+    <polyline points="312,352 312,400 344,432 368,432"/>
+    <line x1="280" y1="332" x2="280" y2="384"/>
+    <rect x="316" y="104" width="24" height="24" fill="#060B1C"/>
+    <rect x="416" y="304" width="24" height="24" fill="#060B1C"/>
+    <circle cx="324" cy="248" r="6" fill="#F5821F" stroke="none"/>
+  </g>
+</svg>

@@ -1,0 +1,14 @@
+{
+  "name": "NivX Machines",
+  "short_name": "NivX",
+  "description": "NivX Machines — Cybersecurity, AI & Threat Intelligence",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#060B1C",
+  "theme_color": "#060B1C",
+  "icons": [
+    { "src": "/favicon.svg", "type": "image/svg+xml", "sizes": "any" },
+    { "src": "/android-chrome-192.png", "type": "image/png", "sizes": "192x192" },
+    { "src": "/android-chrome-512.png", "type": "image/png", "sizes": "512x512" }
+  ]
+}

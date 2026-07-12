@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useLenis } from "lenis/react";
-import { Menu, X, ShieldCheck, Beaker, FileSearch, LayoutGrid, GraduationCap, Briefcase, LogIn, Bookmark, Eye, LogOut, User as UserIcon } from "lucide-react";
+import { Menu, X, ShieldCheck, FileSearch, LayoutGrid, GraduationCap, Briefcase, LogIn, Bookmark, Eye, LogOut, User as UserIcon } from "lucide-react";
 import { prefetchRoute } from "@/lib/routePrefetch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAuth } from "@/context/AuthContext";
@@ -115,11 +115,16 @@ export default function Navbar() {
             data-testid="nav-cyberlab"
             onMouseEnter={() => prefetchRoute("/nivx-forge")}
             onFocus={() => prefetchRoute("/nivx-forge")}
-            className="group relative inline-flex items-center gap-1.5 text-sm font-bold transition-all hover:-translate-y-0.5"
+            className="group relative inline-flex items-center gap-2 text-sm font-bold transition-all hover:-translate-y-0.5"
           >
-            <Beaker
-              className="w-3.5 h-3.5 text-[#2E7DF5] drop-shadow-[0_0_6px_rgba(46,125,245,0.5)] group-hover:text-[#F5821F] group-hover:drop-shadow-[0_0_8px_rgba(245,130,31,0.55)] transition-all"
-              strokeWidth={2.4}
+            <img
+              src="/favicon.svg"
+              alt=""
+              aria-hidden="true"
+              width="18"
+              height="18"
+              className="shrink-0 rounded-[3px] group-hover:scale-110 transition-transform"
+              style={{ marginRight: "0px" }}
             />
             <span
               className="bg-gradient-to-r from-[#2E7DF5] via-[#2E7DF5] to-[#F5821F] bg-clip-text text-transparent bg-[length:200%_100%] bg-[position:0%_50%] group-hover:bg-[position:100%_50%] transition-[background-position] duration-500"
@@ -297,7 +302,7 @@ export default function Navbar() {
             </span>
           </Link>
           <Link to="/nivx-forge" data-testid="mobile-nav-cyberlab" onClick={() => setOpen(false)} className="inline-flex items-center gap-2 text-left text-sm font-bold">
-            <Beaker className="w-4 h-4 text-[#2E7DF5] drop-shadow-[0_0_6px_rgba(46,125,245,0.5)]" strokeWidth={2.4} />
+            <img src="/favicon.svg" alt="" aria-hidden="true" width="18" height="18" className="rounded-[3px]" />
             <span className="bg-gradient-to-r from-[#2E7DF5] to-[#F5821F] bg-clip-text text-transparent">
               NivX Forge
             </span>
