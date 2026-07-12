@@ -1,6 +1,15 @@
 # NivX Machines — PRD
 
-## Implemented (2026-02-12 — ThreatBox enrichment: +12 tracked adversary groups)
+## Implemented (2026-02-12 — Feed Collector, UX polish, storage hygiene)
+- **Threat Intel Feed Collector expanded** — added 3 new sources to `_bulk_ioc_sync_loop`:
+  - **URLhaus (abuse.ch)** — malicious URLs with malware-family attribution (~2500/sync, no key required, tested → 2500 items added).
+  - **CINS Army (Sentinel IPS)** — attacker-IP list (~5000/sync, no key required, tested → 5000 items refreshed).
+  - **ThreatFox (abuse.ch)** — IOCs with malware family + confidence (requires free `ABUSECH_AUTH_KEY` from https://auth.abuse.ch/ since May 2025; **gracefully skipped** with `status: not_configured` when key absent — no crash, no error log noise).
+- **Sticky left-side back button** on `/threatbox/:slug` — floating circular ← arrow (top-1/2, left-6, z-30) with hover tooltip "Back to ThreatBox" and red→orange gradient hover state. Persists across scroll. Bottom gradient CTA button also retained.
+- **Storage hygiene** — new Mongo indexes on startup: `iocs.key`, `iocs.{type,key}` compound, and **TTL index on `iocs.expires_at`** (`expireAfterSeconds=0`). Feed-sourced IOCs (URLhaus, ThreatFox, CINS Army, Talos community) now stamp `expires_at = now + 60 days`; sliding window auto-refreshes on re-sync so active IOCs live forever, purged only if a feed stops re-publishing them. Manually-curated IOCs never get `expires_at` and are never touched.
+- **Gzip middleware** — `GZipMiddleware(minimum_size=1024, compresslevel=5)` added — verified: `/api/actors` responds with `content-encoding: gzip`. Cuts payload ~65% on ThreatBox, IOC list, and OSINT dashboard endpoints.
+
+
 - Added 12 curated dossiers, bringing ThreatBox to **16 total tracked groups**:
   - **Nation-state**: Volt Typhoon (CN), APT28/Fancy Bear (RU-GRU), APT41/Winnti (CN), Sandworm (RU-GRU), Turla (RU-FSB), Kimsuky (KP), MuddyWater (IR-MOIS), Charming Kitten/APT35 (IR-IRGC)
   - **eCrime**: Scattered Spider (UNC3944), Clop (MFT extortion), BlackCat/ALPHV, Black Basta

@@ -42,6 +42,18 @@ export default function ActorProfile() {
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
+      {/* Sticky left-side back-to-index affordance — always visible on scroll */}
+      {actor && (
+        <Link
+          to="/threatbox"
+          data-testid="actor-sticky-back"
+          aria-label="Back to ThreatBox"
+          className="hidden lg:flex fixed left-6 top-1/2 -translate-y-1/2 z-30 items-center justify-center w-11 h-11 rounded-full bg-white border border-slate-200 shadow-md text-slate-600 hover:text-white hover:bg-gradient-to-br hover:from-[#DC2626] hover:to-[#F5821F] hover:border-transparent hover:shadow-lg hover:-translate-y-[calc(50%+2px)] transition-all group"
+        >
+          <ArrowLeft className="w-5 h-5" strokeWidth={2.4} />
+          <span className="absolute left-full ml-3 px-2 py-1 rounded bg-slate-900 text-white text-[11px] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">Back to ThreatBox</span>
+        </Link>
+      )}
       <main className="mx-auto max-w-5xl px-6 py-10" data-testid="actor-profile">
         <Link to="/threatbox" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-[#2E7DF5] mb-4">
           <ArrowLeft className="w-4 h-4" /> All ThreatBox profiles

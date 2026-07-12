@@ -7,6 +7,7 @@ load_dotenv(ROOT_DIR / '.env')
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, UploadFile, File
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import logging
 from pydantic import BaseModel, Field, ConfigDict, BeforeValidator, EmailStr
@@ -386,8 +387,13 @@ def _parse_tags(t) -> List[str]:
     return []
 
 
-async def _upsert_ioc(value, threat_name=None, tags=None, source=None, severity="medium", notes=None):
-    """Insert or update an IOC by canonical key. Returns (record_dict, created_bool)."""
+async def _upsert_ioc(value, threat_name=None, tags=None, source=None, severity="medium", notes=None, ttl_days=None):
+    """Insert or update an IOC by canonical key. Returns (record_dict, created_bool).
+
+    If `ttl_days` is set, an `expires_at` timestamp is stamped so the Mongo TTL
+    index auto-purges stale feed-sourced IOCs.  On each re-sync the TTL is
+    refreshed (sliding window), so IOCs stay alive for as long as the feed
+    keeps re-publishing them."""
     value = (value or "").strip()
     if not value:
         return None, False
@@ -395,6 +401,12 @@ async def _upsert_ioc(value, threat_name=None, tags=None, source=None, severity=
     ioc_type = _classify_ioc(value)
     existing = await db.iocs.find_one({"key": key}, {"_id": 0})
     now = now_iso()
+    expires_at = None
+    if ttl_days:
+        try:
+            expires_at = datetime.now(timezone.utc) + timedelta(days=int(ttl_days))
+        except Exception:
+            expires_at = None
     if existing:
         updates: dict = {"updated_at": now}
         if threat_name:
@@ -407,11 +419,16 @@ async def _upsert_ioc(value, threat_name=None, tags=None, source=None, severity=
             updates["severity"] = _severity_or_default(severity)
         if notes:
             updates["notes"] = notes
+        if expires_at is not None:
+            updates["expires_at"] = expires_at
         await db.iocs.update_one({"key": key}, {"$set": updates})
         return {**existing, **updates}, False
     rec = IocRecord(value=value, key=key, type=ioc_type, threat_name=threat_name, tags=tags or [], source=source, severity=_severity_or_default(severity), notes=notes)
-    await db.iocs.insert_one(rec.model_dump())
-    return rec.model_dump(), True
+    doc = rec.model_dump()
+    if expires_at is not None:
+        doc["expires_at"] = expires_at
+    await db.iocs.insert_one(doc)
+    return doc, True
 
 
 @api_router.post("/iocs", response_model=IocRecord)
@@ -881,7 +898,7 @@ async def _bulk_ioc_sync_loop():
                 _sync_virustotal_intel()      if VT_API_KEY              else None,
                 _sync_talos_blocklist(),
                 _sync_urlhaus_feed(),
-                _sync_threatfox_feed(),
+                _sync_threatfox_feed() if ABUSECH_AUTH_KEY else None,
                 _sync_cins_army(),
             ]
             active = [t for t in tasks if t is not None]
@@ -1362,7 +1379,7 @@ async def _sync_talos_blocklist() -> dict:
                     if total_ips > 4000:  # global cap across all feeds
                         break
                     try:
-                        _, created = await _upsert_ioc(s, f"{label} entry", tags, label, "high", "Community IP blocklist")
+                        _, created = await _upsert_ioc(s, f"{label} entry", tags, label, "high", "Community IP blocklist", ttl_days=60)
                         added += 1 if created else 0
                         updated += 0 if created else 1
                     except Exception:
@@ -1388,6 +1405,14 @@ async def _sync_talos_blocklist() -> dict:
 URLHAUS_RECENT_JSON = "https://urlhaus.abuse.ch/downloads/json_recent/"
 THREATFOX_RECENT_JSON = "https://threatfox-api.abuse.ch/api/v1/"
 CINS_ARMY_LIST = "http://cinsscore.com/list/ci-badguys.txt"
+ABUSECH_AUTH_KEY = os.environ.get("ABUSECH_AUTH_KEY", "").strip()
+
+
+def _abusech_headers() -> dict:
+    h = {"User-Agent": "NivX-ThreatIntel/1.0"}
+    if ABUSECH_AUTH_KEY:
+        h["Auth-Key"] = ABUSECH_AUTH_KEY
+    return h
 
 
 async def _sync_urlhaus_feed(max_items: int = 2500) -> dict:
@@ -1396,7 +1421,7 @@ async def _sync_urlhaus_feed(max_items: int = 2500) -> dict:
     where available."""
     added = updated = skipped = 0
     try:
-        async with httpx.AsyncClient(timeout=25, follow_redirects=True, headers={"User-Agent": "NivX-ThreatIntel/1.0"}) as hc:
+        async with httpx.AsyncClient(timeout=25, follow_redirects=True, headers=_abusech_headers()) as hc:
             r = await hc.get(URLHAUS_RECENT_JSON)
             if r.status_code != 200:
                 summary = {"error": f"HTTP {r.status_code}", "synced_at": now_iso()}
@@ -1426,7 +1451,8 @@ async def _sync_urlhaus_feed(max_items: int = 2500) -> dict:
                 tags.append(f"threat:{e.get('threat')}")
             try:
                 _, created = await _upsert_ioc(url, threat_name, tags, "URLhaus", "high",
-                                                f"URLhaus ref: {e.get('urlhaus_reference', '')}".strip())
+                                                f"URLhaus ref: {e.get('urlhaus_reference', '')}".strip(),
+                                                ttl_days=60)
                 added += 1 if created else 0
                 updated += 0 if created else 1
             except Exception:
@@ -1450,10 +1476,20 @@ async def _sync_urlhaus_feed(max_items: int = 2500) -> dict:
 
 async def _sync_threatfox_feed(days: int = 1, max_items: int = 2500) -> dict:
     """Pulls the abuse.ch ThreatFox recent-IOC feed via their POST API.
-    Returns hashes, URLs, domains, IPs — each tagged with a malware family."""
+    Returns hashes, URLs, domains, IPs — each tagged with a malware family.
+    Requires ABUSECH_AUTH_KEY (free from https://auth.abuse.ch/) since 2025."""
+    if not ABUSECH_AUTH_KEY:
+        summary = {"status": "not_configured",
+                   "message": "Set ABUSECH_AUTH_KEY (free from auth.abuse.ch) to enable ThreatFox",
+                   "synced_at": now_iso()}
+        try:
+            await db.sync_meta.update_one({"_id": "threatfox"}, {"$set": summary}, upsert=True)
+        except Exception:
+            pass
+        return summary
     added = updated = skipped = 0
     try:
-        async with httpx.AsyncClient(timeout=25, follow_redirects=True, headers={"User-Agent": "NivX-ThreatIntel/1.0"}) as hc:
+        async with httpx.AsyncClient(timeout=25, follow_redirects=True, headers=_abusech_headers()) as hc:
             r = await hc.post(THREATFOX_RECENT_JSON, json={"query": "get_iocs", "days": days})
             if r.status_code != 200:
                 summary = {"error": f"HTTP {r.status_code}", "synced_at": now_iso()}
@@ -1480,7 +1516,8 @@ async def _sync_threatfox_feed(days: int = 1, max_items: int = 2500) -> dict:
             severity = "critical" if confidence >= 90 else ("high" if confidence >= 75 else "medium")
             try:
                 _, created = await _upsert_ioc(val, family, tags, "ThreatFox", severity,
-                                                f"ThreatFox first-seen: {e.get('first_seen', '')}")
+                                                f"ThreatFox first-seen: {e.get('first_seen', '')}",
+                                                ttl_days=60)
                 added += 1 if created else 0
                 updated += 0 if created else 1
             except Exception:
@@ -1524,7 +1561,8 @@ async def _sync_cins_army(max_items: int = 5000) -> dict:
                     break
                 try:
                     _, created = await _upsert_ioc(s, "CINS Army bad-actor IP", ["cins-army", "sentinel-ips", "attacker-ip"],
-                                                    "CINS Army", "high", "Observed attacking Sentinel IPS honeypots")
+                                                    "CINS Army", "high", "Observed attacking Sentinel IPS honeypots",
+                                                    ttl_days=60)
                     added += 1 if created else 0
                     updated += 0 if created else 1
                 except Exception:
@@ -4789,6 +4827,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Gzip responses ≥1KB — meaningful savings on the ThreatBox / IOC list endpoints
+# where payloads run 10-100KB (was blocking pages behind slow mobile connections).
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
 
 
 # ---------------------------------------------------------------------------
@@ -4983,6 +5024,16 @@ async def seed_threats():
 async def startup():
     await db.users.create_index("email", unique=True)
     await db.app_settings.create_index("key", unique=True)
+    # IOC storage hygiene — indexes for fast lookup + TTL auto-purge of stale
+    # auto-added IOCs so URLhaus/CINS-Army syncs never grow the DB unboundedly.
+    try:
+        await db.iocs.create_index("key")
+        await db.iocs.create_index([("type", 1), ("key", 1)])
+        # TTL on `expires_at` — only auto-added docs will get this field, so
+        # manually-curated IOCs live forever regardless of the index.
+        await db.iocs.create_index("expires_at", expireAfterSeconds=0)
+    except Exception as e:
+        logger.warning(f"IOC index setup: {e}")
     await _load_settings_from_db()  # DB-first override for API keys (survives server migration)
     await seed_admin()
     await _seed_actors()
