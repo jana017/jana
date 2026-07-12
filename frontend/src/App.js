@@ -23,6 +23,8 @@ const EmployeePortal = lazy(() => import("@/pages/EmployeePortal"));
 const CyberLab = lazy(() => import("@/pages/CyberLab"));
 const CyberLabShare = lazy(() => import("@/pages/CyberLabShare"));
 const CmsPage = lazy(() => import("@/pages/CmsPage"));
+const ActorsIndex = lazy(() => import("@/pages/ActorsIndex"));
+const ActorProfile = lazy(() => import("@/pages/ActorProfile"));
 
 function RouteFallback() {
   return (

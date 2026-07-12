@@ -4479,6 +4479,15 @@ from healthbot.router import (  # noqa: E402
 _attach_healthbot_routes(healthbot_router, get_current_user)
 app.include_router(healthbot_router)
 
+# Threat Actor Attribution Profiles — public read + admin CRUD.
+from actors import (  # noqa: E402
+    router as actors_router,
+    admin_router as actors_admin_router,
+    seed_actors as _seed_actors,
+)
+app.include_router(actors_router)
+app.include_router(actors_admin_router)
+
 from ui_scanner import (  # noqa: E402
     router as ui_scanner_router,
     attach_routes as _attach_ui_scanner_routes,
@@ -4806,6 +4815,7 @@ async def startup():
     await db.app_settings.create_index("key", unique=True)
     await _load_settings_from_db()  # DB-first override for API keys (survives server migration)
     await seed_admin()
+    await _seed_actors()
     await seed_threats()
     if OTX_API_KEY:
         asyncio.create_task(_otx_sync_loop())
