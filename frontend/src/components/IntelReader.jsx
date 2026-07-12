@@ -39,7 +39,7 @@ export default function IntelReader({ name, onClose }) {
       <DialogContent data-testid="intel-reader-dialog" className="max-w-3xl bg-white max-h-[88vh] overflow-y-auto">
         <DialogHeader className="sr-only">
           <DialogTitle>{report?.title || "Threat intelligence report"}</DialogTitle>
-          <DialogDescription>Unit42 threat intelligence report with analysis notes, references and indicators of compromise.</DialogDescription>
+          <DialogDescription>Threat intelligence report with analysis notes, references and indicators of compromise.</DialogDescription>
         </DialogHeader>
         {loading && <div className="py-16 text-center text-sm text-slate-400">Loading report…</div>}
         {err && <div className="py-16 text-center text-sm text-red-500">Unable to load this report.</div>}

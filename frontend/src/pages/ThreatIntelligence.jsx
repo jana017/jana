@@ -25,15 +25,15 @@ const OSINT_TOOLS = [
 ];
 
 const CYBERDEFENDERS = [
-  { title: "Blue Team Labs & Threat Investigations", desc: "Curated DFIR writeups & threat investigations from the CyberDefenders community — full article previews rendered on NivX.", tag: "DFIR",    url: "/community/cd/dfir",    slug: "cyberdefenders" },
-  { title: "Malware Analysis Case Studies",          desc: "Step-by-step reverse-engineering of real-world samples with IOCs and TTP mapping, aggregated from CyberDefenders.",       tag: "Malware", url: "/community/cd/malware", slug: "cyberdefenders" },
-  { title: "SOC & Threat Hunting Playbooks",         desc: "Practical guidance on building detections, triaging alerts and hunting adversaries — CyberDefenders community feed.",     tag: "SOC",     url: "/community/cd/soc",     slug: "cyberdefenders" },
-  { title: "Cisco Talos Intelligence",               desc: "Latest APT tracking, malware research and 0-day disclosures from Cisco Talos — refreshed every 30 minutes.",              tag: "Talos",   url: "/community/talos",      slug: "talos"          },
-  { title: "Palo Alto Unit 42",                      desc: "Deep-dive threat research, incident response case studies and vulnerability write-ups from Palo Alto's Unit 42 team.",     tag: "Unit42",  url: "/community/unit42",     slug: "unit42"         },
-  { title: "The DFIR Report",                        desc: "Real-world incident response breakdowns — full intrusion timelines, attacker TTPs and detection opportunities from The DFIR Report.", tag: "DFIR Report", url: "/community/dfir",       slug: "dfir"           },
-  { title: "Microsoft Threat Intelligence",          desc: "Nation-state activity, emerging malware and defender guidance published by the Microsoft Threat Intelligence team.",       tag: "MSTI",    url: "/community/msthreat",   slug: "msthreat"       },
-  { title: "BleepingComputer",                       desc: "Breaking cybersecurity news, ransomware coverage, breach disclosures and technical explainers — updated live from BleepingComputer.",  tag: "Bleeping",  url: "/community/bleeping",   slug: "bleeping"       },
-  { title: "Hacker News",                            desc: "Real-time top stories from the wider tech & security community, ranked by readers on Hacker News.",                       tag: "HN",       url: "/community/hn",          slug: "hn"             },
+  { title: "Blue Team Labs & Threat Investigations", desc: "Curated DFIR writeups and threat investigations — full article previews rendered on NivX.",                                             tag: "DFIR",       url: "/community/cd/dfir",    slug: "cyberdefenders" },
+  { title: "Malware Analysis Case Studies",          desc: "Step-by-step reverse-engineering of real-world samples with IOCs and TTP mapping.",                                                       tag: "Malware",    url: "/community/cd/malware", slug: "cyberdefenders" },
+  { title: "SOC & Threat Hunting Playbooks",         desc: "Practical guidance on building detections, triaging alerts and hunting adversaries.",                                                     tag: "SOC",        url: "/community/cd/soc",     slug: "cyberdefenders" },
+  { title: "Vendor Threat Advisories",               desc: "Latest APT tracking, malware research and 0-day disclosures aggregated from top security teams — refreshed every 30 minutes.",             tag: "Vendors",    url: "/community/talos",      slug: "talos"          },
+  { title: "Adversary Deep-Dives",                   desc: "Deep-dive threat research, incident response case studies and vulnerability write-ups.",                                                   tag: "Research",   url: "/community/unit42",     slug: "unit42"         },
+  { title: "Incident Response Reports",              desc: "Real-world intrusion timelines, attacker TTPs and detection opportunities from published incidents.",                                     tag: "IR",         url: "/community/dfir",       slug: "dfir"           },
+  { title: "Nation-State Threat Intelligence",       desc: "Tracking of state-aligned adversaries, emerging malware and defender guidance.",                                                          tag: "APT",        url: "/community/msthreat",   slug: "msthreat"       },
+  { title: "Breaking Security News",                 desc: "Ransomware coverage, breach disclosures and technical explainers — updated live throughout the day.",                                     tag: "News",       url: "/community/bleeping",   slug: "bleeping"       },
+  { title: "Community Signals",                      desc: "Real-time top stories from the wider tech & security community, ranked by readers.",                                                       tag: "Signals",    url: "/community/hn",         slug: "hn"             },
 ];
 
 const DATE_RANGES = [
@@ -54,7 +54,7 @@ const PAGE_SIZE = 9;
 export default function ThreatIntelligence() {
   useSeo({
     title: "Threat Intelligence · Live IOC Analyzer & OSINT | NivX Machines",
-    description: "Search 390+ Unit42 threat reports, run bulk IOC analysis across VirusTotal, AbuseIPDB, URLScan and Shodan, and browse the curated NivX IOC database powered by AlienVault OTX.",
+    description: "Search hundreds of curated threat reports, run bulk IOC analysis across leading OSINT sources, and browse the NivX-curated IOC database.",
     canonical: "https://nivxmachines.com/threat-intelligence",
   });
   const [items, setItems] = useState([]);
@@ -126,13 +126,13 @@ export default function ThreatIntelligence() {
             Curated intelligence from the front lines
           </h1>
           <p className="mt-4 text-base md:text-lg text-slate-400 max-w-2xl leading-relaxed">
-            Live, published threat research from Palo Alto Unit42 and hand-picked analysis from
-            the security community — searchable across {total || "hundreds of"} reports.
+            Live threat research and hand-picked analysis curated by the NivX intel team —
+            searchable across {total || "hundreds of"} reports.
           </p>
         </div>
       </section>
 
-      {/* Threat Intel Overview (CrowdStrike-style hub) */}
+      {/* Threat Intel Overview */}
       <section className="bg-white pt-14 lg:pt-16">
         <div className="mx-auto max-w-7xl px-6">
           <ThreatIntelOverview />
@@ -202,9 +202,10 @@ export default function ThreatIntelligence() {
           <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
             <div className="max-w-2xl">
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-blue-600 mb-3">
-                <span className="w-2 h-2 rounded-full bg-green-500 pulse-dot" /> Live · Unit42 Timely Threat Intel
+                <span className="w-2 h-2 rounded-full bg-green-500 pulse-dot" /> Live · Timely Threat Intel
               </div>
               <h2 className="font-heading text-2xl md:text-3xl font-semibold tracking-tight text-slate-900">Latest published intelligence</h2>
+              <p className="mt-1 text-sm text-slate-500 max-w-xl">Fresh reports and adversary research — updated continuously by the NivX intel team.</p>
             </div>
             {repoUrl && (
               <a href={repoUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#2E7DF5] hover:underline">
@@ -254,7 +255,7 @@ export default function ThreatIntelligence() {
           </div>
 
           {err && <div className="text-sm text-red-500">Intel feed temporarily unavailable.</div>}
-          {loading && items.length === 0 && <div className="text-sm text-slate-400">Loading Unit42 intelligence…</div>}
+          {loading && items.length === 0 && <div className="text-sm text-slate-400">Loading intelligence…</div>}
           {!loading && items.length === 0 && !err && (
             <div data-testid="intel-no-results" className="text-sm text-slate-500">No reports match your filters.</div>
           )}
@@ -312,11 +313,12 @@ export default function ThreatIntelligence() {
         <div className="mx-auto max-w-7xl px-6">
           <div className="max-w-2xl mb-10">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-[#F5821F] mb-3">
-              <BookOpen className="w-4 h-4" /> From the Community
+              <BookOpen className="w-4 h-4" /> Community Signals
             </div>
-            <h2 className="font-heading text-2xl md:text-3xl font-semibold tracking-tight text-slate-900">Threat intel blog & writeups</h2>
+            <h2 className="font-heading text-2xl md:text-3xl font-semibold tracking-tight text-slate-900">Threat intel blog &amp; writeups</h2>
             <p className="mt-4 text-base text-slate-600 leading-relaxed">
-              DFIR, malware analysis, SOC playbooks and breaking security news curated live from CyberDefenders, The DFIR Report, Cisco Talos, Palo Alto Unit 42, Microsoft Threat Intelligence, BleepingComputer and Hacker News — refreshed every 30 minutes, click through to read the full article on the source.
+              DFIR, malware analysis, SOC playbooks and breaking security news curated live by NivX analysts — refreshed every 30 minutes.
+              Click any card to jump straight to the full report.
             </p>
           </div>
 

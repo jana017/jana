@@ -7,7 +7,7 @@ import { severityStyle, TYPE_LABEL } from "@/lib/iocUtils";
 const NUM = (n) => (typeof n === "number" ? n.toLocaleString() : "—");
 
 const MODULES = [
-  { key: "adversary_intel", title: "Adversary Intelligence", desc: "Track named threat actors and campaigns from OTX pulses, Unit42 and community intel.", icon: Users, tone: "from-red-500 to-orange-500" },
+  { key: "adversary_intel", title: "Adversary Intelligence", desc: "Track named threat actors and campaigns from continuously refreshed OSINT pulses and analyst-curated intel.", icon: Users, tone: "from-red-500 to-orange-500" },
   { key: "malware_analysis", title: "Malware Analysis", desc: "Hybrid Analysis + VirusTotal detonation ratios, malware family attribution and sandbox verdicts.", icon: Bug, tone: "from-blue-500 to-indigo-500" },
   { key: "digital_risk", title: "Digital Risk Protection", desc: "URLScan live page previews, domain impersonation checks and Shodan attack-surface signals.", icon: Radar, tone: "from-emerald-500 to-teal-500" },
   { key: "curated_iocs", title: "Curated IOC Database", desc: "444+ indicators aggregated daily from AlienVault OTX with severity scoring and analyst notes.", icon: Database, tone: "from-slate-700 to-slate-900" },
@@ -47,7 +47,7 @@ export default function ThreatIntelOverview() {
             Unified threat intelligence, malware analysis and IOC hunting — powered by <strong className="text-white">{providersUp}</strong> integrated OSINT feeds and refreshed daily from the front lines.
           </p>
 
-          {/* Big stats row (CrowdStrike-style) */}
+          {/* Big stats row */}
           <div className="mt-10 grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
             <StatTile data-testid="ti-stat-iocs" label="IOCs tracked" value={NUM(data.total_iocs)} sub={`${NUM(data.by_type.hash)} hashes · ${NUM(data.by_type.domain)} domains · ${NUM(data.by_type.ip)} IPs`} accent="text-orange-400" />
             <StatTile data-testid="ti-stat-adversaries" label="Named adversaries" value={NUM(data.adversaries.length)} sub={data.adversaries[0]?.name || "—"} accent="text-red-400" />
