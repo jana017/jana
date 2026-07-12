@@ -299,11 +299,26 @@ register(_check_webhook_backlog)
 # 7. OSINT API keys presence (stored in settings)
 # ---------------------------------------------------------------------------
 async def _check_osint_keys():
+    """Reports which OSINT providers have API keys configured.  Keys can live
+    in either `db.settings["osint"]` (admin panel) OR `.env` (bootstrap).  We
+    check both, matching how the server resolves keys at runtime."""
     t0 = time.perf_counter()
     db = _get_db()
     settings = await db.settings.find_one({"_id": "osint"}) or {}
-    known = ["virustotal", "abuseipdb", "shodan", "urlscan", "hybrid_analysis", "otx"]
-    configured = [k for k in known if (settings.get(k) or "").strip()]
+    # Env-var counterparts for each provider
+    env_map = {
+        "virustotal":      "VT_API_KEY",
+        "abuseipdb":       "ABUSEIPDB_API_KEY",
+        "shodan":          "SHODAN_API_KEY",
+        "urlscan":         "URLSCAN_API_KEY",
+        "hybrid_analysis": "HYBRID_ANALYSIS_API_KEY",
+        "otx":             "OTX_API_KEY",
+    }
+    known = list(env_map.keys())
+    configured = [
+        k for k in known
+        if (settings.get(k) or "").strip() or (os.environ.get(env_map[k]) or "").strip()
+    ]
     missing = [k for k in known if k not in configured]
     dur = (time.perf_counter() - t0) * 1000
     if not configured:
