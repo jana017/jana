@@ -82,9 +82,7 @@ export default function UserAuth() {
               {tab === "signup" ? "Create your NivX account" : "Welcome back"}
             </h1>
             <p className="mt-1 text-sm text-slate-500">
-              {tab === "signup"
-                ? "Bookmark threat actors and follow IOC watchlists."
-                : "Sign in to your NivX account."}
+              {tab === "signup" ? "Get started in seconds." : "Sign in to your NivX account."}
             </p>
           </div>
 
