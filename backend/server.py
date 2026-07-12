@@ -3181,16 +3181,30 @@ async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
                                         }
                                         break
 
-                            # Auto-submit a fresh urlscan.io scan when we
-                            # couldn't find a usable preview — regardless of
-                            # whether stale prior scans exist. Prior scans
-                            # commonly reference subdomains or return 404s
-                            # from the urlscan CDN, leaving the user with
-                            # neither a preview nor a fresh scan otherwise
-                            # (see Feb 2026 bug: bestshoppingday.com).
+                            # Screenshot CDN check failed but urlscan clearly has
+                            # scan data for this host (existing landing page).
+                            # Return a preview WITHOUT the screenshot rather than
+                            # nulling everything and triggering an unnecessary
+                            # fresh submission (Feb 2026 bug: cyberhanto.com).
+                            # The frontend renders the landing-page link even
+                            # when the screenshot thumbnail is absent.
+                            if preview is None and ranked:
+                                best = ranked[0]
+                                preview = {
+                                    "screenshot": None,
+                                    "url": best.get("task", {}).get("url"),
+                                    "result": best.get("result"),
+                                    "screenshot_unavailable": True,
+                                }
+
+                            # Auto-submit a fresh urlscan.io scan ONLY when there
+                            # are ZERO prior scans for this host. When prior scans
+                            # exist we surface the existing landing page directly
+                            # instead of paying submission latency + adding a
+                            # duplicate scan for a host urlscan already knows.
                             fresh = None
                             submit_target = requested_url or (f"https://{host}" if host else None)
-                            if not preview and submit_target:
+                            if not all_results and submit_target:
                                 fresh = await _urlscan_submit_scan(hc, submit_target)
 
                             payload = {
