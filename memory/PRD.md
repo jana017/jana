@@ -1,5 +1,13 @@
 # NivX Machines — PRD
 
+## Implemented (2026-02-12 — ThreatBox launch: Threat Actor Attribution)
+- **ThreatBox** (formerly "Threat Actor Attribution Profiles" — user-branded as ThreatBox for memorability, "Freedom Oil"-style) shipped end-to-end.
+- **Backend**: `/api/actors` (list) + `/api/actors/{slug}` (detail) public routes; `/api/admin/actors` full CRUD (admin auth). Mongo collection `threat_actors` with idempotent seed of 4 curated groups: LockBit, APT29 (Cozy Bear), Lazarus, FIN7. Each includes bio, aliases, motivation, targeted sectors/regions, MITRE ATT&CK TTPs, incident timeline, related IOCs, references.
+- **Frontend**: `/threatbox` (grid index) + `/threatbox/:slug` (detail). Detail page has Header/Bio, Known TTPs (auto-linked to attack.mitre.org), Attack Timeline (vertical rail), Related IOCs table, References. Legacy `/actors` and `/actors/:slug` routes preserved (index redirects, detail renders directly).
+- **Navbar**: New "ThreatBox" tab (desktop + mobile) with red-to-orange brand gradient, FileSearch icon, animated underline on active route, prefetch on hover.
+- **Verified**: Screenshot smoke test — 4 actor cards on index, LockBit detail renders TTPs + timeline + sectors, `/actors` legacy redirect works.
+
+
 ## Implemented (2026-02-12 — Bulk analyzer OSINT deep-dive + admin lockdowns)
 - **NivX Forge Troubleshoot rewrite** — diagnose→confirm→apply modal; **admin-only** (backend 401 for non-admins, frontend padlock badge).
 - **2 additional seeded admins**: `admin1@nivxmachines.com` / `admin2@nivxmachines.com` (both `Holiday@145`) — seeded permanently, survive redeploys.
