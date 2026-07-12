@@ -2088,6 +2088,124 @@ async def _urlscan_screenshot_is_valid(hc: httpx.AsyncClient, screenshot_url: st
         return False
 
 
+async def _greynoise_ip(hc: httpx.AsyncClient, ip: str) -> dict:
+    """GreyNoise Community API — free, no key. Tells us whether the IP is a
+    known mass-scanner (RIOT), malicious, benign, or unseen. Massively cuts
+    triage noise: 95% of hits on scan-only IPs are false alarms."""
+    if not ip:
+        return {}
+    cached = await get_cached(db, "greynoise", ip)
+    if cached is not None:
+        return cached
+    async with _gate("greynoise"):
+        async with instrument("greynoise") as m:
+            try:
+                r = await hc.get(f"https://api.greynoise.io/v3/community/{ip}", timeout=6.0)
+                # GreyNoise returns 200 for observed IPs AND 404 for "never
+                # observed" — both bodies contain useful classification.
+                if r.status_code in (200, 404):
+                    data = r.json() or {}
+                else:
+                    data = {}
+                m["hit"] = bool(data)
+            except Exception:
+                data = {}
+    if data:
+        await set_cached(db, "greynoise", ip, data)
+    return data
+
+
+async def _otx_ip_pulses(hc: httpx.AsyncClient, ip: str) -> dict:
+    """AlienVault OTX per-IP pulse count. Uses OTX_API_KEY if set (unauth
+    still returns limited data). A pulse is a curated threat report — high
+    pulse count = actively-referenced adversary IP."""
+    if not ip:
+        return {}
+    cached = await get_cached(db, "otx_ip", ip)
+    if cached is not None:
+        return cached
+    headers = {}
+    key = os.environ.get("OTX_API_KEY")
+    if key:
+        headers["X-OTX-API-KEY"] = key
+    async with _gate("otx_ip"):
+        async with instrument("otx_ip") as m:
+            try:
+                r = await hc.get(
+                    f"https://otx.alienvault.com/api/v1/indicators/IPv4/{ip}/general",
+                    headers=headers, timeout=6.0,
+                )
+                if r.status_code == 200:
+                    j = r.json()
+                    pi = j.get("pulse_info") or {}
+                    data = {
+                        "pulse_count": pi.get("count", 0),
+                        "pulses": [
+                            {"name": p.get("name"), "adversary": p.get("adversary")}
+                            for p in (pi.get("pulses") or [])[:5]
+                        ],
+                        "reputation": j.get("reputation"),
+                    }
+                else:
+                    data = {}
+                m["hit"] = bool(data)
+            except Exception:
+                data = {}
+    if data:
+        await set_cached(db, "otx_ip", ip, data)
+    return data
+
+
+async def _circl_cve_from_cpes(hc: httpx.AsyncClient, cpes: list) -> list:
+    """CIRCL CVE search — free, no key. Given the CPEs from Shodan
+    InternetDB (`cpe:/a:openbsd:openssh:9.6p1` etc), look up known CVEs. This
+    gives us real CVE data without needing a paid Shodan account."""
+    if not cpes:
+        return []
+    # Convert `cpe:/a:vendor:product:version` → `vendor:product` for the CIRCL
+    # search endpoint (which is imprecise but wide-coverage).
+    lookups = []
+    for cpe in cpes[:5]:  # bound requests
+        parts = cpe.replace("cpe:/", "").split(":")
+        if len(parts) >= 3:
+            lookups.append((parts[1], parts[2]))
+    if not lookups:
+        return []
+    cached = await get_cached(db, "circl_cve", ",".join(f"{v}:{p}" for v, p in lookups))
+    if cached is not None:
+        return cached
+    out = []
+    async with _gate("circl_cve"):
+        async with instrument("circl_cve") as m:
+            try:
+                for vendor, product in lookups:
+                    r = await hc.get(
+                        f"https://cve.circl.lu/api/search/{vendor}/{product}",
+                        timeout=6.0,
+                    )
+                    if r.status_code != 200:
+                        continue
+                    j = r.json() or {}
+                    # Response shape: {"data": [{"id": "CVE-...", "summary": ...}, ...]}
+                    hits = j.get("data") if isinstance(j, dict) else j
+                    if not hits:
+                        continue
+                    for h in hits[:3]:
+                        cve_id = h.get("id") or h.get("cve") or h.get("Published")
+                        summary = (h.get("summary") or "")[:180]
+                        cvss = h.get("cvss") or h.get("cvss3")
+                        if cve_id:
+                            out.append({"id": cve_id, "summary": summary, "cvss": cvss,
+                                        "product": f"{vendor}:{product}"})
+                m["hit"] = bool(out)
+            except Exception:
+                pass
+    # cap total CVEs to 15 to avoid dossier bloat
+    out = out[:15]
+    await set_cached(db, "circl_cve", ",".join(f"{v}:{p}" for v, p in lookups), out)
+    return out
+
+
 async def _shodan_ip(hc: httpx.AsyncClient, ip: str) -> dict:
     if not ip:
         return {}
@@ -2445,7 +2563,13 @@ async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
 
     try:
         if kind == "ip":
-            sh, gj = await asyncio.gather(_shodan_ip(hc, normalized), _geo_ip(hc, normalized))
+            sh, gj, gn, otx = await asyncio.gather(
+                _shodan_ip(hc, normalized),
+                _geo_ip(hc, normalized),
+                _greynoise_ip(hc, normalized),
+                _otx_ip_pulses(hc, normalized),
+            )
+            cves = await _circl_cve_from_cpes(hc, sh.get("cpes", []))
             result["enrichment"] = {
                 "kind": "ip",
                 "geo": {"country": gj.get("country"), "city": gj.get("city"), "isp": gj.get("isp"), "org": gj.get("org"), "asn": gj.get("as")} if gj else None,
@@ -2454,7 +2578,13 @@ async def _do_lookup(hc: httpx.AsyncClient, value: str) -> dict:
                 "tags": sh.get("tags", []),
                 "vulns": sh.get("vulns", []),
                 "cpes": sh.get("cpes", []),  # Software fingerprint (OS, services). Feb 2026 for bulk dossier.
-                "sources": ["Shodan InternetDB", "ip-api.com"],
+                "greynoise": gn if gn else None,       # Community classification
+                "otx": otx if otx else None,           # AlienVault OTX per-IP pulse count
+                "cves_by_cpe": cves,                   # CIRCL CVE lookup — real CVE coverage without paid Shodan
+                "sources": [s for s in ["Shodan InternetDB", "ip-api.com",
+                            "GreyNoise" if gn else None,
+                            "AlienVault OTX" if otx else None,
+                            "CIRCL CVE" if cves else None] if s],
             }
         elif kind in ("domain", "url"):
             from urllib.parse import urlparse

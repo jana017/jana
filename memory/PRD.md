@@ -1,5 +1,18 @@
 # NivX Machines — PRD
 
+## Implemented (2026-02-12 — Bulk analyzer OSINT deep-dive + admin lockdowns)
+- **NivX Forge Troubleshoot rewrite** — diagnose→confirm→apply modal; **admin-only** (backend 401 for non-admins, frontend padlock badge).
+- **2 additional seeded admins**: `admin1@nivxmachines.com` / `admin2@nivxmachines.com` (both `Holiday@145`) — seeded permanently, survive redeploys.
+- **Bulk IOC Analyzer OSINT dossier** — expandable per-row dossier showing geo, Shodan attack surface, GreyNoise community classification, AlienVault OTX pulse count, VirusTotal, AbuseIPDB, NivX curated DB, deep-links. New backend enrichers: `_greynoise_ip`, `_otx_ip_pulses`, `_circl_cve_from_cpes`.
+- **Per-row dossier download** — Markdown + JSON (bulk-level CSV/JSON/Markdown export retained).
+- **RUNBOOK.md + PLUGIN-CATALOG.md** — 350-line ops guide + auto-generated plugin catalog for self-sufficient maintenance.
+- **HealthBot golden regression suite** — 8 golden decoder payloads + admin-editable Regression Suite (Master → Overview) + `decoder_coverage` check exercises refine+auto_decode pipeline.
+- **Fixed Troubleshoot padding-corruption bug** — `_fix_b64_padding` regex no longer injects `===` mid-string.
+- **NivX Forge decoder gaps closed**: `import('base64')` variant, fallback quoted-b64 extractor, 3 new critical rules (Python fileless / XOR loader / amateur crypter).
+- **Pre-flight banner + Regression Suite UI** in Admin.
+
+## Implemented (2026-02-11 — earlier this session)
+
 ## Implemented (2026-02-11 — NivX Forge decoder gap + HealthBot regression suite)
 - **Fixed NivX Forge decoder gap**: Added `extract-python-b64decode` plugin — recognizes `base64.b64decode(b'...')` / `__import__('base64').b64decode(...)` idioms used in `python -c "exec(...)"` fileless staging. Now decodes the Feb 2026 sample in 2 auto-steps (extract → base64) instead of stalling silently.
 - **Added 3 new detection rules** in `rule_scanner.py`:

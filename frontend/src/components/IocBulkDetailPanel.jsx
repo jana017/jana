@@ -9,7 +9,7 @@
  * Kept lean: pure presentation, no API calls of its own — everything comes
  * from the `enrichment` + `reputation` fields already on the row.
  */
-import { Globe2, Network, ShieldAlert, Server, Tag, Fingerprint, ExternalLink, FileWarning } from "lucide-react";
+import { Globe2, Network, ShieldAlert, Server, Tag, Fingerprint, ExternalLink, FileWarning, Download, Radar, Flame } from "lucide-react";
 
 function Section({ icon: Icon, title, children, testid }) {
   return (
@@ -58,13 +58,61 @@ export default function IocBulkDetailPanel({ row }) {
   const vt  = rep.vt || {};
   const ab  = rep.abuseipdb || {};
   const kind = en.kind || row?.type;
+  const gn  = en.greynoise || null;
+  const otx = en.otx || null;
+  const cves = en.cves_by_cpe || [];
 
   const isIp = kind === "ip";
   const isWeb = kind === "web" || kind === "url" || kind === "domain";
   const isFile = kind === "file" || kind === "hash";
+  void isFile;
+
+  // Per-row download — captures everything (row + enrichment + reputation
+  // + local_db + all deep-links) as a JSON dossier the analyst can attach
+  // to a ticket or share.  Uses the value + timestamp as the filename.
+  const downloadDossier = (fmt) => {
+    const safeName = (row?.value || "ioc").replace(/[^a-z0-9.-]+/gi, "_").slice(0, 60);
+    const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    if (fmt === "json") {
+      const blob = new Blob([JSON.stringify(row, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `nivx-dossier-${safeName}-${ts}.json`; a.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
+    // Markdown
+    const lines = [`# NivX Dossier — \`${row?.value}\``, "",
+      `**Type**: ${kind}   **Generated**: ${new Date().toISOString()}`, ""];
+    if (en.geo) lines.push("## Geolocation", `- Country: ${en.geo.country || "—"}`, `- City: ${en.geo.city || "—"}`, `- ISP: ${en.geo.isp || "—"}`, `- ASN: ${en.geo.asn || "—"}`, "");
+    if (en.open_ports?.length) lines.push("## Shodan Attack Surface", `Open ports: ${en.open_ports.join(", ")}`, `CPEs: ${(en.cpes||[]).join(", ") || "—"}`, `Vulns (InternetDB): ${(en.vulns||[]).join(", ") || "—"}`, "");
+    if (cves.length) { lines.push("## Known CVEs (CIRCL)"); cves.forEach((c) => lines.push(`- **${c.id}** (${c.product}) CVSS ${c.cvss ?? "?"} — ${c.summary}`)); lines.push(""); }
+    if (gn) lines.push("## GreyNoise", `- Classification: ${gn.classification || "unknown"}`, `- Name: ${gn.name || "—"}`, `- Last seen: ${gn.last_seen || "—"}`, `- Noise: ${gn.noise ? "yes" : "no"} · RIOT: ${gn.riot ? "yes" : "no"}`, "");
+    if (otx) { lines.push("## AlienVault OTX", `- Pulse count: ${otx.pulse_count || 0}`); (otx.pulses||[]).forEach((p) => lines.push(`  - ${p.name}${p.adversary?` (adversary: ${p.adversary})`:""}`)); lines.push(""); }
+    if (vt.found !== undefined) lines.push("## VirusTotal", `- Malicious: **${vt.malicious ?? 0}**  Suspicious: ${vt.suspicious ?? 0}  Harmless: ${vt.harmless ?? 0}  Undetected: ${vt.undetected ?? 0}`, "");
+    if (ab.abuseConfidenceScore !== undefined) lines.push("## AbuseIPDB", `- Confidence: **${ab.abuseConfidenceScore}%**  Reports: ${ab.totalReports ?? 0}  Users: ${ab.numDistinctUsers ?? 0}`, `- Country: ${ab.countryCode || "—"}  Usage: ${ab.usageType || "—"}`, "");
+    if (row?.local_db) lines.push("## NivX Curated DB", `- Threat: ${row.local_db.threat_name}`, `- Severity: **${row.local_db.severity}**`, `- Source: ${row.local_db.source}`, "");
+    if (row?.links) { lines.push("## Investigate deeper"); Object.entries(row.links).forEach(([n, u]) => lines.push(`- [${n}](${u})`)); }
+    const blob = new Blob([lines.join("\n")], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `nivx-dossier-${safeName}-${ts}.md`; a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 p-4 bg-slate-50/60" data-testid="ioc-bulk-detail">
+    <div className="p-4 bg-slate-50/60" data-testid="ioc-bulk-detail">
+      <div className="mb-3 flex items-center justify-end gap-2">
+        <button onClick={() => downloadDossier("md")} data-testid="dossier-download-md"
+          className="text-xs font-semibold text-slate-600 hover:text-[#2E7DF5] inline-flex items-center gap-1 border border-slate-200 hover:border-[#2E7DF5] bg-white px-2 py-1 rounded">
+          <Download className="w-3 h-3" /> Markdown
+        </button>
+        <button onClick={() => downloadDossier("json")} data-testid="dossier-download-json"
+          className="text-xs font-semibold text-slate-600 hover:text-[#2E7DF5] inline-flex items-center gap-1 border border-slate-200 hover:border-[#2E7DF5] bg-white px-2 py-1 rounded">
+          <Download className="w-3 h-3" /> JSON
+        </button>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
       {/* Geolocation / Network — for IPs and web hosts */}
       {(isIp || isWeb) && en.geo && (
         <Section icon={Globe2} title="Geolocation & Network" testid="dossier-geo">
@@ -106,12 +154,72 @@ export default function IocBulkDetailPanel({ row }) {
               </div>
             )}
             <div>
-              <div className="text-[10px] uppercase text-slate-400 mb-0.5 flex items-center gap-1"><FileWarning className="w-3 h-3" /> Known vulnerabilities (CVE)</div>
+              <div className="text-[10px] uppercase text-slate-400 mb-0.5 flex items-center gap-1"><FileWarning className="w-3 h-3" /> InternetDB vulnerability flags</div>
               <ChipList items={en.vulns} tone="red" testid="dossier-vulns" />
-              <div className="text-[10px] text-slate-400 mt-1">
-                Empty = InternetDB has no CVE flag. For full CVE coverage, add a paid Shodan key.
-              </div>
             </div>
+          </div>
+        </Section>
+      )}
+
+      {/* CIRCL CVE — real CVE lookup by CPE */}
+      {isIp && cves.length > 0 && (
+        <Section icon={FileWarning} title={`Known CVEs (${cves.length})`} testid="dossier-cves">
+          <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+            {cves.map((c) => (
+              <div key={c.id} className="text-xs border-l-2 border-red-300 pl-2">
+                <div className="font-mono font-semibold text-red-700">
+                  {c.id}{" "}
+                  {c.cvss != null && <span className="text-slate-500 font-normal">CVSS {c.cvss}</span>}
+                </div>
+                <div className="text-slate-500 text-[10px] mb-0.5">{c.product}</div>
+                <div className="text-slate-700 leading-snug">{c.summary || "—"}</div>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {/* GreyNoise Community */}
+      {isIp && gn && (
+        <Section icon={Radar} title="GreyNoise (Community)" testid="dossier-greynoise">
+          <div className="space-y-1 text-xs">
+            <div>
+              <span className="text-slate-400">Classification</span>{" "}
+              <strong className={gn.classification === "malicious" ? "text-red-600" : gn.classification === "benign" ? "text-emerald-600" : "text-slate-700"}>
+                {gn.classification || "unknown"}
+              </strong>
+            </div>
+            <KV k="Name"      v={gn.name} />
+            <KV k="Last seen" v={gn.last_seen} />
+            <div>
+              <span className="text-slate-400">Noise</span> <strong>{gn.noise ? "yes" : "no"}</strong>
+              <span className="mx-2 text-slate-300">·</span>
+              <span className="text-slate-400">RIOT</span> <strong>{gn.riot ? "yes" : "no"}</strong>
+            </div>
+            {gn.link && <a href={gn.link} target="_blank" rel="noopener noreferrer" className="text-[11px] text-[#2E7DF5] hover:underline inline-flex items-center gap-1">View on GreyNoise <ExternalLink className="w-3 h-3" /></a>}
+          </div>
+        </Section>
+      )}
+
+      {/* AlienVault OTX */}
+      {isIp && otx && (
+        <Section icon={Flame} title="AlienVault OTX" testid="dossier-otx">
+          <div className="space-y-1 text-xs">
+            <div>
+              <span className="text-slate-400">Pulse count</span>{" "}
+              <strong className={otx.pulse_count >= 5 ? "text-red-600" : otx.pulse_count >= 1 ? "text-amber-600" : "text-slate-700"}>
+                {otx.pulse_count}
+              </strong>
+            </div>
+            {otx.pulses?.length > 0 && (
+              <div className="max-h-24 overflow-y-auto pr-1">
+                {otx.pulses.map((p, i) => (
+                  <div key={i} className="text-[11px] text-slate-700 truncate" title={p.name}>
+                    · {p.name}{p.adversary ? ` (${p.adversary})` : ""}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </Section>
       )}
@@ -200,6 +308,7 @@ export default function IocBulkDetailPanel({ row }) {
           </div>
         )}
       </Section>
+      </div>
     </div>
   );
 }
