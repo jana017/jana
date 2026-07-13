@@ -3803,20 +3803,323 @@ def _parse_forge_context(raw: str) -> dict:
     }
 
 
-def _detect_paragraph_count(instructions: str, default: int = 2) -> int:
-    """Parse '2 paras', 'three paragraphs', 'in 5 sentences' from the free-form
-    instructions. Falls back to `default`."""
-    if not instructions:
-        return default
-    t = instructions.lower()
-    m = re.search(r"\b(\d+)\s*(?:para|paragraph)", t)
-    if m:
-        return max(1, min(int(m.group(1)), 6))
-    words = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6}
-    for w, n in words.items():
-        if re.search(rf"\b{w}\s*(?:para|paragraph)", t):
-            return n
-    return default
+def _count_target_hits(raw: str, iocs: list[str]) -> dict[str, int]:
+    """Count how many times each IOC appears in the raw corpus — proxies as
+    the number of connections/queries to that target."""
+    out: dict[str, int] = {}
+    for v in iocs:
+        try:
+            out[v] = raw.lower().count(v.lower().replace("[.]", "."))
+        except Exception:
+            out[v] = 0
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Format parser — dynamic. Reads the user's free-form instruction and
+# returns a spec describing how the report should be shaped.
+#   mode:  "paragraphs" | "lines" | "sentences" | "bullets"
+#   count: integer (1..20), or 0 for "natural"
+#   verbose: bool — include every section without truncation
+# ---------------------------------------------------------------------------
+
+_NUMBER_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+                 "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+
+
+def _parse_output_format(instructions: str) -> dict:
+    """Read the free-form analyst prompt and produce a format spec.
+
+    Supported hints (all case-insensitive, dynamic — no hard cap):
+      "in N paragraphs" / "in N paras"
+      "in N lines"
+      "in N sentences"
+      "bullet points" / "as bullets" / "in bullets"
+      "with all details" / "without missing anything" → verbose
+    """
+    t = (instructions or "").lower()
+    verbose = bool(re.search(r"\ball details|without missing|complete detail|comprehensive", t))
+    # Bullet mode
+    if re.search(r"\bbullet(?:\s*points)?\b|\bas\s*bullets?\b|\bin\s*bullets?\b", t):
+        # Also allow "N bullets"
+        m = re.search(r"\b(\d+)\s*bullet", t)
+        n = int(m.group(1)) if m else 0
+        return {"mode": "bullets", "count": max(0, min(n, 20)), "verbose": verbose}
+    # Digit-based numeric hint
+    for mode_kw, mode in [("para", "paragraphs"), ("line", "lines"), ("sentence", "sentences")]:
+        m = re.search(rf"\b(\d+)\s*{mode_kw}", t)
+        if m:
+            return {"mode": mode, "count": max(1, min(int(m.group(1)), 20)), "verbose": verbose}
+    # Word-based numeric hint
+    for w, n in _NUMBER_WORDS.items():
+        for mode_kw, mode in [("para", "paragraphs"), ("line", "lines"), ("sentence", "sentences")]:
+            if re.search(rf"\b{w}\s*{mode_kw}", t):
+                return {"mode": mode, "count": n, "verbose": verbose}
+    # Default: 2 paragraphs (analyst norm)
+    return {"mode": "paragraphs", "count": 2, "verbose": verbose}
+
+
+# ---------------------------------------------------------------------------
+# Case classification & remediation templates. Deterministic branch:
+#   - "malware"    → file hash or endpoint keywords present
+#   - "dns_proxy"  → only URLs/domains + proxy/DNS keywords
+#   - "mixed"      → both signals
+#   - "generic"    → neither
+# ---------------------------------------------------------------------------
+
+_MALWARE_KEYWORDS = ("malware", "trojan", "ransomware", "backdoor", "worm",
+                     "spyware", "stealer", "rootkit", "loader", "dropper",
+                     "endpoint", "edr", "amsi", "shellcode")
+_DNSPROXY_KEYWORDS = ("umbrella", "secure access", "cisco umbrella", "zscaler",
+                      "bluecoat", "netskope", "proxy", "dns", "web filter",
+                      "url filter", "dns query", "dns request", "cname")
+
+
+def _classify_forge_case(raw: str, iocs: list[str], enriched: list[dict]) -> str:
+    t = raw.lower()
+    has_hash = any(_classify_ioc(v) in ("md5", "sha1", "sha256") for v in iocs)
+    has_url_dom = any(_classify_ioc(v) in ("url", "domain") for v in iocs)
+    kw_mal = any(k in t for k in _MALWARE_KEYWORDS)
+    kw_dp = any(k in t for k in _DNSPROXY_KEYWORDS)
+    if has_hash and (has_url_dom or kw_dp):
+        return "mixed"
+    if has_hash or kw_mal:
+        return "malware"
+    if has_url_dom or kw_dp:
+        return "dns_proxy"
+    return "generic"
+
+
+_RECS_MALWARE: list[str] = [
+    "Determine if the detected activity was authorized or expected.",
+    "If this was not authorized or expected activity, NivX CSOC recommends you consider the following steps:",
+    "MDR recommends that the customer perform a full antivirus/EDR scan, review persistence mechanisms and scheduled tasks, validate whether the identified hashes exist elsewhere in the environment, and block the identified malicious hashes and associated network indicators where applicable.",
+    "Remove the piece of malware from the affected system.",
+    "Conduct a full scan on the device with your endpoint security solution.",
+    "Make sure systems are regularly backed-up.",
+    "Ensure that your systems are utilizing up to date virus definitions and operating system patches.",
+]
+
+_RECS_DNSPROXY: list[str] = [
+    "Determine if the detected activity was authorized or expected.",
+    "If this was not authorized or expected activity, NivX CSOC recommends you consider the following steps:",
+    "Remove any unauthorized web browser extensions / plugins.",
+    "Clear web browser caches (temporary internet files) and delete cookies.",
+    "Ensure all of the following threat categories are blocked in your security profile for internet access in Secure Access/Umbrella: Malware, Phishing, Command and Control, Cryptomining.",
+    "Conduct a full scan on the device with your endpoint security solution.",
+    "Make sure systems are regularly backed-up.",
+    "Restrict user permissions to prevent the installation of unauthorized programs.",
+    "Ensure that your systems are utilizing up to date virus definitions and operating system patches.",
+]
+
+
+def _recommendations_for(case_type: str) -> list[str]:
+    if case_type == "malware":
+        return list(_RECS_MALWARE)
+    if case_type == "dns_proxy":
+        return list(_RECS_DNSPROXY)
+    if case_type == "mixed":
+        # De-duplicate the common lead-in sentences.
+        seen: set[str] = set()
+        out: list[str] = []
+        for r in (_RECS_MALWARE + [""] + _RECS_DNSPROXY):
+            if r == "" and out and out[-1] != "":
+                out.append("")
+                continue
+            if r and r not in seen:
+                seen.add(r)
+                out.append(r)
+        return [x for x in out if x]
+    return [
+        "Determine if the detected activity was authorized or expected.",
+        "If unauthorized, contain the affected asset, refresh credentials, and preserve logs for forensic review.",
+        "Ensure endpoint protection, virus definitions and operating-system patches are up to date.",
+    ]
+
+
+# ---------------------------------------------------------------------------
+# 5W1H narrative builder — deterministic sentences describing the incident.
+# Each returns a list of factual, self-contained sentences that the composer
+# can slice/pack into paragraphs, lines or bullets depending on the format.
+# ---------------------------------------------------------------------------
+
+def _forge_5w1h_sentences(raw: str, iocs: list[str],
+                          enriched: list[dict],
+                          context: dict,
+                          case_type: str) -> dict[str, list[str]]:
+    hits = _count_target_hits(raw, iocs)
+    ts = context.get("timestamps") or []
+    ts_first, ts_last = (ts[0], ts[-1]) if ts else (None, None)
+    devices = context.get("devices") or []
+    users = context.get("users") or []
+    emails = context.get("emails") or []
+    action_c = dict(context.get("actions") or [])
+    blocked = action_c.get("blocked", 0)
+    allowed = action_c.get("allowed", 0)
+    denied = action_c.get("denied", 0)
+    detected = action_c.get("detected", 0)
+    dropped = action_c.get("dropped", 0)
+    quarantined = action_c.get("quarantined", 0)
+
+    who_bits: list[str] = []
+    if users:
+        who_bits.append(f"user {', '.join(users[:3])}")
+    if emails and not users:
+        who_bits.append(f"user account {', '.join(emails[:2])}")
+    if devices:
+        who_bits.append(f"device{'s' if len(devices) != 1 else ''} {', '.join(devices[:3])}")
+    who = "; ".join(who_bits) or "the affected identity"
+
+    when_bit = (
+        f"between {ts_first} and {ts_last} UTC" if ts_first and ts_last and ts_first != ts_last
+        else (f"at {ts_first} UTC" if ts_first else "at the timestamps present in the corpus")
+    )
+
+    top_targets = sorted(hits.items(), key=lambda x: -x[1])[:5]
+    what_str = ", ".join(f"{v} (× {c})" if c > 1 else v for v, c in top_targets) if top_targets else "no reachable indicators"
+
+    # Categories per IOC (from VT)
+    cats: dict[str, int] = {}
+    families: set[str] = set()
+    geos: dict[str, int] = {}
+    for r in enriched or []:
+        rep = r.get("reputation") or {}
+        vt = rep.get("vt") or {}
+        for c in (vt.get("categories") or {}).values() if isinstance(vt.get("categories"), dict) else []:
+            cats[c] = cats.get(c, 0) + 1
+        for name in (vt.get("popular_threat_names") or []):
+            families.add(str(name))
+        en = r.get("enrichment") or {}
+        geo = en.get("geo") or {}
+        cc = geo.get("country") or geo.get("country_name")
+        if cc:
+            geos[cc] = geos.get(cc, 0) + 1
+    cat_bit = ", ".join(sorted(cats.keys())[:5]) if cats else ""
+    fam_bit = ", ".join(sorted(families)[:5]) if families else ""
+    geo_bit = ", ".join(f"{c} ({n})" for c, n in sorted(geos.items(), key=lambda x: -x[1])[:3]) if geos else ""
+
+    # Sentence bank
+    S: dict[str, list[str]] = {"who": [], "what": [], "when": [], "where": [], "why": [], "how": [], "verdict": []}
+
+    if ts_first:
+        S["when"].append(f"The activity was observed {when_bit}.")
+    S["who"].append(f"The activity is attributed to {who}.")
+    if top_targets:
+        S["what"].append(f"The affected identity interacted with the following indicators: {what_str}.")
+    if devices:
+        S["where"].append(f"The originating asset was {', '.join(devices[:3])}.")
+    if geo_bit:
+        S["where"].append(f"Destination hosting geography resolved to {geo_bit}.")
+    if cat_bit or fam_bit:
+        parts = []
+        if cat_bit:
+            parts.append(f"categorised by OSINT as {cat_bit}")
+        if fam_bit:
+            parts.append(f"associated with the family/detection {fam_bit}")
+        S["why"].append("The destinations were " + " and ".join(parts) + ".")
+    conn_bits = []
+    total_conn = sum(hits.values())
+    if total_conn:
+        conn_bits.append(f"{total_conn} total connection reference{'s' if total_conn != 1 else ''} across the extracted targets")
+    if blocked:
+        conn_bits.append(f"{blocked} blocked")
+    if allowed:
+        conn_bits.append(f"{allowed} allowed")
+    if denied:
+        conn_bits.append(f"{denied} denied")
+    if detected:
+        conn_bits.append(f"{detected} detected")
+    if dropped:
+        conn_bits.append(f"{dropped} dropped")
+    if quarantined:
+        conn_bits.append(f"{quarantined} quarantined")
+    if conn_bits:
+        S["how"].append("Volume of activity: " + ", ".join(conn_bits) + ".")
+    # OSINT verdict rollup
+    stats = _deterministic_ioc_summary(enriched)["stats"] if enriched else {}
+    mal = int(stats.get("malicious") or 0)
+    susp = int(stats.get("suspicious") or 0)
+    if mal or susp:
+        vbits = []
+        if mal:
+            vbits.append(f"{mal} confirmed MALICIOUS")
+        if susp:
+            vbits.append(f"{susp} suspicious")
+        S["verdict"].append("OSINT reputation across VirusTotal, AbuseIPDB, MalwareBazaar, URLhaus and ThreatFox flagged " + " and ".join(vbits) + " indicator(s).")
+    elif enriched:
+        S["verdict"].append("OSINT reputation across the integrated sources returned clean or unknown for every extracted indicator.")
+    return S
+
+
+def _flatten_5w1h(bank: dict[str, list[str]], order: tuple[str, ...] = ("when", "who", "what", "how", "where", "why", "verdict")) -> list[str]:
+    out: list[str] = []
+    for k in order:
+        for s in bank.get(k) or []:
+            if s and s not in out:
+                out.append(s)
+    return out
+
+
+def _compose_forge_report(fmt: dict, sentences: list[str], recommendations: list[str]) -> str:
+    """Shape the report according to `fmt` = {mode, count, verbose}.
+
+    Recommendations are appended as an *extra* section (not counted in the
+    paragraph/line/sentence total). If the user asks for bullets, everything
+    (including recommendations) is emitted as bullets.
+    """
+    mode = fmt.get("mode", "paragraphs")
+    count = int(fmt.get("count") or 0)
+    verbose = bool(fmt.get("verbose"))
+
+    body = sentences[:]
+    if not body:
+        body = ["No structured data could be extracted from the corpus."]
+
+    if mode == "bullets":
+        lines = [f"- {s}" for s in (body if verbose or count == 0 else body[:count or len(body)])]
+        rec_block = ["", "Recommendations:"] + [f"- {r}" for r in recommendations]
+        return "\n".join(lines + rec_block)
+
+    if mode == "lines":
+        n = count if count > 0 else len(body)
+        lines = body[:n] if not verbose else body
+        # Pad if the user asked for more lines than we have raw sentences
+        while len(lines) < (count or 0):
+            lines.append("No additional details are available from the corpus.")
+        rec_block = ["", "Recommendations:"] + [f"- {r}" for r in recommendations]
+        return "\n".join(lines + rec_block)
+
+    if mode == "sentences":
+        n = count if count > 0 else len(body)
+        chosen = body if verbose else body[:n]
+        # Pad
+        while len(chosen) < (count or 0):
+            chosen.append("Further detail is not available from the corpus.")
+        return " ".join(chosen) + "\n\nRecommendations:\n" + "\n".join(f"- {r}" for r in recommendations)
+
+    # paragraphs mode (default)
+    n = count if count > 0 else 2
+    if verbose or n == 1:
+        # One dense paragraph with everything.
+        para = " ".join(body)
+        paras = [para]
+        # Pad to N if user asked for >1 with "all details" — extra paras
+        # each add a slice; but for verbose stick to the requested count via
+        # splitting on natural boundaries.
+        if n > 1 and not verbose:
+            per = max(1, len(body) // n)
+            paras = [" ".join(body[i:i + per]) for i in range(0, len(body), per)][:n]
+    else:
+        per = max(1, len(body) // n)
+        paras = [" ".join(body[i:i + per]) for i in range(0, len(body), per)]
+        # If chunking produced more than N (due to leftovers), fold them back.
+        if len(paras) > n:
+            paras = paras[:n - 1] + [" ".join(paras[n - 1:])]
+        # If fewer, pad
+        while len(paras) < n:
+            paras.append("No further factual observations remained after the preceding analysis; the extracted indicators, timestamps and volumes above capture the corpus in full.")
+
+    return "\n\n".join(paras) + "\n\nRecommendations:\n" + "\n".join(f"- {r}" for r in recommendations)
 
 
 class ForgeReportInput(BaseModel):
@@ -3831,9 +4134,11 @@ async def forge_investigation_report(payload: ForgeReportInput):
     """Generate a deterministic MDR-style investigation report.
 
     Rule-based only — no LLM. Extracts IOCs / users / devices / timestamps
-    from `data`, runs OSINT against IOCs (unless `enrich=false`), and emits a
-    factual multi-paragraph report honouring simple format hints in
-    `instructions` (e.g. "in 2 paras", "in three paragraphs").
+    from `data`, runs OSINT against IOCs (unless `enrich=false`), classifies
+    the case (malware / dns_proxy / mixed / generic), and shapes the output
+    per the user's free-form format hint in `instructions` (any of: N
+    paragraphs, N lines, N sentences, bullet points, or "with all details").
+    Case-appropriate remediation recommendations are appended.
     """
     raw = (payload.data or "").strip()
     if not raw:
@@ -3857,78 +4162,26 @@ async def forge_investigation_report(payload: ForgeReportInput):
                                 "enrichment": None, "local_db": None, "links": {}}
             enriched = await asyncio.gather(*[one(v) for v in iocs])
 
-    summary_bundle = _deterministic_ioc_summary(enriched) if enriched else {"summary": "", "stats": {}}
-    ioc_summary = summary_bundle["summary"]
-    stats = summary_bundle["stats"] or {}
-    para_count = _detect_paragraph_count(payload.instructions, default=2)
+    stats = (_deterministic_ioc_summary(enriched)["stats"] if enriched else {}) or {}
+    case_type = _classify_forge_case(raw, iocs, enriched)
+    fmt = _parse_output_format(payload.instructions)
+    bank = _forge_5w1h_sentences(raw, iocs, enriched, context, case_type)
+    sentences = _flatten_5w1h(bank)
+    recommendations = _recommendations_for(case_type)
+    report = _compose_forge_report(fmt, sentences, recommendations)
 
-    # ---- Compose report paragraphs deterministically ----
-    ts = context["timestamps"]
-    ts_first, ts_last = (ts[0], ts[-1]) if ts else (None, None)
-    dev_bit = f" device{'s' if len(context['devices']) != 1 else ''} {', '.join(context['devices'][:3])}" if context["devices"] else ""
-    usr_bit = f" (user {', '.join(context['users'][:3])})" if context["users"] else (f" (email {', '.join(context['emails'][:2])})" if context["emails"] else "")
-    action_bit = ""
-    if context["actions"]:
-        action_bit = " Detected activity: " + ", ".join(f"{c}× {w}" for w, c in context["actions"]) + "."
-
-    p1_parts: list[str] = []
-    if ts_first:
-        window = ts_first if ts_first == ts_last or not ts_last else f"{ts_first} — {ts_last}"
-        p1_parts.append(f"Between {window} UTC, NivX Forge parsed {context['line_count']} line{'s' if context['line_count'] != 1 else ''} of the supplied log/data corpus{dev_bit}{usr_bit}.")
-    else:
-        p1_parts.append(f"NivX Forge parsed {context['line_count']} line{'s' if context['line_count'] != 1 else ''} of the supplied data{dev_bit}{usr_bit}.")
-    if iocs:
-        head = ", ".join(iocs[:4]) + (f" and {len(iocs) - 4} more" if len(iocs) > 4 else "")
-        p1_parts.append(f"{len(iocs)} indicator{'s' if len(iocs) != 1 else ''} of compromise were extracted from the corpus: {head}.")
-    else:
-        p1_parts.append("No indicators of compromise (IP, domain, URL or file hash) were recovered from the corpus.")
-    if action_bit:
-        p1_parts.append(action_bit.strip())
-
-    p2_parts: list[str] = []
-    if enriched:
-        p2_parts.append(ioc_summary)
-    else:
-        p2_parts.append("OSINT enrichment was skipped for this run; reputation was not queried against VirusTotal, AbuseIPDB, MalwareBazaar, URLhaus, ThreatFox or the internal NivX IOC database.")
-    # Escalation call-to-action
-    mal = int(stats.get("malicious") or 0)
-    if mal >= 1:
-        p2_parts.append("Escalate this incident to the customer immediately; contain the affected host, block the malicious indicators at the perimeter, and preserve volatile artefacts for forensic review.")
-    elif int(stats.get("suspicious") or 0) >= 1:
-        p2_parts.append("Recommend the customer keep the affected asset under enhanced monitoring for the next 24 hours and re-run reputation once fresher intelligence is available.")
-    else:
-        p2_parts.append("No customer-side action is required at this time; log the observation for the audit trail and continue baseline monitoring.")
-
-    paras = [" ".join(p1_parts), " ".join(p2_parts)]
-    # Adjust to requested paragraph count
-    if para_count == 1:
-        paras = [" ".join(paras)]
-    elif para_count > 2:
-        # Split IOC list into its own paragraph if we have extras to say.
-        if iocs and enriched and para_count >= 3:
-            ioc_lines = []
-            for r in enriched[:10]:
-                v = r.get("value")
-                rep = r.get("reputation") or {}
-                vt = rep.get("vt") or {}
-                ab = rep.get("abuseipdb") or {}
-                vt_bit = f"VT {vt.get('malicious') or 0}/{(vt.get('malicious') or 0) + (vt.get('harmless') or 0) + (vt.get('undetected') or 0) or '?'}" if not vt.get("error") else ""
-                ab_bit = f"AbuseIPDB {ab.get('score') or 0}%" if not ab.get("error") and ab.get("score") is not None else ""
-                bits = " · ".join([b for b in (vt_bit, ab_bit) if b])
-                ioc_lines.append(f"{v}{f' ({bits})' if bits else ''}")
-            paras.insert(1, "Per-indicator OSINT roll-up: " + "; ".join(ioc_lines) + ".")
-        while len(paras) < para_count:
-            paras.append("Report closure: this assessment reflects the OSINT signal available at query time; re-run the investigation as feeds refresh.")
-
-    report = "\n\n".join(paras)
     return {
         "report": report,
         "instructions": payload.instructions or "",
-        "paragraph_count": len(paras),
+        "format": fmt,
+        "case_type": case_type,
+        # legacy field — kept for backwards compatibility with the frontend
+        "paragraph_count": (report.split("\n\nRecommendations")[0].count("\n\n") + 1) if fmt["mode"] == "paragraphs" else fmt.get("count", 0) or 0,
         "iocs_extracted": iocs,
         "enriched": enriched,
         "stats": stats,
         "context": context,
+        "recommendations": recommendations,
         "generated_at": now_iso(),
     }
 

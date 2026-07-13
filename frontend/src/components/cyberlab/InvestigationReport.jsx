@@ -62,7 +62,9 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
         max_iocs: 15,
       });
       setReport(res);
-      toast.success(`Report generated · ${res.iocs_extracted?.length || 0} IOC${res.iocs_extracted?.length === 1 ? "" : "s"} · ${res.paragraph_count} para${res.paragraph_count === 1 ? "" : "s"}`);
+      const fmt = res.format || {};
+      const fmtLabel = fmt.mode === "bullets" ? "bullets" : `${fmt.count || 0} ${fmt.mode || "paras"}`;
+      toast.success(`Report generated · ${res.case_type || "generic"} case · ${res.iocs_extracted?.length || 0} IOC${res.iocs_extracted?.length === 1 ? "" : "s"} · ${fmtLabel}`);
     } catch (e) {
       toast.error(`Report generation failed: ${formatApiErrorDetail(e.response?.data?.detail) || e.message}`);
     } finally { setBusy(false); }
@@ -77,7 +79,8 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
   const downloadReport = () => {
     if (!report?.report) return;
     const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    const header = `# NivX Forge — Offline Investigation Report\nGenerated: ${report.generated_at || new Date().toISOString()}\nParagraphs: ${report.paragraph_count}\n\n## Analyst instructions\n${report.instructions || "—"}\n\n## Extracted IOCs\n${(report.iocs_extracted || []).map((v) => `- ${v}`).join("\n") || "—"}\n\n## Report\n\n`;
+    const fmt = report.format || {};
+    const header = `# NivX Forge — Offline Investigation Report\nGenerated: ${report.generated_at || new Date().toISOString()}\nCase type: ${report.case_type || "generic"}\nFormat: ${fmt.mode || "paragraphs"}${fmt.count ? ` × ${fmt.count}` : ""}${fmt.verbose ? " (verbose)" : ""}\n\n## Analyst instructions\n${report.instructions || "—"}\n\n## Extracted IOCs\n${(report.iocs_extracted || []).map((v) => `- ${v}`).join("\n") || "—"}\n\n## Report\n\n`;
     const blob = new Blob([header + report.report + "\n"], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = `nivx-forge-report-${stamp}.md`; a.click();
@@ -85,6 +88,14 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
   };
 
   const stats = report?.stats || {};
+  const caseType = report?.case_type || "";
+  const caseLabel = { malware: "Malware / Endpoint", dns_proxy: "DNS / Proxy", mixed: "Mixed (malware + DNS)", generic: "Generic" }[caseType] || caseType;
+  const caseTone = {
+    malware:   "border-red-500/40 bg-red-500/10 text-red-300",
+    dns_proxy: "border-amber-500/40 bg-amber-500/10 text-amber-300",
+    mixed:     "border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-300",
+    generic:   "border-slate-500/40 bg-slate-500/10 text-slate-300",
+  }[caseType] || "border-slate-500/40 bg-slate-500/10 text-slate-300";
 
   return (
     <section
@@ -118,7 +129,7 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
             className="w-full bg-slate-950/60 border border-slate-800 focus:border-cyan-400 outline-none rounded-md px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 font-mono-data resize-y"
           />
           <p className="text-[10px] text-slate-500 mt-1">
-            Format hints like <span className="text-slate-300">&quot;in 2 paras&quot;</span> or <span className="text-slate-300">&quot;three paragraphs&quot;</span> control the report length (max 6).
+            Format is dynamic — try <span className="text-slate-300">&quot;in 2 paras&quot;</span>, <span className="text-slate-300">&quot;in 10 lines&quot;</span>, <span className="text-slate-300">&quot;5 sentences&quot;</span>, <span className="text-slate-300">&quot;bullet points&quot;</span> or <span className="text-slate-300">&quot;1 para with all details&quot;</span>. Case type (malware / DNS-proxy / mixed) auto-detected and remediation recommendations tailored accordingly.
           </p>
         </div>
 
@@ -191,6 +202,11 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
           <div data-testid="forge-report-output" className="mt-2 rounded-md border border-slate-800 bg-slate-950/60 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
               <div className="flex flex-wrap items-center gap-2">
+                {caseType && (
+                  <span data-testid="forge-report-case" className={`text-[11px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded border ${caseTone}`}>
+                    {caseLabel}
+                  </span>
+                )}
                 <span className="text-[11px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded border border-slate-700 text-slate-300">
                   {report.iocs_extracted?.length || 0} IOC{report.iocs_extracted?.length === 1 ? "" : "s"}
                 </span>

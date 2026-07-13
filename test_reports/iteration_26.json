@@ -1,0 +1,34 @@
+{
+  "summary": "Validated extended NivX Forge Offline Investigation Report (case-aware, dynamic-format). Backend 13/13 pass — case_type detection (malware/dns_proxy/mixed), format parser (paragraphs/lines/sentences/bullets/verbose), 5W1H hit multiplicity (× N), action counts (blocked/allowed/quarantined), templated recommendations, and regressions on batch-summary/lookup-batch/enrich-iocs/ai-summary. Frontend E2E on /nivx-forge confirms the new forge-report-case pill renders with correct color per case (red malware / amber dns_proxy / fuchsia mixed) and toast wording matches spec.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_forge_dns_proxy.py",
+    "/app/test_reports/pytest/forge_dns_proxy.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py still >5900 lines — the forge_* helpers (~330 lines) plus batch-summary would move cleanly to /app/backend/modules/forge_report.py.",
+    "In _compose_forge_report paragraphs branch, when count>1 & not verbose, the chunk math can emit fewer than N when body is short — pad-loop covers it but split can also emit >N which is folded; edge case tested and works, keep an eye.",
+    "recommendations list for 'mixed' case relies on order-preserving dedup that drops the DNS-proxy-only lead-in — acceptable per spec (dedup)."
+  ],
+  "updated_files": ["/app/backend/tests/test_forge_dns_proxy.py"],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% (3/3 case flows)"},
+  "seed_data_creation": "None. All test data ephemeral, inline payloads only.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "New endpoint response fields on /api/forge/investigation-report: case_type ∈ {malware,dns_proxy,mixed,generic}, format {mode,count,verbose}, recommendations[]. Frontend testids reused: forge-report-instructions/data/enrich-toggle/generate/output/copy/download, NEW: forge-report-case (pill). Toast text pattern: 'Report generated · <case> case · N IOC(s) · <count> <mode>' (or 'bullets'). Body is separated from Recommendations by '\\n\\nRecommendations:\\n'.",
+  "verified_flows": [
+    "POST /api/forge/investigation-report — malware case (hash) → case_type=malware + template A rec 'Remove the piece of malware...'",
+    "POST /api/forge/investigation-report — DNS/proxy case (Umbrella + URL) → case_type=dns_proxy + template B rec 'Secure Access/Umbrella...'",
+    "POST /api/forge/investigation-report — mixed case (hash+URL) → case_type=mixed + merged/deduped recs, single lead-in",
+    "Format: 'in 5 lines' → mode=lines count=5, body has exactly 5 lines",
+    "Format: 'in 3 sentences' → mode=sentences count=3",
+    "Format: 'bullet points' → mode=bullets, report starts with '-'",
+    "Format: '1 para with all details without missing anything' → mode=paragraphs count=1 verbose=true, single dense paragraph",
+    "5W1H: IOC repeated 3× → rendered as 'evil-c2.test (× 3)' in report",
+    "5W1H: 'Volume of activity: ... blocked, allowed, quarantined' surfaces action counts",
+    "Regression: batch-summary, ioc-lookup-batch, cyberlab/enrich-iocs, ioc-ai-summary all 200",
+    "UI: /nivx-forge — forge-report-case pill renders with correct label + tone class (red/amber/fuchsia) for all 3 case types; toast wording matches"
+  ]
+}
