@@ -1,6 +1,20 @@
 # NivX Machines — PRD
 
 
+## Implemented (2026-02-13 — AI-narrative Investigation Report + Analyst Training Center)
+- **AI-narrative mode** in `/api/forge/investigation-report` (opt-in via `ai_mode=true`) — powered by **Gemini 3 Flash** (`gemini-3-flash-preview`) or **Gemini 3.5 Flash** (`gemini-3.5-flash`) through Emergent LLM Key. Model chooser in the UI (`forge-report-ai-model`). Deterministic engine remains available (`ai_mode=false`).
+- **Strict evidence-only prompting** — LLM writes ONLY the narrative paragraphs; IOC extraction, OSINT enrichment, case classification and recommendations stay deterministic (auditable, no hallucination). Instructions ban fabricated IOCs, hostnames, families, dates and attribution.
+- **Analyst Training Center** — new admin page at `/admin` → *Forge Training* tab (`AdminForgeTraining.jsx`). Analysts can:
+  - Save past investigations (title, case type, tags, raw alert, narrative, recommendations, notes, active toggle).
+  - Upload any-format attachments up to 10 MB each (screenshots, files) — stored under `/app/backend/uploads/forge-training/{example_id}/`.
+  - Edit a shared **Analyst persona / house style** system prompt — applied on every AI report generation without weakening the "no fabrication" clauses.
+  - Filter/search examples by case type + free text.
+- **Few-shot retrieval** — on every AI call, the top 2 matching training examples (Jaccard token overlap over raw+iocs vs example.raw_data+tags+title, with case_type bonus) are silently added as STYLE references. The system prompt explicitly forbids copying specific IOCs from them.
+- **New Mongo collections**: `forge_training_examples`, `forge_training_config`. New endpoints under `/api/admin/forge/training/*` (admin-only): CRUD on examples, attachments upload/download/delete, GET/PUT persona.
+- **Testing**: `iteration_28.json` (AI mode) + `iteration_29.json` (Training Center) — 27 backend tests + full frontend E2E pass, no regressions.
+
+
+
 ## Implemented (2026-02-13 — Forge Investigation Report: case-aware + dynamic format)
 - **5W1H narrative extraction** — When / Who (users, emails, devices) / What (indicators + per-target `× N` connection counts) / Where (source device + destination hosting geo/country) / Why (VT categories, threat family/detection names) / How (blocked / allowed / denied / detected / quarantined / dropped tallies).
 - **Case auto-classification** on every report — `malware` (file hashes / EDR / trojan / ransomware keywords), `dns_proxy` (URL/domain traffic + Umbrella / Secure Access / Zscaler / DNS / proxy keywords), `mixed` (both), or `generic`.
