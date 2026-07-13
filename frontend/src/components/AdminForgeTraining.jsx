@@ -438,8 +438,15 @@ export default function AdminForgeTraining() {
                   <Trash2 className="w-3.5 h-3.5" /> Delete
                 </button>
               )}
-              {selected && !isEditing && (
-                <button type="button" onClick={() => setIsEditing(true)} data-testid="forge-training-edit" className={`${btnCls} border-slate-300 text-slate-700 hover:border-[#2E7DF5] hover:text-[#2E7DF5]`}>
+              {selected && (
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(true)}
+                  disabled={isEditing}
+                  data-testid="forge-training-edit"
+                  className={`${btnCls} border-slate-300 text-slate-700 hover:border-[#2E7DF5] hover:text-[#2E7DF5] disabled:opacity-40 disabled:cursor-not-allowed`}
+                  title={isEditing ? "Already editing" : "Unlock fields to edit"}
+                >
                   <Pencil className="w-3.5 h-3.5" /> Edit
                 </button>
               )}
