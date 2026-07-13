@@ -1,5 +1,13 @@
 # NivX Machines — PRD
 
+
+## Implemented (2026-02-13 — Offline OSINT summary + Forge Investigation Report)
+- **Bulk IOC Analyzer — deterministic OSINT summary dialog**: after every batch analysis (paste **or** file upload) a modal (data-testid `ioc-bulk-summary-dialog`) auto-opens showing a single-paragraph, rules-based reputation summary + stat pills (total / malicious / suspicious / clean / in NivX DB). No LLM. Backend: `POST /api/iocs/batch-summary` accepting either raw `values` or pre-computed `results`.
+- **Bulk IOC Analyzer — smart file upload**: uploading .txt / .log / .csv / .json / any text file now extracts ONLY IOC-shaped tokens (IP / URL / domain / md5-sha1-sha256-sha512), auto-runs the OSINT batch lookup, then auto-opens the summary dialog. Log noise (timestamps, usernames, log levels) is discarded via regex extractor.
+- **NivX Forge — Offline Investigation Report** (`InvestigationReport.jsx`, mounted at bottom of `/nivx-forge` under `AiPanel`). Free-form analyst instructions + any-format file upload (max 5 MB) + OSINT enrichment toggle. Generates a **deterministic** (no-AI) multi-paragraph MDR-style report honouring format hints like "in 2 paras" / "three paragraphs" (max 6). Backend: `POST /api/forge/investigation-report` — extracts IOCs / timestamps / users / devices / emails / actions, enriches IOCs against VT / AbuseIPDB / MalwareBazaar / URLhaus / ThreatFox / internal DB when enabled, and composes the report through a rule engine.
+- **Testing**: `iteration_25.json` — 8/8 backend pass, 100% frontend pass, no regressions.
+
+
 ## Implemented (2026-02-12 — Feed Collector, UX polish, storage hygiene)
 - **Threat Intel Feed Collector expanded** — added 3 new sources to `_bulk_ioc_sync_loop`:
   - **URLhaus (abuse.ch)** — malicious URLs with malware-family attribution (~2500/sync, no key required, tested → 2500 items added).
