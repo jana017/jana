@@ -18,7 +18,7 @@ const LIGHT = "#ffffff";
 
 function bgForPath(pathname) {
   const p = (pathname || "").toLowerCase();
-  if (p.startsWith("/cyberlab") || p.startsWith("/nivx-forge") || p.startsWith("/detonate") || p.startsWith("/payload-lab")) {
+  if (p.startsWith("/cyberlab") || p.startsWith("/nivx-forge") || p.startsWith("/detonate") || p.startsWith("/payload-lab") || p.startsWith("/console")) {
     return DARK;
   }
   return LIGHT;

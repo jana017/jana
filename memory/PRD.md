@@ -1,6 +1,16 @@
 # NivX Machines — PRD
 
 
+## Implemented (2026-02-13 — Standalone `/console` platform)
+- **New route `/console`** wires up the previously-empty `Console.jsx` shell as a two-tab (Threat Intelligence · NivX Forge) tool workspace, ready for a future DNS mapping (e.g. `console.nivxmachines.com` → `/console`).
+- **Role gate**: the page calls `/auth/me` on mount; unauthenticated users are redirected to `/login` (with `from=/console` state), and any role other than `admin` / `employee` sees a **Restricted Console** panel (`data-testid=console-denied`) with "Back to Home" and "Sign out" actions.
+- **Minimal chrome**: sticky top bar shows the "NivX Console" wordmark + tab strip + `email · ROLE` label + a `Sign out` button (`data-testid=console-logout`). No marketing navbar (`hideChrome` prop is forwarded to `ThreatIntelligence` and `CyberLab`) and no links back to the marketing site — exactly what was requested.
+- **Tab state persistence**: active tab is mirrored to `?tab=ti|forge` and `sessionStorage`, so deep-links / reloads land where you left off.
+- **Dark body theming**: `useRouteBodyBg` now includes `/console`, preventing the mobile "white gap" on top edge.
+- **Verified in preview**: admin login → `/console` renders both tabs correctly (TI page shows curated intel counts; Forge shows the decoder & threat-analysis workspace, 42 ops). Signup as normal `user` → `/console` shows the Restricted panel. Zero marketing navbars on either state.
+
+
+
 ## Implemented (2026-02-13 — Inline case-type retag on list items)
 - **New backend endpoint**: `PATCH /api/admin/forge/training/examples/{id}/case-type` — lightweight one-field update. Only touches `case_type` + `updated_at`; every other field on the doc is preserved.
 - **New UI control**: on every list item in `/admin` → *Forge Training*, a small dropdown (`forge-training-retag-<id>`) sits next to the case-type pill. Click and pick a new case type (e.g. flip auto-tagged `MALWARE` → `UNAUTHORIZED` in one click). Optimistic in-place update + coverage-dashboard auto-refresh.

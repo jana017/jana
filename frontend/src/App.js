@@ -27,6 +27,7 @@ const ActorsIndex = lazy(() => import("@/pages/ActorsIndex"));
 const ActorProfile = lazy(() => import("@/pages/ActorProfile"));
 const UserAuth = lazy(() => import("@/pages/UserAuth"));
 const UserDashboard = lazy(() => import("@/pages/UserDashboard"));
+const Console = lazy(() => import("@/pages/Console"));
 
 function RouteFallback() {
   return (
@@ -82,6 +83,7 @@ function App() {
                 <Route path="/me" element={<UserDashboard />} />
                 <Route path="/admin" element={<Admin />} />
                 <Route path="/employee" element={<EmployeePortal />} />
+                <Route path="/console" element={<Console />} />
                 <Route path="/pages/:slug" element={<CmsPage />} />
               </Routes>
             </Suspense>
