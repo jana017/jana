@@ -1,6 +1,24 @@
 # NivX Machines — PRD
 
 
+## Implemented (2026-02-13 — Forge Investigation Report: case-aware + dynamic format)
+- **5W1H narrative extraction** — When / Who (users, emails, devices) / What (indicators + per-target `× N` connection counts) / Where (source device + destination hosting geo/country) / Why (VT categories, threat family/detection names) / How (blocked / allowed / denied / detected / quarantined / dropped tallies).
+- **Case auto-classification** on every report — `malware` (file hashes / EDR / trojan / ransomware keywords), `dns_proxy` (URL/domain traffic + Umbrella / Secure Access / Zscaler / DNS / proxy keywords), `mixed` (both), or `generic`.
+- **Adaptive remediation recommendations**:
+  - `malware` → Template A (AV/EDR scan, remove malware, block hashes, patch, backups, up-to-date defs).
+  - `dns_proxy` → Template B (browser ext / caches / cookies, Umbrella threat-category enforcement, restrict install permissions, EDR scan, backups, patch).
+  - `mixed` → merged + de-duplicated across both templates.
+- **Fully-dynamic output format engine** — free-form analyst prompt drives the shape of the report. Supported hints (case-insensitive, unbounded):
+  - `in N paragraphs` / `in N paras`
+  - `in N lines`
+  - `in N sentences`
+  - `bullet points` / `as bullets` / `in bullets` / `N bullets`
+  - `with all details` / `without missing anything` / `comprehensive` → verbose (never truncates sections)
+- **Frontend surfacing** — case-type pill in the report panel (`forge-report-case`, red/amber/fuchsia/slate tone by case), toast wording updated to `Report generated · <case> case · N IOCs · <format>`, markdown export includes case_type + format metadata.
+- **Testing**: `iteration_26.json` — 13/13 backend + 3/3 frontend case flows pass, no regressions.
+
+
+
 ## Implemented (2026-02-13 — Offline OSINT summary + Forge Investigation Report)
 - **Bulk IOC Analyzer — deterministic OSINT summary dialog**: after every batch analysis (paste **or** file upload) a modal (data-testid `ioc-bulk-summary-dialog`) auto-opens showing a single-paragraph, rules-based reputation summary + stat pills (total / malicious / suspicious / clean / in NivX DB). No LLM. Backend: `POST /api/iocs/batch-summary` accepting either raw `values` or pre-computed `results`.
 - **Bulk IOC Analyzer — smart file upload**: uploading .txt / .log / .csv / .json / any text file now extracts ONLY IOC-shaped tokens (IP / URL / domain / md5-sha1-sha256-sha512), auto-runs the OSINT batch lookup, then auto-opens the summary dialog. Log noise (timestamps, usernames, log levels) is discarded via regex extractor.
