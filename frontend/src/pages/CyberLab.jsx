@@ -7,6 +7,8 @@ import {
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import useSeo from "@/lib/useSeo";
+import { api } from "@/lib/api";
+import { getToken } from "@/lib/auth";
 import { listPlugins, autoDecode, runRecipe, analyze, detectFormat, processTree, runAiAnalysis, enrichIocs, downloadReport } from "@/lib/cyberlabApi";
 import AttackChainViewer from "@/components/cyberlab/AttackChainViewer";
 import ProcessTreeViewer from "@/components/cyberlab/ProcessTreeViewer";
@@ -106,6 +108,16 @@ export default function CyberLab({ hideChrome = false } = {}) {
   const [ruleModalOpen, setRuleModalOpen] = useState(false);
   const [graphMode, setGraphMode] = useState("chain"); // "chain" | "process"
   const [graphPopped, setGraphPopped] = useState(false); // fullscreen modal toggle
+  const [isAdmin, setIsAdmin] = useState(false); // admin-only sections (Investigation Report)
+
+  useEffect(() => {
+    let alive = true;
+    if (!getToken()) { setIsAdmin(false); return () => { alive = false; }; }
+    api.get("/auth/me")
+      .then(({ data }) => { if (alive) setIsAdmin((data?.role || "").toLowerCase() === "admin"); })
+      .catch(() => { if (alive) setIsAdmin(false); });
+    return () => { alive = false; };
+  }, []);
 
   useEffect(() => {
     listPlugins().then(setPlugins).catch((e) => toast.error(`Load plugins: ${e.message}`));
@@ -1144,11 +1156,15 @@ export default function CyberLab({ hideChrome = false } = {}) {
 
         {/* Offline Investigation Report — deterministic, no AI. Sits at the
             bottom so analysts can pipe the pipeline output straight into a
-            customer-ready MDR report. Also usable stand-alone (paste/upload). */}
-        <InvestigationReport
-          pipelineOutput={result?.output || ""}
-          extractedIocs={(result?.analysis?.iocs || []).map((i) => i.value).filter(Boolean)}
-        />
+            customer-ready MDR report. Also usable stand-alone (paste/upload).
+            Admin-only: MDR/Cognis AI reporting is not exposed to non-admin
+            employees or public users. */}
+        {isAdmin && (
+          <InvestigationReport
+            pipelineOutput={result?.output || ""}
+            extractedIocs={(result?.analysis?.iocs || []).map((i) => i.value).filter(Boolean)}
+          />
+        )}
 
         {/* Custom rule + session rule management link */}
         <div className="mt-4 flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/40 px-4 py-3">

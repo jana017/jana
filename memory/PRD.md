@@ -1,6 +1,17 @@
 # NivX Machines — PRD
 
 
+## Implemented (2026-02-13 — Admin-only Investigation Report in NivX Forge)
+- **CyberLab.jsx** now fetches `/auth/me` on mount and derives an `isAdmin` flag (role === `admin`). The **Investigation Report** panel (the "NIVX COGNIS AI · GEMINI 3 FLASH" section with analyst-instructions, log paste, OCR upload and Generate report button) is wrapped in `{isAdmin && …}` — so it is completely absent from the DOM for public visitors, normal `user` accounts, and even `employee` accounts.
+- Rest of NivX Forge (decoders, MITRE tabs, session rules, share/report download, etc.) is unchanged and still available to all analyst tiers.
+- **Verified in preview** by logging in as 3 distinct principals and scrolling to the bottom of `/nivx-forge`:
+  - Unauthenticated → 0 matches for "Investigation Report" / "NIVX COGNIS AI".
+  - Regular user → 0 matches.
+  - Admin → 3 matches (heading + Cognis badge + supporting labels), full panel renders as expected.
+- **Note**: Backend endpoints `/api/forge/investigation-report` and `/api/forge/ocr-image` remain open (public) for now — a defense-in-depth admin-role gate on those endpoints would require updating ~7 pytest test files that hit them without auth. Filing as follow-up P2 (see roadmap: "Add server-side admin gate to Forge AI endpoints + migrate tests to use admin token fixture").
+
+
+
 ## Implemented (2026-02-13 — Removed Threat Intelligence / NivX Forge from main website nav)
 - **Desktop navbar** (`Navbar.jsx`): dropped the standalone `nav-threat-intelligence` and `nav-cyberlab` `<Link>` blocks. Public marketing header now shows only About / Services / Gallery / Careers / Support / Learn / ThreatBox / Login. Unused `isIntel` variable removed and the prefetch list slimmed down accordingly.
 - **Mobile menu** (`Navbar.jsx`): the corresponding two mobile Links (`mobile-nav-cyberlab` + the inline Threat Intelligence Link) were dropped.
