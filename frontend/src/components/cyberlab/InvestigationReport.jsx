@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { FileText, Upload, Play, Loader2, Copy, Download, Sparkles, ShieldAlert, GraduationCap, X } from "lucide-react";
+import { FileText, Upload, Play, Loader2, Copy, Download, Sparkles, ShieldAlert, GraduationCap, X, Pencil, Save } from "lucide-react";
 import { api, formatApiErrorDetail } from "@/lib/api";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getToken } from "@/lib/auth";
@@ -34,6 +34,10 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
   // training material for NivX Cognis AI's next similar case.
   const [refineOpen, setRefineOpen] = useState(false);
   const [refineBusy, setRefineBusy] = useState(false);
+  // Inline edit of the generated report — stays local until analyst clicks
+  // Refine & teach (which persists the edited version as training material).
+  const [inlineEdit, setInlineEdit] = useState(false);
+  const [inlineEditText, setInlineEditText] = useState("");
   const [refineForm, setRefineForm] = useState({
     title: "",
     case_type: "generic",
@@ -183,6 +187,19 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
       toast.error(`Save refinement failed: ${formatApiErrorDetail(e.response?.data?.detail) || e.message}`);
     } finally { setRefineBusy(false); }
   };
+
+  const openInlineEdit = () => {
+    if (!report?.report) return;
+    setInlineEditText(String(report.report || ""));
+    setInlineEdit(true);
+  };
+  const saveInlineEdit = () => {
+    if (!inlineEditText.trim()) { toast.error("Report cannot be empty"); return; }
+    setReport((r) => ({ ...(r || {}), report: inlineEditText }));
+    setInlineEdit(false);
+    toast.success("Report edited locally — click 'Refine & teach' to save it as a training example for NivX Cognis AI.");
+  };
+  const cancelInlineEdit = () => { setInlineEdit(false); setInlineEditText(""); };
 
   const stats = report?.stats || {};
   const caseType = report?.case_type || "";
@@ -370,6 +387,37 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
                 )}
               </div>
               <div className="flex items-center gap-1.5">
+                {!inlineEdit ? (
+                  <button
+                    type="button"
+                    onClick={openInlineEdit}
+                    data-testid="forge-report-edit"
+                    title="Edit the report inline"
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-300 hover:text-amber-100 border border-amber-500/40 hover:border-amber-400 bg-amber-500/10 hover:bg-amber-500/20 rounded px-2 py-1 transition-colors"
+                  >
+                    <Pencil className="w-3 h-3" /> Edit
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={saveInlineEdit}
+                      data-testid="forge-report-edit-save"
+                      title="Save the edited report to this session (use Refine & teach to persist)"
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-200 hover:text-emerald-100 border border-emerald-500/40 hover:border-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 rounded px-2 py-1 transition-colors"
+                    >
+                      <Save className="w-3 h-3" /> Save edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelInlineEdit}
+                      data-testid="forge-report-edit-cancel"
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-300 hover:text-slate-100 border border-slate-600 hover:border-slate-500 rounded px-2 py-1 transition-colors"
+                    >
+                      <X className="w-3 h-3" /> Cancel
+                    </button>
+                  </>
+                )}
                 <button
                   type="button"
                   onClick={openRefine}
@@ -397,9 +445,19 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
                 </button>
               </div>
             </div>
-            <article className="text-sm leading-relaxed text-slate-100 whitespace-pre-wrap font-sans">
-              {report.report}
-            </article>
+            {inlineEdit ? (
+              <textarea
+                data-testid="forge-report-edit-textarea"
+                value={inlineEditText}
+                onChange={(e) => setInlineEditText(e.target.value)}
+                rows={16}
+                className="w-full bg-slate-900/80 border border-amber-500/40 focus:border-amber-400 outline-none rounded-md px-3 py-2 text-sm leading-relaxed text-slate-100 font-sans resize-y whitespace-pre-wrap"
+              />
+            ) : (
+              <article className="text-sm leading-relaxed text-slate-100 whitespace-pre-wrap font-sans">
+                {report.report}
+              </article>
+            )}
           </div>
         )}
       </div>
