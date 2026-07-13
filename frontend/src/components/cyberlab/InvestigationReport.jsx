@@ -1,7 +1,9 @@
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { FileText, Upload, Play, Loader2, Copy, Download, Sparkles, ShieldAlert } from "lucide-react";
+import { FileText, Upload, Play, Loader2, Copy, Download, Sparkles, ShieldAlert, GraduationCap, X } from "lucide-react";
 import { api, formatApiErrorDetail } from "@/lib/api";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { getToken } from "@/lib/auth";
 
 /**
  * NivX Forge — Offline Investigation Report.
@@ -27,6 +29,19 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
   const [report, setReport] = useState(null); // {report, iocs_extracted, stats, context, paragraph_count, generated_at, engine, ai_model}
   const [fileName, setFileName] = useState("");
   const fileRef = useRef(null);
+
+  // Refinement dialog — analyst edits the generated report and saves as
+  // training material for NivX Cognis AI's next similar case.
+  const [refineOpen, setRefineOpen] = useState(false);
+  const [refineBusy, setRefineBusy] = useState(false);
+  const [refineForm, setRefineForm] = useState({
+    title: "",
+    case_type: "generic",
+    tags: "",
+    narrative: "",
+    recommendations: "",
+    analyst_notes: "",
+  });
 
   const usePipeline = () => {
     // Compose a corpus from the current pipeline: decoded output plus the
@@ -116,6 +131,57 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = `nivx-forge-report-${stamp}.md`; a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const openRefine = () => {
+    if (!report?.report) return;
+    if (!getToken()) {
+      toast.error("Please log in as an analyst (admin or employee) to refine and save training material.");
+      return;
+    }
+    // Split the report so the analyst edits only the narrative — recommendations
+    // are shown separately and both saved back.
+    const parts = String(report.report || "").split(/\n\nRecommendations:\n/);
+    const narrative = (parts[0] || "").trim();
+    const recsBlock = parts[1] || "";
+    const recs = recsBlock
+      .split("\n")
+      .map((l) => l.replace(/^-\s*/, "").trim())
+      .filter(Boolean);
+    // Auto-title from the first line of the raw log.
+    const firstLine = String(data || "").split("\n").map((s) => s.trim()).find((s) => s) || "";
+    setRefineForm({
+      title: firstLine ? firstLine.slice(0, 120) : `Refined MDR report · ${report.case_type || "generic"}`,
+      case_type: report.case_type || "generic",
+      tags: (report.iocs_extracted || []).slice(0, 5).join(", "),
+      narrative,
+      recommendations: recs.join("\n"),
+      analyst_notes: "",
+    });
+    setRefineOpen(true);
+  };
+
+  const submitRefine = async () => {
+    if (!refineForm.narrative.trim()) { toast.error("Refined narrative is required"); return; }
+    setRefineBusy(true);
+    try {
+      const payload = {
+        title: refineForm.title.trim(),
+        case_type: refineForm.case_type.trim().toLowerCase() || "generic",
+        tags: refineForm.tags.split(",").map((t) => t.trim()).filter(Boolean),
+        raw_data: data,
+        narrative: refineForm.narrative,
+        recommendations: refineForm.recommendations.split("\n").map((r) => r.trim()).filter(Boolean),
+        ai_original: report?.engine === "ai" ? String(report?.report || "").split(/\n\nRecommendations:\n/)[0] : "",
+        ai_model: report?.ai_model || "",
+        analyst_notes: refineForm.analyst_notes,
+      };
+      const { data: saved } = await api.post("/forge/training/refinements", payload);
+      toast.success(`Saved as training example — NivX Cognis AI will use "${saved.title}" on the next similar case.`);
+      setRefineOpen(false);
+    } catch (e) {
+      toast.error(`Save refinement failed: ${formatApiErrorDetail(e.response?.data?.detail) || e.message}`);
+    } finally { setRefineBusy(false); }
   };
 
   const stats = report?.stats || {};
@@ -306,6 +372,15 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"
+                  onClick={openRefine}
+                  data-testid="forge-report-refine"
+                  title="Refine this report and save it as training material for NivX Cognis AI"
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-violet-300 hover:text-violet-100 border border-violet-500/40 hover:border-violet-400 bg-violet-500/10 hover:bg-violet-500/20 rounded px-2 py-1 transition-colors"
+                >
+                  <GraduationCap className="w-3 h-3" /> Refine &amp; teach
+                </button>
+                <button
+                  type="button"
                   onClick={copyReport}
                   data-testid="forge-report-copy"
                   className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-300 hover:text-cyan-300 border border-slate-700 hover:border-cyan-500/60 rounded px-2 py-1 transition-colors"
@@ -328,6 +403,130 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
           </div>
         )}
       </div>
+
+      {/* Refine & teach — analyst edits the report and saves the refined
+          version as training material for NivX Cognis AI. */}
+      <Dialog open={refineOpen} onOpenChange={setRefineOpen}>
+        <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto" data-testid="forge-refine-dialog">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-slate-900">
+              <GraduationCap className="w-5 h-5 text-violet-500" />
+              Refine &amp; teach NivX Cognis AI
+            </DialogTitle>
+            <DialogDescription className="text-slate-500">
+              Edit the generated report to how it <em>should</em> read, then save. Your refined version is stored as a training example and retrieved as a style/content reference the next time a similar case is investigated — the AI gets better with every teach.
+            </DialogDescription>
+          </DialogHeader>
+
+          {report?.engine === "ai" && (
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                NivX Cognis AI original (for reference — not saved as the refined version)
+              </div>
+              <p className="text-xs text-slate-700 whitespace-pre-wrap max-h-32 overflow-y-auto">
+                {String(report?.report || "").split(/\n\nRecommendations:\n/)[0]}
+              </p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-2">
+              <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Title</label>
+              <input
+                data-testid="forge-refine-title"
+                value={refineForm.title}
+                onChange={(e) => setRefineForm({ ...refineForm, title: e.target.value })}
+                placeholder="e.g. XDR malicious hash on Startup folder — resource-manager mojibake"
+                className="w-full text-sm px-3 py-2 border border-slate-200 rounded-md focus:border-[#2E7DF5] outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Case type</label>
+              <select
+                data-testid="forge-refine-case"
+                value={refineForm.case_type}
+                onChange={(e) => setRefineForm({ ...refineForm, case_type: e.target.value })}
+                className="w-full text-sm px-3 py-2 border border-slate-200 rounded-md focus:border-[#2E7DF5] outline-none bg-white"
+              >
+                {["malware","dns_proxy","mixed","phishing","insider","data_exfil","cloud_iam","ransomware","generic"].map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Tags (comma separated — e.g. IOCs, detection sources)</label>
+            <input
+              data-testid="forge-refine-tags"
+              value={refineForm.tags}
+              onChange={(e) => setRefineForm({ ...refineForm, tags: e.target.value })}
+              placeholder="cisco-xdr, secure-endpoint, startup-folder, quarantine, mojibake"
+              className="w-full text-sm px-3 py-2 border border-slate-200 rounded-md focus:border-[#2E7DF5] outline-none font-mono-data"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">
+              Refined narrative <span className="text-red-500">*</span> — <span className="normal-case text-slate-400">this is what future reports should read like</span>
+            </label>
+            <textarea
+              data-testid="forge-refine-narrative"
+              value={refineForm.narrative}
+              onChange={(e) => setRefineForm({ ...refineForm, narrative: e.target.value })}
+              rows={12}
+              className="w-full text-sm px-3 py-2 border border-slate-200 rounded-md focus:border-[#2E7DF5] outline-none text-slate-800"
+            />
+            <p className="text-[10px] text-slate-500 mt-1">
+              The AI will match this tone, structure and phrasing on the next similar case — but it will NEVER copy specific IOCs, hostnames or dates from here.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Refined recommendations (one per line)</label>
+            <textarea
+              data-testid="forge-refine-recs"
+              value={refineForm.recommendations}
+              onChange={(e) => setRefineForm({ ...refineForm, recommendations: e.target.value })}
+              rows={5}
+              className="w-full text-sm px-3 py-2 border border-slate-200 rounded-md focus:border-[#2E7DF5] outline-none text-slate-800"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Analyst notes (optional — when to use this style)</label>
+            <textarea
+              data-testid="forge-refine-notes"
+              value={refineForm.analyst_notes}
+              onChange={(e) => setRefineForm({ ...refineForm, analyst_notes: e.target.value })}
+              rows={2}
+              placeholder="Optional: 'Use for XDR alerts where SEP quarantined the file and it re-executed from the Startup folder.'"
+              className="w-full text-sm px-3 py-2 border border-slate-200 rounded-md focus:border-[#2E7DF5] outline-none"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setRefineOpen(false)}
+              data-testid="forge-refine-cancel"
+              className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-slate-900 border border-slate-300 hover:border-slate-500 rounded-md px-3 py-2 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" /> Cancel
+            </button>
+            <button
+              type="button"
+              onClick={submitRefine}
+              disabled={refineBusy || !refineForm.narrative.trim()}
+              data-testid="forge-refine-submit"
+              className="inline-flex items-center gap-1.5 text-sm font-semibold text-white bg-violet-600 hover:bg-violet-500 disabled:opacity-50 rounded-md px-4 py-2 transition-colors"
+            >
+              {refineBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <GraduationCap className="w-4 h-4" />}
+              Save &amp; teach Cognis AI
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

@@ -4670,7 +4670,11 @@ def _forge_training_serialize(doc: dict) -> dict:
         "analyst_notes": doc.get("analyst_notes") or "",
         "active": bool(doc.get("active", True)),
         "attachments": doc.get("attachments") or [],
+        "source": doc.get("source") or "authored",
+        "ai_original": doc.get("ai_original") or "",
+        "ai_model": doc.get("ai_model") or "",
         "created_by": doc.get("created_by") or "",
+        "created_by_role": doc.get("created_by_role") or "",
         "created_at": doc.get("created_at") or "",
         "updated_at": doc.get("updated_at") or "",
     }
@@ -4912,6 +4916,82 @@ async def put_forge_training_config(
 # ---- Retrieval helper — used by _forge_ai_narrative ------------------------
 
 _TOKEN_RE = re.compile(r"[a-zA-Z0-9]{3,}")
+
+
+# ---- Analyst refinement (RLHF-lite) ---------------------------------------
+# After NivX Cognis AI generates a report, the analyst can edit the narrative
+# / recommendations and save the refined version as a training example. Any
+# authenticated analyst (admin or employee) can submit a refinement — it is
+# stored in the same collection with `source="refinement"` and the original
+# AI narrative is preserved on `ai_original` for audit / diff. On the next
+# similar case, `find_matching_forge_examples` will retrieve this refinement
+# as a few-shot exemplar, so Cognis AI's output improves over time.
+
+class ForgeRefinement(BaseModel):
+    title: str = ""                       # auto-suggested if empty
+    case_type: str = "generic"
+    tags: list[str] = Field(default_factory=list)
+    raw_data: str                          # original alert/log the report was generated on
+    narrative: str                         # ANALYST-REFINED narrative (what "good" looks like)
+    recommendations: list[str] = Field(default_factory=list)
+    ai_original: str = ""                  # AI-generated narrative (kept for audit)
+    ai_model: str = ""                     # gemini-3-flash-preview | gemini-3.5-flash | ""
+    analyst_notes: str = ""
+
+
+@api_router.post("/forge/training/refinements")
+async def submit_forge_refinement(
+    payload: ForgeRefinement,
+    user: dict = Depends(require_role("admin", "employee")),
+):
+    """Save an analyst-refined investigation report as a training example.
+
+    Retrievable by future AI generations (few-shot). Requires an authenticated
+    analyst identity — admin or employee — so we always know who taught what.
+    """
+    raw = (payload.raw_data or "").strip()
+    narrative = (payload.narrative or "").strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="raw_data is required")
+    if not narrative:
+        raise HTTPException(status_code=400, detail="narrative (refined report) is required")
+
+    # Auto-suggest a title if the analyst didn't set one.
+    title = (payload.title or "").strip()
+    if not title:
+        # Try first log line, else timestamp+case_type, else first 60 chars.
+        first_line = next((ln.strip() for ln in raw.splitlines() if ln.strip()), "")[:120]
+        title = first_line or f"Refinement · {payload.case_type} · {now_iso()[:19]}"
+
+    now = now_iso()
+    doc = {
+        "_id": str(uuid.uuid4()),
+        "title": title[:200],
+        "case_type": (payload.case_type or "generic").strip().lower()[:40],
+        "tags": [str(t)[:40] for t in (payload.tags or [])][:20],
+        "raw_data": raw[:_FORGE_MAX_TEXT],
+        "narrative": narrative[:_FORGE_MAX_TEXT],
+        "recommendations": [str(r)[:500] for r in (payload.recommendations or [])][:30],
+        "analyst_notes": (payload.analyst_notes or "")[:5000],
+        "active": True,
+        "attachments": [],
+        "source": "refinement",
+        "ai_original": (payload.ai_original or "")[:_FORGE_MAX_TEXT],
+        "ai_model": (payload.ai_model or "").strip()[:60],
+        "created_by": user.get("email") or user.get("id") or "analyst",
+        "created_by_role": user.get("role") or "employee",
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.forge_training_examples.insert_one(doc)
+    return {
+        "ok": True,
+        "id": doc["_id"],
+        "title": doc["title"],
+        "case_type": doc["case_type"],
+        "created_by": doc["created_by"],
+        "created_at": doc["created_at"],
+    }
 
 
 def _tokenize_for_match(text: str) -> set[str]:

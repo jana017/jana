@@ -1,0 +1,29 @@
+{
+  "summary": "Iter 31 — RLHF-style analyst refinement loop verified end-to-end. Backend: 9/9 pytest cases pass (auth guard, 400 validation for missing raw_data/narrative, doc persistence with source='refinement' + ai_original + ai_model + created_by/role, admin list surfaces refinements, integration test confirms new similar-shape AI report keeps factual fidelity — no refinement-side IOC/host leakage — and picks up new alert's own facts, plus regression on offline report, ioc-lookup-batch, admin training list, OCR endpoint). Frontend E2E on /nivx-forge: unauth Refine click → correct login-required toast + dialog stays closed; after admin login the Refine dialog opens pre-populated (title from first log line 'WIN-DEV-11...', case_type auto-detected='mixed', tags = top 5 extracted IOCs, narrative pre-filled, recs pre-filled from 'Recommendations:' split); Save → dialog closes and success toast quotes the saved title. All new data-testids (forge-report-refine, forge-refine-dialog/title/case/tags/narrative/recs/notes/cancel/submit) present; all pre-existing testids (forge-report-generate/copy/download/engine/case/mode-badge) intact.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter31_refinements.py",
+    "/app/test_reports/pytest/iter31.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now ~6800 lines — refinement + forge training routes should be moved into a dedicated router module (repeated from iter 29/30). Not blocking.",
+    "POST /api/forge/training/refinements has no rate limit / abuse control. Since it's role-gated (admin+employee) risk is low, but a per-user daily cap (e.g. 200/day) would prevent accidental training-set flooding.",
+    "In InvestigationReport.jsx openRefine(), ai_original is only captured when engine==='ai'. Fine, but consider always storing the pre-edit narrative so audits work in offline mode too."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter31_refinements.py"],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% — auth-guard, prefill, submit, regression testids all verified"},
+  "test_credentials": "admin@nivxmachines.com / NivX@Admin2025",
+  "seed_data_creation": "One TEST_iter31 refinement created via pytest is cleaned up in fixture teardown; one E2E-created refinement was manually deleted post-run. No residual test data.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Correct localStorage token key for the frontend is 'nivx_token' (see /app/frontend/src/lib/auth.js) — NOT 'token' or 'nivx_admin_token'. Login endpoint returns {access_token, user{role}}. Refine dialog is inside <Dialog> from shadcn — use force=True when clicking submit. Investigation report auto-detects case_type; 'mixed' happens when both malware sha256 + IP indicators are present. Offline mode is fast and enough to exercise the Refine flow; AI mode adds ~10-15s. Backend endpoint /api/forge/training/refinements accepts both admin and employee roles and returns {ok, id, title, case_type, created_by, created_at}.",
+  "rca of the issue": "N/A — no bugs found. First E2E attempt failed because tests wrote token to 'token'/'nivx_admin_token' keys while frontend reads 'nivx_token'; corrected in the re-run.",
+  "verified_data_testids": [
+    "forge-report-refine", "forge-refine-dialog", "forge-refine-title",
+    "forge-refine-case", "forge-refine-tags", "forge-refine-narrative",
+    "forge-refine-recs", "forge-refine-notes", "forge-refine-cancel",
+    "forge-refine-submit"
+  ]
+}
