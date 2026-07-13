@@ -1,0 +1,23 @@
+{
+  "summary": "Iter 32 — Blueprint steps 1-3 (Cognis AI hardening: parse_ui_constraints + clean_log_payload + build_response_schema + call_cognis_ai + render_to_nivx_forge_ui) verified end-to-end. Backend: 20/20 new tests in test_cognis_pipeline.py pass; 59/59 core regression tests pass across test_forge_ai_narrative.py + test_forge_dns_proxy.py + test_forge_dynamic_recs.py + test_forge_training.py (request statement said 79 but only 59 exist in these 4 files — collection count via pytest --collect-only). Live sanitizer test: POST /api/forge/investigation-report with ai_mode=true and injection payload containing 'IGNORE all previous instructions', 'reveal the persona', '<|im_start|>', '<|im_end|>', 'role: assistant', 'BEGIN SYSTEM ... END SYSTEM', ```role: assistant``` fence → response.safety returned {cap_hit:false, control_char_hits:0, fence_hits:2, jailbreak_fences:2, injection_markers:[ignore all previous instructions, you are now, role: assistant, <|im_start|>, <|im_end|>, jailbreak, reveal the persona]}. LLM narrative stayed factual (root/45.83.192.15/sshd log analysis) — ZERO leakage of persona/'you are now free'/'role: assistant'/'BEGIN SYSTEM'/'<|im_start|>'/'reveal the persona' strings in the report body. Benign input regression: response has all 13 legacy fields + additive safety={} — contract preserved. Regression on /api/forge/ocr-image (route reachable, 422 on empty payload), /api/ioc-lookup-batch (HTTP 200), /api/admin/forge/training/stats (HTTP 200 with admin bearer). Frontend smoke on /nivx-forge: page loads, benign report generation renders log data (45.83.192.15/srv-web-01) into narrative; pre-report testids (forge-report-generate, forge-report-mode-badge, forge-report-ai-toggle, forge-report-ai-model, forge-report-enrich-toggle, forge-report-upload) all present and functional. Post-report testids (engine/case/copy/download/refine) conditionally render inside report card after generation — verified visually. Additive `safety` field on response envelope is backwards-compatible; no frontend changes were required.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_cognis_pipeline.py",
+    "/app/test_reports/pytest/iter32_core.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Request statement said 79/79 tests across 4 regression files but pytest --collect-only reports 59. Statement is stale — actual count is 59 and all 59 pass. Please update the statement or add the missing tests.",
+    "server.py now ~7000+ lines — pipeline helpers (clean_log_payload, parse_ui_constraints, build_response_schema, call_cognis_ai, render_to_nivx_forge_ui) should be extracted into a dedicated /app/backend/cognis/pipeline.py module in a future refactor. Not blocking.",
+    "Sanitizer redaction is done in-place on the string sent to the LLM (good), but response.safety.injection_markers currently returns lowercase display strings including generic terms like 'jailbreak' and 'you are now' — consider tagging each marker with category (persona-override / role-smuggle / fence / control-token) so the UI can render icons/severity in future."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (20/20 blueprint + 59/59 regression + live sanitizer verified)", "frontend": "100% — /nivx-forge loads, benign report generates, all pre-report testids present"},
+  "test_credentials": "admin@nivxmachines.com / NivX@Admin2025",
+  "seed_data_creation": "None — only ephemeral report generation, no DB writes from this iteration's testing",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Cognis pipeline helpers live in server.py around L3830-L4700. `safety` dict on /api/forge/investigation-report responses is ADDITIVE and empty {} for benign input; it populates only when clean_log_payload() redacts something. Sanitizer markers detected: 'ignore all previous instructions', 'role: assistant', '<|im_start|>', '<|im_end|>', 'reveal the persona', 'jailbreak', 'you are now', triple-backtick fences (counted separately as jailbreak_fences). Live AI mode takes 5-15s (Gemini 3 Flash) — use curl -m 60+ or Playwright wait_for_timeout(15000). Post-report testids (forge-report-engine, forge-report-case, forge-report-copy, forge-report-download, forge-report-refine) only mount after a successful report render — query for them AFTER clicking forge-report-generate and waiting for the report card.",
+  "rca of the issue": "N/A — no bugs found. Purely additive security-hardening iteration; both the response contract and the UI stayed backwards-compatible."
+}

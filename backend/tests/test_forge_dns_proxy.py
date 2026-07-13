@@ -41,7 +41,13 @@ class TestCaseType:
         assert r.status_code == 200, r.text
         j = r.json()
         assert j["case_type"] == "malware"
-        assert any("Remove the piece of malware" in x for x in j["recommendations"])
+        # Dynamic recommendation engine (iteration_27+) emits an EDR/AV scan
+        # rule for hash-only malware cases where quarantine was not observed.
+        recs = j["recommendations"]
+        assert any(
+            ("antivirus/EDR scan" in x) or ("full scan" in x.lower())
+            for x in recs
+        ), recs
 
     def test_dns_proxy_case(self):
         r = _post({
@@ -66,10 +72,15 @@ class TestCaseType:
         j = r.json()
         assert j["case_type"] == "mixed"
         recs = j["recommendations"]
-        assert any("Remove the piece of malware" in x for x in recs)
-        assert any("Secure Access/Umbrella" in x for x in recs)
-        # Dedup: lead-in "Determine if the detected activity was authorized or expected." appears once
-        assert sum(1 for x in recs if x.startswith("Determine if the detected activity")) == 1
+        # Dynamic engine emits an EDR/AV scan or persistence rule for the
+        # malware side, and an Umbrella/Secure-Access rule for the DNS side.
+        assert any(
+            ("antivirus/EDR scan" in x) or ("Autoruns" in x)
+            for x in recs
+        ), recs
+        assert any("Secure Access/Umbrella" in x for x in recs), recs
+        # Dedup: the "authorized or expected" opener appears exactly once.
+        assert sum(1 for x in recs if "authorized or expected" in x) == 1
 
 
 # --- Format parser --------------------------------------------------------
