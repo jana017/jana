@@ -43,7 +43,7 @@ export default function Navbar() {
   useEffect(() => {
     const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 800));
     const handle = idle(() => {
-      ["/blog", "/learn", "/threat-intelligence", "/cybersecurity-101", "/nivx-forge", "/threatbox", "/employee", "/admin"].forEach(prefetchRoute);
+      ["/blog", "/learn", "/cybersecurity-101", "/threatbox", "/employee", "/admin"].forEach(prefetchRoute);
     });
     return () => {
       if (window.cancelIdleCallback) window.cancelIdleCallback(handle);
@@ -64,7 +64,6 @@ export default function Navbar() {
     else el.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  const isIntel = location.pathname === "/threat-intelligence";
   const isKb = location.pathname.startsWith("/cybersecurity-101");
   const isBlog = location.pathname === "/blog" || location.pathname.startsWith("/blog/");
   const isLearn = location.pathname.startsWith("/learn") || isKb || isBlog;
@@ -85,56 +84,6 @@ export default function Navbar() {
               {l.label}
             </button>
           ))}
-          <Link
-            to="/threat-intelligence"
-            data-testid="nav-threat-intelligence"
-            onMouseEnter={() => prefetchRoute("/threat-intelligence")}
-            onFocus={() => prefetchRoute("/threat-intelligence")}
-            className="group relative inline-flex items-center gap-1.5 text-sm font-bold transition-all hover:-translate-y-0.5"
-          >
-            <span
-              className="relative flex h-2 w-2"
-              aria-hidden="true"
-            >
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-70"></span>
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500 ring-2 ring-red-100"></span>
-            </span>
-            <span
-              className="bg-gradient-to-r from-[#0F172A] via-[#F5821F] to-[#F5821F] bg-clip-text text-transparent bg-[length:200%_100%] bg-[position:0%_50%] group-hover:bg-[position:100%_50%] transition-[background-position] duration-500"
-            >
-              Threat Intelligence
-            </span>
-            <span
-              aria-hidden="true"
-              className={`absolute -bottom-1 left-0 h-[2px] bg-gradient-to-r from-[#F5821F] to-[#DC2626] transition-all duration-300 ${isIntel ? "w-full" : "w-0 group-hover:w-full"}`}
-            ></span>
-          </Link>
-          <Link
-            to="/nivx-forge"
-            data-testid="nav-cyberlab"
-            onMouseEnter={() => prefetchRoute("/nivx-forge")}
-            onFocus={() => prefetchRoute("/nivx-forge")}
-            className="group relative inline-flex items-center gap-2 text-sm font-bold transition-all hover:-translate-y-0.5"
-          >
-            <img
-              src="/favicon-32x32.png"
-              alt=""
-              aria-hidden="true"
-              width="18"
-              height="18"
-              className="shrink-0 rounded-[3px] group-hover:scale-110 transition-transform"
-              style={{ marginRight: "0px" }}
-            />
-            <span
-              className="bg-gradient-to-r from-[#2E7DF5] via-[#2E7DF5] to-[#F5821F] bg-clip-text text-transparent bg-[length:200%_100%] bg-[position:0%_50%] group-hover:bg-[position:100%_50%] transition-[background-position] duration-500"
-            >
-              NivX Forge
-            </span>
-            <span
-              aria-hidden="true"
-              className={`absolute -bottom-1 left-0 h-[2px] bg-gradient-to-r from-[#2E7DF5] to-[#F5821F] transition-all duration-300 ${(location.pathname === "/nivx-forge" || location.pathname === "/cyberlab") ? "w-full" : "w-0 group-hover:w-full"}`}
-            ></span>
-          </Link>
           <Link
             to="/threatbox"
             data-testid="nav-threatbox"
@@ -302,21 +251,6 @@ export default function Navbar() {
           <button data-testid="mobile-nav-careers" onClick={() => { go("careers"); setOpen(false); }} className="text-left text-sm font-medium text-slate-700">Careers</button>
           <button data-testid="mobile-nav-support" onClick={() => { go("support"); setOpen(false); }} className="text-left text-sm font-medium text-slate-700">Support</button>
           <Link to="/learn" onClick={() => setOpen(false)} className="text-left text-sm font-medium text-slate-700">Learn</Link>
-          <Link to="/threat-intelligence" onClick={() => setOpen(false)} className="inline-flex items-center gap-2 text-left text-sm font-bold">
-            <span className="relative flex h-2 w-2" aria-hidden="true">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-70"></span>
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500"></span>
-            </span>
-            <span className="bg-gradient-to-r from-[#0F172A] to-[#F5821F] bg-clip-text text-transparent">
-              Threat Intelligence
-            </span>
-          </Link>
-          <Link to="/nivx-forge" data-testid="mobile-nav-cyberlab" onClick={() => setOpen(false)} className="inline-flex items-center gap-2 text-left text-sm font-bold">
-            <img src="/favicon-32x32.png" alt="" aria-hidden="true" width="18" height="18" className="rounded-[3px]" />
-            <span className="bg-gradient-to-r from-[#2E7DF5] to-[#F5821F] bg-clip-text text-transparent">
-              NivX Forge
-            </span>
-          </Link>
           <Link to="/threatbox" data-testid="mobile-nav-threatbox" onClick={() => setOpen(false)} className="inline-flex items-center gap-2 text-left text-sm font-bold">
             <FileSearch className="w-4 h-4 text-[#DC2626] drop-shadow-[0_0_6px_rgba(220,38,38,0.45)]" strokeWidth={2.4} />
             <span className="bg-gradient-to-r from-[#DC2626] to-[#F5821F] bg-clip-text text-transparent">

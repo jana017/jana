@@ -1,6 +1,17 @@
 # NivX Machines — PRD
 
 
+## Implemented (2026-02-13 — Removed Threat Intelligence / NivX Forge from main website nav)
+- **Desktop navbar** (`Navbar.jsx`): dropped the standalone `nav-threat-intelligence` and `nav-cyberlab` `<Link>` blocks. Public marketing header now shows only About / Services / Gallery / Careers / Support / Learn / ThreatBox / Login. Unused `isIntel` variable removed and the prefetch list slimmed down accordingly.
+- **Mobile menu** (`Navbar.jsx`): the corresponding two mobile Links (`mobile-nav-cyberlab` + the inline Threat Intelligence Link) were dropped.
+- **Routes preserved**: `/threat-intelligence`, `/nivx-forge`, `/cyberlab`, `/detonate`, `/payload-lab` still resolve — used internally by `/console` (with `hideChrome`), share pages, admin UI scanner, SOC dashboard, and any existing user bookmarks. Only the marketing-side discovery entry-points were removed, as requested.
+- **Verified in preview**:
+  - Desktop `/` — testids `nav-threat-intelligence` and `nav-cyberlab` return 0 matches. Only `nav-threatbox` remains.
+  - Mobile menu — `mobile-nav-cyberlab` returns 0 matches. Only `mobile-nav-threatbox` remains.
+  - Direct URL `/threat-intelligence` still loads with correct SEO title.
+
+
+
 ## Implemented (2026-02-13 — Standalone `/console` platform)
 - **New route `/console`** wires up the previously-empty `Console.jsx` shell as a two-tab (Threat Intelligence · NivX Forge) tool workspace, ready for a future DNS mapping (e.g. `console.nivxmachines.com` → `/console`).
 - **Role gate**: the page calls `/auth/me` on mount; unauthenticated users are redirected to `/login` (with `from=/console` state), and any role other than `admin` / `employee` sees a **Restricted Console** panel (`data-testid=console-denied`) with "Back to Home" and "Sign out" actions.
