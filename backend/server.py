@@ -4712,6 +4712,7 @@ async def list_forge_training_examples(
     case_type: Optional[str] = None,
     q: Optional[str] = None,
     active: Optional[bool] = None,
+    source: Optional[str] = None,  # "authored" | "refinement" | None (= all)
     admin: dict = Depends(require_role("admin")),
 ):
     query: dict = {}
@@ -4719,14 +4720,26 @@ async def list_forge_training_examples(
         query["case_type"] = case_type.strip().lower()
     if active is not None:
         query["active"] = bool(active)
+    if source:
+        s = source.strip().lower()
+        if s == "authored":
+            # Legacy admin-added rows have no `source` field OR source='authored'.
+            query["$or"] = [{"source": {"$exists": False}}, {"source": "authored"}]
+        else:
+            query["source"] = s
     if q:
         needle = re.escape(q.strip())
-        query["$or"] = [
+        text_filter = [
             {"title":     {"$regex": needle, "$options": "i"}},
             {"tags":      {"$regex": needle, "$options": "i"}},
             {"narrative": {"$regex": needle, "$options": "i"}},
             {"raw_data":  {"$regex": needle, "$options": "i"}},
         ]
+        if "$or" in query:
+            # Combine both $or filters into $and to preserve source filter.
+            query = {"$and": [{"$or": query.pop("$or")}, {"$or": text_filter}], **query}
+        else:
+            query["$or"] = text_filter
     cur = db.forge_training_examples.find(query).sort("updated_at", -1).limit(300)
     return {"examples": [_forge_training_serialize(d) async for d in cur]}
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2, Upload, Save, X, Search, FileText, Image as ImageIcon, Loader2, RefreshCw, BookOpenText, Sparkles } from "lucide-react";
+import { Plus, Trash2, Upload, Save, X, Search, FileText, Image as ImageIcon, Loader2, RefreshCw, BookOpenText, Sparkles, GitCompare, GraduationCap } from "lucide-react";
 import { api, formatApiErrorDetail } from "@/lib/api";
 
 /**
@@ -23,6 +23,11 @@ const EMPTY_EXAMPLE = {
   analyst_notes: "",
   active: true,
   attachments: [],
+  source: "authored",
+  ai_original: "",
+  ai_model: "",
+  created_by: "",
+  created_by_role: "",
 };
 
 const CASE_TYPES = [
@@ -47,18 +52,20 @@ export default function AdminForgeTraining() {
   const [uploading, setUploading] = useState(false);
   const [search, setSearch] = useState("");
   const [caseFilter, setCaseFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
+  const [showDiff, setShowDiff] = useState(false);
   const [persona, setPersona] = useState("");
   const [personaSaving, setPersonaSaving] = useState(false);
   const fileRef = useRef(null);
 
   const loadAll = useCallback(async () => {
     try {
-      const { data: list } = await api.get("/admin/forge/training/examples", { params: { case_type: caseFilter || undefined, q: search || undefined } });
+      const { data: list } = await api.get("/admin/forge/training/examples", { params: { case_type: caseFilter || undefined, q: search || undefined, source: sourceFilter || undefined } });
       setExamples(list.examples || []);
     } catch (e) {
       toast.error(`Load examples failed: ${formatApiErrorDetail(e.response?.data?.detail) || e.message}`);
     }
-  }, [caseFilter, search]);
+  }, [caseFilter, search, sourceFilter]);
 
   const loadPersona = useCallback(async () => {
     try {
@@ -222,10 +229,15 @@ export default function AdminForgeTraining() {
                 data-testid="forge-training-search"
               />
             </div>
-            <div className="flex items-center gap-2">
-              <select value={caseFilter} onChange={(e) => setCaseFilter(e.target.value)} className="text-xs border border-slate-200 rounded px-2 py-1 bg-white" data-testid="forge-training-filter">
+            <div className="flex items-center gap-2 flex-wrap">
+              <select value={caseFilter} onChange={(e) => setCaseFilter(e.target.value)} className="text-xs border border-slate-200 rounded px-2 py-1 bg-white flex-1 min-w-0" data-testid="forge-training-filter">
                 <option value="">All case types</option>
                 {CASE_TYPES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+              </select>
+              <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} className="text-xs border border-slate-200 rounded px-2 py-1 bg-white" data-testid="forge-training-source-filter">
+                <option value="">All sources</option>
+                <option value="authored">Authored (admin)</option>
+                <option value="refinement">Refinements (analyst)</option>
               </select>
               <button onClick={loadAll} className={`${btnCls} border-slate-200 text-slate-600 hover:border-slate-400`} data-testid="forge-training-refresh">
                 <RefreshCw className="w-3 h-3" />
@@ -245,8 +257,17 @@ export default function AdminForgeTraining() {
                     <span className="text-sm font-semibold text-slate-800 truncate">{ex.title || "Untitled"}</span>
                     {!ex.active && <span className="text-[9px] uppercase tracking-wide px-1 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">inactive</span>}
                   </div>
-                  <div className="flex items-center gap-1 mt-0.5">
+                  <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                     <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">{ex.case_type}</span>
+                    {ex.source === "refinement" ? (
+                      <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200 inline-flex items-center gap-0.5" title="Refined by analyst">
+                        <GraduationCap className="w-2.5 h-2.5" /> Refinement
+                      </span>
+                    ) : (
+                      <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200" title="Authored by admin">
+                        Authored
+                      </span>
+                    )}
                     {(ex.attachments || []).length > 0 && (
                       <span className="text-[10px] text-slate-500 inline-flex items-center gap-0.5">
                         <FileText className="w-2.5 h-2.5" /> {ex.attachments.length}
@@ -261,8 +282,20 @@ export default function AdminForgeTraining() {
 
         <form onSubmit={submit} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4" data-testid="forge-training-form">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-slate-800">{selected ? "Edit example" : "New example"}</h2>
+            <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+              {selected ? "Edit example" : "New example"}
+              {selected && form.source === "refinement" && (
+                <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200 inline-flex items-center gap-1" title={`Refined by ${form.created_by || "analyst"}`}>
+                  <GraduationCap className="w-3 h-3" /> Refinement · {form.created_by || "analyst"}
+                </span>
+              )}
+            </h2>
             <div className="flex items-center gap-1.5">
+              {selected && form.source === "refinement" && (form.ai_original || "").trim() && (
+                <button type="button" onClick={() => setShowDiff((v) => !v)} data-testid="forge-training-toggle-diff" className={`${btnCls} border-violet-300 text-violet-600 hover:bg-violet-50`}>
+                  <GitCompare className="w-3.5 h-3.5" /> {showDiff ? "Hide diff" : "Diff vs AI original"}
+                </button>
+              )}
               {selected && (
                 <button type="button" onClick={remove} className={`${btnCls} border-red-200 text-red-600 hover:bg-red-50`} data-testid="forge-training-delete">
                   <Trash2 className="w-3.5 h-3.5" /> Delete
@@ -273,6 +306,24 @@ export default function AdminForgeTraining() {
               </button>
             </div>
           </div>
+
+          {/* Diff panel — only visible for refinements when the analyst has toggled it on */}
+          {selected && showDiff && form.source === "refinement" && (form.ai_original || "").trim() && (
+            <div data-testid="forge-training-diff-panel" className="grid md:grid-cols-2 gap-3 rounded-md border border-violet-200 bg-violet-50/40 p-3">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-violet-700 mb-1 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" /> NivX Cognis AI original {form.ai_model && <span className="normal-case tracking-normal text-violet-600">· {form.ai_model}</span>}
+                </div>
+                <pre className="text-[11px] leading-relaxed text-slate-700 whitespace-pre-wrap bg-white border border-slate-200 rounded p-2 max-h-64 overflow-y-auto font-sans">{form.ai_original}</pre>
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700 mb-1 flex items-center gap-1">
+                  <GraduationCap className="w-3 h-3" /> Analyst refined
+                </div>
+                <pre className="text-[11px] leading-relaxed text-slate-900 whitespace-pre-wrap bg-white border border-emerald-200 rounded p-2 max-h-64 overflow-y-auto font-sans">{form.narrative}</pre>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-2">

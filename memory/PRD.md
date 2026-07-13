@@ -1,6 +1,14 @@
 # NivX Machines — PRD
 
 
+## Implemented (2026-02-13 — Refinements filter + diff viewer in Training Center)
+- `/admin` → *Forge Training* now has a **Source** filter dropdown (`forge-training-source-filter`) with `All`, `Authored (admin)`, `Refinements (analyst)`. Backend `GET /api/admin/forge/training/examples?source=` supports the filter (legacy rows without a `source` field are treated as `authored`).
+- Each list item shows a **REFINEMENT** or **AUTHORED** badge next to the case-type pill.
+- When editing a refinement, the header shows the refinement badge with `created_by` (analyst identity). A new **"Diff vs AI original"** button (`forge-training-toggle-diff`) reveals a side-by-side diff panel (`forge-training-diff-panel`) with the original NivX Cognis AI text (violet) next to the analyst's refined version (emerald) — so admins can audit exactly what an analyst improved.
+- Combined filters (source + case_type + free-text `q`) work together via `$and`/`$or` composition in the Mongo query.
+
+
+
 ## Implemented (2026-02-13 — Analyst refinement / RLHF loop)
 - New "Refine & teach NivX Cognis AI" flow in the Investigation Report output panel — after any AI-generated report, an analyst can open a Dialog, edit the narrative + recommendations, add tags/notes, and save. The refined version is stored in the `forge_training_examples` collection with `source="refinement"` (distinct from admin-authored `authored`), `ai_original` (the raw AI output kept for audit / diff) and `ai_model` (which model produced it).
 - On the next similar case, `find_matching_forge_examples` retrieves this refinement as a few-shot exemplar → Cognis AI mirrors the analyst's tone/structure/phrasing while keeping factual fidelity (no IOC/host/date leakage).
