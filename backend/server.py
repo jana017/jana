@@ -4331,18 +4331,136 @@ class ForgeReportInput(BaseModel):
     data: str                  # raw logs / text (uploaded file content OR pasted)
     enrich: bool = True        # run OSINT against extracted IOCs
     max_iocs: int = 15         # cap IOC enrichment
+    ai_mode: bool = False      # when true, LLM writes the narrative paragraphs
+    ai_model: str = "gemini-3-flash-preview"  # gemini-3-flash-preview | gemini-3.5-flash
+
+
+# System prompt for the AI-narrative mode. Locks the model to strict
+# evidence-only prose — no hallucinated indicators, actor names, dates,
+# families or delivery vectors beyond what the deterministic engine
+# supplied in the evidence bundle.
+_FORGE_AI_SYSTEM = (
+    "You are a senior MDR / SOC analyst at NivX Machines writing customer-facing "
+    "investigation reports. You will receive (a) a raw log excerpt, (b) an EVIDENCE "
+    "JSON containing deterministically extracted facts (IOCs, timestamps, users, "
+    "devices, actions and OSINT verdicts), and (c) the user's free-form format "
+    "instruction.\n\n"
+    "STRICT RULES — obey without exception:\n"
+    " 1. Use ONLY the facts present in the raw log or the EVIDENCE JSON. Never "
+    "    fabricate IOCs, hostnames, usernames, hashes, dates, malware family names, "
+    "    threat-actor attribution, delivery vectors (drive-by, phishing, etc.) or "
+    "    MITRE techniques that are not in the evidence.\n"
+    " 2. If a detail is not in the evidence, do NOT include it. Missing data must be "
+    "    silently omitted — never guessed.\n"
+    " 3. Follow the user's format hint EXACTLY: N paragraphs, N lines, N sentences, "
+    "    bullet points, or 'with all details'. If no format was specified, default "
+    "    to 2 paragraphs.\n"
+    " 4. Do NOT include any Recommendations / Remediation section — those are "
+    "    appended separately by the deterministic engine after your narrative.\n"
+    " 5. Do NOT use markdown headings. Plain prose (or plain bullet dashes) only.\n"
+    " 6. Tone: factual, analyst-grade, third-person. No hype, no filler."
+)
+
+
+async def _forge_ai_narrative(raw: str,
+                              instructions: str,
+                              case_type: str,
+                              fmt: dict,
+                              iocs: list[str],
+                              enriched: list[dict],
+                              context: dict,
+                              stats: dict,
+                              model_id: str) -> str:
+    """Call the Emergent LLM to compose the narrative paragraphs.
+
+    Returns the narrative body only — the caller appends the deterministic
+    Recommendations block afterwards.
+    """
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(status_code=503, detail="AI mode requires EMERGENT_LLM_KEY to be configured")
+    if model_id not in ("gemini-3-flash-preview", "gemini-3.5-flash"):
+        model_id = "gemini-3-flash-preview"
+
+    # Trim per-IOC evidence to keep the prompt small.
+    compact_enriched = []
+    for r in (enriched or [])[:20]:
+        rep = r.get("reputation") or {}
+        vt = rep.get("vt") or {}
+        ab = rep.get("abuseipdb") or {}
+        en = r.get("enrichment") or {}
+        compact_enriched.append({
+            "value": r.get("value"),
+            "type": r.get("type"),
+            "vt_malicious": vt.get("malicious") if not vt.get("error") else None,
+            "vt_categories": list((vt.get("categories") or {}).values())[:5] if isinstance(vt.get("categories"), dict) else [],
+            "vt_threat_names": (vt.get("popular_threat_names") or [])[:5],
+            "abuseipdb_score": ab.get("score") if not ab.get("error") else None,
+            "geo_country": (en.get("geo") or {}).get("country") or (en.get("geo") or {}).get("country_name"),
+            "in_internal_db": bool(r.get("local_db")),
+        })
+
+    evidence = {
+        "case_type": case_type,
+        "format_hint": fmt,
+        "timestamps": (context.get("timestamps") or [])[:10],
+        "users": (context.get("users") or [])[:5],
+        "emails": (context.get("emails") or [])[:5],
+        "devices": (context.get("devices") or [])[:5],
+        "action_counts": dict(context.get("actions") or []),
+        "line_count": context.get("line_count"),
+        "iocs": iocs[:20],
+        "hit_counts": _count_target_hits(raw, iocs),
+        "osint_verdict": {
+            "malicious": stats.get("malicious", 0),
+            "suspicious": stats.get("suspicious", 0),
+            "clean": stats.get("clean", 0),
+            "known_internal": stats.get("known_internal", 0),
+        },
+        "enriched": compact_enriched,
+    }
+
+    fmt_hint = instructions.strip() or "Write in 2 paragraphs."
+    prompt = (
+        f"USER FORMAT INSTRUCTION: {fmt_hint}\n\n"
+        f"RAW LOG EXCERPT (verbatim, do not quote back — reference only):\n"
+        f"```\n{raw[:4000]}\n```\n\n"
+        f"EVIDENCE JSON (authoritative — use these facts, no others):\n"
+        f"```json\n{json.dumps(evidence, default=str)[:6000]}\n```\n\n"
+        f"Compose the investigation narrative now. Remember: no fabrication, no "
+        f"markdown headings, no recommendations section."
+    )
+
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        sid = f"forge-report-{hash(raw[:200] + instructions) & 0xffffffff:x}"
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=sid,
+            system_message=_FORGE_AI_SYSTEM,
+        ).with_model("gemini", model_id)
+        resp = await chat.send_message(UserMessage(text=prompt))
+        text = resp if isinstance(resp, str) else str(resp)
+        return text.strip()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"forge AI narrative failed ({model_id}): {e}")
+        raise HTTPException(status_code=502, detail=f"AI narrative generation failed: {e}")
 
 
 @api_router.post("/forge/investigation-report")
 async def forge_investigation_report(payload: ForgeReportInput):
-    """Generate a deterministic MDR-style investigation report.
+    """Generate an investigation report.
 
-    Rule-based only — no LLM. Extracts IOCs / users / devices / timestamps
-    from `data`, runs OSINT against IOCs (unless `enrich=false`), classifies
-    the case (malware / dns_proxy / mixed / generic), and shapes the output
-    per the user's free-form format hint in `instructions` (any of: N
-    paragraphs, N lines, N sentences, bullet points, or "with all details").
-    Case-appropriate remediation recommendations are appended.
+    Deterministic by default — rule-based extraction of IOCs / users / devices /
+    timestamps and case classification (malware / dns_proxy / mixed / generic),
+    with rule-driven remediation recommendations composed from actual findings.
+
+    When `ai_mode=true`, the same deterministic evidence bundle is handed to
+    Gemini (3-flash or 3.5-flash) which composes ONLY the narrative paragraphs
+    — obeying strict "no fabrication, evidence-only" rules. The Recommendations
+    block remains deterministic (never LLM-authored) to keep customer-facing
+    advice auditable.
     """
     raw = (payload.data or "").strip()
     if not raw:
@@ -4369,16 +4487,31 @@ async def forge_investigation_report(payload: ForgeReportInput):
     stats = (_deterministic_ioc_summary(enriched)["stats"] if enriched else {}) or {}
     case_type = _classify_forge_case(raw, iocs, enriched)
     fmt = _parse_output_format(payload.instructions)
-    bank = _forge_5w1h_sentences(raw, iocs, enriched, context, case_type)
-    sentences = _flatten_5w1h(bank)
     recommendations = _dynamic_recommendations(case_type, raw, iocs, enriched, context, stats)
-    report = _compose_forge_report(fmt, sentences, recommendations)
+
+    if payload.ai_mode:
+        narrative = await _forge_ai_narrative(
+            raw=raw, instructions=payload.instructions,
+            case_type=case_type, fmt=fmt,
+            iocs=iocs, enriched=enriched, context=context, stats=stats,
+            model_id=payload.ai_model,
+        )
+        # Append deterministic Recommendations section — never LLM-authored.
+        report = narrative.rstrip() + "\n\nRecommendations:\n" + "\n".join(f"- {r}" for r in recommendations)
+        engine = "ai"
+    else:
+        bank = _forge_5w1h_sentences(raw, iocs, enriched, context, case_type)
+        sentences = _flatten_5w1h(bank)
+        report = _compose_forge_report(fmt, sentences, recommendations)
+        engine = "deterministic"
 
     return {
         "report": report,
         "instructions": payload.instructions or "",
         "format": fmt,
         "case_type": case_type,
+        "engine": engine,
+        "ai_model": payload.ai_model if payload.ai_mode else None,
         # legacy field — kept for backwards compatibility with the frontend
         "paragraph_count": (report.split("\n\nRecommendations")[0].count("\n\n") + 1) if fmt["mode"] == "paragraphs" else fmt.get("count", 0) or 0,
         "iocs_extracted": iocs,

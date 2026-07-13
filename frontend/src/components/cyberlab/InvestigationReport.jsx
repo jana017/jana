@@ -21,8 +21,10 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
   );
   const [data, setData] = useState("");
   const [enrich, setEnrich] = useState(true);
+  const [aiMode, setAiMode] = useState(true);   // AI narrative by default (matches Circuit quality)
+  const [aiModel, setAiModel] = useState("gemini-3-flash-preview");
   const [busy, setBusy] = useState(false);
-  const [report, setReport] = useState(null); // {report, iocs_extracted, stats, context, paragraph_count, generated_at}
+  const [report, setReport] = useState(null); // {report, iocs_extracted, stats, context, paragraph_count, generated_at, engine, ai_model}
   const [fileName, setFileName] = useState("");
   const fileRef = useRef(null);
 
@@ -60,11 +62,14 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
         data,
         enrich,
         max_iocs: 15,
+        ai_mode: aiMode,
+        ai_model: aiModel,
       });
       setReport(res);
       const fmt = res.format || {};
       const fmtLabel = fmt.mode === "bullets" ? "bullets" : `${fmt.count || 0} ${fmt.mode || "paras"}`;
-      toast.success(`Report generated · ${res.case_type || "generic"} case · ${res.iocs_extracted?.length || 0} IOC${res.iocs_extracted?.length === 1 ? "" : "s"} · ${fmtLabel}`);
+      const engineLabel = res.engine === "ai" ? `AI (${res.ai_model || aiModel})` : "offline";
+      toast.success(`Report generated · ${engineLabel} · ${res.case_type || "generic"} case · ${res.iocs_extracted?.length || 0} IOC${res.iocs_extracted?.length === 1 ? "" : "s"} · ${fmtLabel}`);
     } catch (e) {
       toast.error(`Report generation failed: ${formatApiErrorDetail(e.response?.data?.detail) || e.message}`);
     } finally { setBusy(false); }
@@ -80,7 +85,8 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
     if (!report?.report) return;
     const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     const fmt = report.format || {};
-    const header = `# NivX Forge — Offline Investigation Report\nGenerated: ${report.generated_at || new Date().toISOString()}\nCase type: ${report.case_type || "generic"}\nFormat: ${fmt.mode || "paragraphs"}${fmt.count ? ` × ${fmt.count}` : ""}${fmt.verbose ? " (verbose)" : ""}\n\n## Analyst instructions\n${report.instructions || "—"}\n\n## Extracted IOCs\n${(report.iocs_extracted || []).map((v) => `- ${v}`).join("\n") || "—"}\n\n## Report\n\n`;
+    const engineLine = report.engine === "ai" ? `Engine: AI (${report.ai_model || "gemini"})` : "Engine: Offline deterministic";
+    const header = `# NivX Forge — Investigation Report\nGenerated: ${report.generated_at || new Date().toISOString()}\n${engineLine}\nCase type: ${report.case_type || "generic"}\nFormat: ${fmt.mode || "paragraphs"}${fmt.count ? ` × ${fmt.count}` : ""}${fmt.verbose ? " (verbose)" : ""}\n\n## Analyst instructions\n${report.instructions || "—"}\n\n## Extracted IOCs\n${(report.iocs_extracted || []).map((v) => `- ${v}`).join("\n") || "—"}\n\n## Report\n\n`;
     const blob = new Blob([header + report.report + "\n"], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = `nivx-forge-report-${stamp}.md`; a.click();
@@ -105,13 +111,19 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
       <header className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-slate-800">
         <div className="flex items-center gap-2">
           <FileText className="w-4 h-4 text-cyan-400" />
-          <h3 className="text-sm font-semibold text-slate-100">Offline Investigation Report</h3>
-          <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-300">
-            No AI · Deterministic
-          </span>
+          <h3 className="text-sm font-semibold text-slate-100">Investigation Report</h3>
+          {aiMode ? (
+            <span data-testid="forge-report-mode-badge" className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border border-violet-500/40 bg-violet-500/10 text-violet-300 inline-flex items-center gap-1">
+              <Sparkles className="w-2.5 h-2.5" /> AI · {aiModel === "gemini-3.5-flash" ? "Gemini 3.5 Flash" : "Gemini 3 Flash"}
+            </span>
+          ) : (
+            <span data-testid="forge-report-mode-badge" className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-300">
+              Offline · Deterministic
+            </span>
+          )}
         </div>
         <p className="text-[11px] text-slate-500 max-w-xl">
-          Analyst-style MDR report from raw data/logs. IOCs are enriched against integrated OSINT (VirusTotal, AbuseIPDB, MalwareBazaar, URLhaus, ThreatFox, internal DB) and summarized deterministically — no LLM is called.
+          MDR-style investigation report from raw data/logs. IOC extraction, OSINT enrichment (VirusTotal, AbuseIPDB, MalwareBazaar, URLhaus, ThreatFox, internal DB), case classification and remediation recommendations are ALWAYS deterministic. Narrative paragraphs are written by Gemini in AI mode or a rule engine in offline mode.
         </p>
       </header>
 
@@ -176,16 +188,42 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <label className="inline-flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={enrich}
-              onChange={(e) => setEnrich(e.target.checked)}
-              data-testid="forge-report-enrich-toggle"
-              className="w-3.5 h-3.5 accent-cyan-500"
-            />
-            Enrich extracted IOCs against OSINT (VirusTotal / AbuseIPDB / MalwareBazaar / URLhaus / ThreatFox / internal DB)
-          </label>
+          <div className="flex flex-wrap items-center gap-4">
+            <label className="inline-flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={enrich}
+                onChange={(e) => setEnrich(e.target.checked)}
+                data-testid="forge-report-enrich-toggle"
+                className="w-3.5 h-3.5 accent-cyan-500"
+              />
+              Enrich IOCs via OSINT
+            </label>
+            <label className="inline-flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={aiMode}
+                onChange={(e) => setAiMode(e.target.checked)}
+                data-testid="forge-report-ai-toggle"
+                className="w-3.5 h-3.5 accent-violet-500"
+              />
+              <span className="inline-flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-violet-400" />
+                AI narrative (Gemini)
+              </span>
+            </label>
+            {aiMode && (
+              <select
+                value={aiModel}
+                onChange={(e) => setAiModel(e.target.value)}
+                data-testid="forge-report-ai-model"
+                className="text-xs bg-slate-950/60 border border-slate-700 focus:border-violet-500 outline-none rounded px-2 py-1 text-slate-200"
+              >
+                <option value="gemini-3-flash-preview">Gemini 3 Flash (fast)</option>
+                <option value="gemini-3.5-flash">Gemini 3.5 Flash (latest)</option>
+              </select>
+            )}
+          </div>
           <button
             type="button"
             onClick={generate}
@@ -202,6 +240,15 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
           <div data-testid="forge-report-output" className="mt-2 rounded-md border border-slate-800 bg-slate-950/60 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
               <div className="flex flex-wrap items-center gap-2">
+                {report.engine === "ai" ? (
+                  <span data-testid="forge-report-engine" className="text-[11px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded border border-violet-500/40 bg-violet-500/10 text-violet-300 inline-flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" /> AI · {report.ai_model === "gemini-3.5-flash" ? "3.5 Flash" : "3 Flash"}
+                  </span>
+                ) : (
+                  <span data-testid="forge-report-engine" className="text-[11px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-300">
+                    Offline
+                  </span>
+                )}
                 {caseType && (
                   <span data-testid="forge-report-case" className={`text-[11px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded border ${caseTone}`}>
                     {caseLabel}

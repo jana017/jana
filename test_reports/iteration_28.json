@@ -1,0 +1,23 @@
+{
+  "summary": "Validated AI-narrative mode on /api/forge/investigation-report (Gemini 3 Flash + 3.5 Flash) plus deterministic regression and sibling-endpoint regression. 10/10 backend pytest cases pass. Frontend /nivx-forge Playwright flow: AI toggle checked-by-default confirmed, model dropdown has both options, mode badge switches between 'AI · Gemini 3 Flash', 'AI · Gemini 3.5 Flash' and 'Offline · Deterministic', engine pill shows 'AI · 3.5 Flash' after AI generation and 'Offline' after deterministic generation. Toast wording matches spec (`Report generated · AI (gemini-3-flash-preview) · <case> case · N IOCs · <fmt>` / `... · offline · ...`).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_forge_ai_narrative.py",
+    "/app/test_reports/pytest/forge_ai_narrative.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py continues to grow (~6200 LOC). The _forge_* family (deterministic engine + _forge_ai_narrative + _FORGE_AI_SYSTEM prompt) is now ~700 LOC and would move cleanly into /app/backend/modules/forge_report.py without behavioural change.",
+    "_forge_ai_narrative: the model_id whitelist is duplicated between the Pydantic default and the runtime guard. Consider promoting it to a module-level constant (ALLOWED_FORGE_AI_MODELS) so adding a new Gemini model only needs one edit.",
+    "Response echoes payload.ai_model verbatim even when the runtime guard silently falls back to gemini-3-flash-preview. This means an unknown model_id returns ai_model='<unknown>' in the response while actually using the fallback — mildly misleading for auditability. Consider returning the effective model_id used.",
+    "The AI narrative prompt allows a 4000-char raw log slice + 6000-char evidence JSON — for very long uploads (log capped at 500KB) the deterministic evidence bundle is fine, but 4KB raw slice may miss late-line facts. Consider sliding-window or IOC-anchored slicing.",
+    "No server-side rate limiting on the AI endpoint. Since EMERGENT_LLM_KEY is billable, add a lightweight per-IP or per-session throttle before this hits customers."
+  ],
+  "updated_files": ["/app/backend/tests/test_forge_ai_narrative.py"],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "100% (all AI-mode UI checks passed)"},
+  "seed_data_creation": "None. Inline log samples.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "AI mode uses emergentintegrations LlmChat.with_model('gemini', model_id). Only two valid model_ids: gemini-3-flash-preview and gemini-3.5-flash. Unknown model_id must NOT 400 — the runtime guard silently falls back. Recommendations block is deterministic and appended AFTER the LLM narrative — the string 'Recommendations:' must appear in the report for both engines. Sibling endpoints (/api/iocs/batch-summary, /api/ioc-lookup-batch, /api/cyberlab/enrich-iocs) use payload key `values:[...]`; /api/ioc-ai-summary uses singular `value:`."
+}
