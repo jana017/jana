@@ -3890,51 +3890,255 @@ def _classify_forge_case(raw: str, iocs: list[str], enriched: list[dict]) -> str
     return "generic"
 
 
-_RECS_MALWARE: list[str] = [
-    "Determine if the detected activity was authorized or expected.",
-    "If this was not authorized or expected activity, NivX CSOC recommends you consider the following steps:",
-    "MDR recommends that the customer perform a full antivirus/EDR scan, review persistence mechanisms and scheduled tasks, validate whether the identified hashes exist elsewhere in the environment, and block the identified malicious hashes and associated network indicators where applicable.",
-    "Remove the piece of malware from the affected system.",
-    "Conduct a full scan on the device with your endpoint security solution.",
-    "Make sure systems are regularly backed-up.",
-    "Ensure that your systems are utilizing up to date virus definitions and operating system patches.",
-]
+# ---------------------------------------------------------------------------
+# Dynamic recommendations engine.
+# The final recommendation list is *composed* from the specific detection
+# findings — never a fixed template. Every case therefore produces a
+# different, evidence-grounded list of actions.
+#
+# Signals it reads:
+#   - `case_type`                                (malware / dns_proxy / mixed / generic)
+#   - `verdict_counts`      (mal / susp / clean)  from OSINT rollup
+#   - `action_c`            (blocked / allowed / …) parsed from the raw text
+#   - per-IOC enriched data:
+#       * VT categories        (malware / phishing / c2 / cryptomining / spyware / …)
+#       * VT popular threat names
+#       * VT malicious count
+#       * AbuseIPDB score
+#       * Hosting country
+#   - hash / URL / IP / domain split of the extracted IOCs
+#   - repeat volume            (× N connection count from `_count_target_hits`)
+#   - multi-user / multi-device signals
+# ---------------------------------------------------------------------------
 
-_RECS_DNSPROXY: list[str] = [
-    "Determine if the detected activity was authorized or expected.",
-    "If this was not authorized or expected activity, NivX CSOC recommends you consider the following steps:",
-    "Remove any unauthorized web browser extensions / plugins.",
-    "Clear web browser caches (temporary internet files) and delete cookies.",
-    "Ensure all of the following threat categories are blocked in your security profile for internet access in Secure Access/Umbrella: Malware, Phishing, Command and Control, Cryptomining.",
-    "Conduct a full scan on the device with your endpoint security solution.",
-    "Make sure systems are regularly backed-up.",
-    "Restrict user permissions to prevent the installation of unauthorized programs.",
-    "Ensure that your systems are utilizing up to date virus definitions and operating system patches.",
-]
+_HIGH_RISK_COUNTRIES = {"RU", "CN", "KP", "IR", "BY", "SY", "Russia", "China",
+                        "North Korea", "Iran", "Belarus", "Syria"}
 
 
-def _recommendations_for(case_type: str) -> list[str]:
-    if case_type == "malware":
-        return list(_RECS_MALWARE)
-    if case_type == "dns_proxy":
-        return list(_RECS_DNSPROXY)
-    if case_type == "mixed":
-        # De-duplicate the common lead-in sentences.
-        seen: set[str] = set()
-        out: list[str] = []
-        for r in (_RECS_MALWARE + [""] + _RECS_DNSPROXY):
-            if r == "" and out and out[-1] != "":
-                out.append("")
-                continue
-            if r and r not in seen:
-                seen.add(r)
-                out.append(r)
-        return [x for x in out if x]
-    return [
-        "Determine if the detected activity was authorized or expected.",
-        "If unauthorized, contain the affected asset, refresh credentials, and preserve logs for forensic review.",
-        "Ensure endpoint protection, virus definitions and operating-system patches are up to date.",
-    ]
+def _summarize_categories(enriched: list[dict]) -> dict[str, list[str]]:
+    """Map VT/OSINT category → list of IOC values that triggered it."""
+    out: dict[str, list[str]] = {}
+    for r in enriched or []:
+        v = r.get("value")
+        rep = r.get("reputation") or {}
+        vt = rep.get("vt") or {}
+        cats = vt.get("categories") or {}
+        # cats is typically dict of {engine: category}
+        vals = cats.values() if isinstance(cats, dict) else (cats if isinstance(cats, list) else [])
+        for c in vals:
+            key = str(c).lower()
+            out.setdefault(key, [])
+            if v and v not in out[key]:
+                out[key].append(v)
+        for tag in (vt.get("popular_threat_names") or []):
+            key = str(tag).lower()
+            out.setdefault(key, [])
+            if v and v not in out[key]:
+                out[key].append(v)
+    return out
+
+
+def _dynamic_recommendations(case_type: str,
+                             raw: str,
+                             iocs: list[str],
+                             enriched: list[dict],
+                             context: dict,
+                             stats: dict) -> list[str]:
+    """Compose a finding-driven, evidence-grounded recommendation list.
+
+    Rules fire only when their trigger is present in the detection data.
+    Same case_type on two different detections produces two different lists.
+    """
+    recs: list[str] = []
+
+    # ---- Split IOCs by kind for targeted advice ----
+    hashes = [v for v in iocs if _classify_ioc(v) in ("md5", "sha1", "sha256")]
+    ips = [v for v in iocs if _classify_ioc(v) == "ip"]
+    urls = [v for v in iocs if _classify_ioc(v) == "url"]
+    domains = [v for v in iocs if _classify_ioc(v) == "domain"]
+
+    # ---- Signals from action tallies ----
+    action_c = dict(context.get("actions") or [])
+    blocked = int(action_c.get("blocked", 0))
+    allowed = int(action_c.get("allowed", 0))
+    denied = int(action_c.get("denied", 0))
+    detected = int(action_c.get("detected", 0))
+    quarantined = int(action_c.get("quarantined", 0))
+    dropped = int(action_c.get("dropped", 0))
+    isolated = int(action_c.get("isolated", 0))
+
+    # ---- OSINT verdict counts ----
+    mal = int(stats.get("malicious") or 0)
+    susp = int(stats.get("suspicious") or 0)
+
+    # ---- Per-IOC verdict lookup (build lists of "confirmed malicious" IOCs) ----
+    mal_hashes: list[str] = []
+    mal_urls_domains: list[str] = []
+    mal_ips: list[str] = []
+    high_ab_ips: list[str] = []
+    hosting_countries: dict[str, int] = {}
+    for r in enriched or []:
+        v = r.get("value") or ""
+        t = r.get("type")
+        rep = r.get("reputation") or {}
+        vt = rep.get("vt") or {}
+        ab = rep.get("abuseipdb") or {}
+        vt_mal = (vt.get("malicious") or 0) if not vt.get("error") else 0
+        vt_susp = (vt.get("suspicious") or 0) if not vt.get("error") else 0
+        ab_score = (ab.get("score") or 0) if not ab.get("error") else 0
+        if vt_mal >= 1 or ab_score >= 50:
+            if t in ("md5", "sha1", "sha256"):
+                mal_hashes.append(v)
+            elif t == "ip":
+                mal_ips.append(v)
+            elif t in ("url", "domain"):
+                mal_urls_domains.append(v)
+        if ab_score >= 50 and t == "ip":
+            high_ab_ips.append(v)
+        _ = vt_susp  # reserved for future use
+        en = r.get("enrichment") or {}
+        geo = en.get("geo") or {}
+        cc = geo.get("country_code") or geo.get("country") or geo.get("country_name")
+        if cc:
+            hosting_countries[str(cc)] = hosting_countries.get(str(cc), 0) + 1
+
+    # ---- Category signals from VT (phishing / c2 / cryptomining / spyware / malware) ----
+    cats = _summarize_categories(enriched)
+    def _cat_iocs(*names: str) -> list[str]:
+        seen: dict[str, None] = {}
+        for name in names:
+            for k, vals in cats.items():
+                if name in k:
+                    for v in vals:
+                        seen[v] = None
+        return list(seen.keys())
+
+    phishing_iocs = _cat_iocs("phish")
+    c2_iocs = _cat_iocs("c2", "command-and-control", "command and control")
+    cryptomining_iocs = _cat_iocs("mining", "coinminer", "cryptomin")
+    spyware_iocs = _cat_iocs("spyware", "stealer", "infostealer")
+    malware_cat_iocs = _cat_iocs("malware", "trojan", "ransom", "loader", "dropper")
+
+    # ---- Repeat volume ----
+    hit_counts = _count_target_hits(raw, iocs)
+    heavy_targets = [v for v, c in hit_counts.items() if c >= 5]
+
+    # ---- Multi-user / multi-device ----
+    devices = context.get("devices") or []
+    users = context.get("users") or []
+    emails = context.get("emails") or []
+    n_devices = len(set(devices))
+    n_identities = len(set(users) | set(emails))
+
+    # ==========================================================
+    # RULE 1 — Authorized/expected check (always first, phrased once).
+    # ==========================================================
+    recs.append("Determine whether the observed activity was authorized or expected for this asset and user before treating it as an incident.")
+
+    # ==========================================================
+    # RULE 2 — Traffic that was ALLOWED to reach a malicious destination
+    # is the most urgent finding. Fires only when we see allowed OR when
+    # OSINT flagged malicious but nothing was blocked.
+    # ==========================================================
+    if allowed > 0 and (mal_urls_domains or mal_ips):
+        listed = ", ".join((mal_urls_domains + mal_ips)[:5])
+        recs.append(f"URGENT — {allowed} connection(s) were ALLOWED to destinations that OSINT has confirmed malicious ({listed}). Block these indicators at the DNS/proxy layer immediately and hunt the affected host in EDR/SIEM for post-compromise activity.")
+    elif blocked == 0 and (denied + dropped) == 0 and (mal_urls_domains or mal_ips):
+        listed = ", ".join((mal_urls_domains + mal_ips)[:5])
+        recs.append(f"No perimeter enforcement was observed for the following confirmed-malicious destinations: {listed}. Add explicit deny rules in the DNS/proxy layer and validate they are enforced network-wide.")
+
+    # ==========================================================
+    # RULE 3 — Quarantined hashes: confirm quarantine + hunt for laterality.
+    # ==========================================================
+    if quarantined > 0 and hashes:
+        recs.append(f"Confirm the quarantine of the {len(hashes)} identified file hash(es) is effective on the source endpoint, then sweep the wider fleet for the same hash(es) using EDR live-response — quarantine on one host does not imply the sample is absent elsewhere.")
+
+    # ==========================================================
+    # RULE 4 — Malicious hashes not yet contained.
+    # ==========================================================
+    if mal_hashes and quarantined == 0:
+        recs.append(f"Remove the malicious executable(s) {', '.join(mal_hashes[:5])} from the affected host, submit to your sandbox for behavioural context, and add SHA-256 to the EDR block list.")
+
+    # ==========================================================
+    # RULE 5 — Detected but not blocked (visibility, no enforcement).
+    # ==========================================================
+    if detected > 0 and blocked == 0 and denied == 0 and quarantined == 0:
+        recs.append(f"The security stack DETECTED {detected} event(s) but no automated enforcement (block/deny/quarantine) was recorded — verify your policy is set to enforce, not merely alert, for the categories triggered here.")
+
+    # ==========================================================
+    # RULE 6 — Category-specific playbooks.
+    # ==========================================================
+    if phishing_iocs:
+        who = users[0] if users else (emails[0] if emails else "the affected user")
+        recs.append(f"Phishing category matched on {', '.join(phishing_iocs[:3])} — reset credentials and refresh MFA seed for {who}, invalidate active sessions, and search mail-flow logs for the delivering message.")
+    if c2_iocs:
+        recs.append(f"Command-and-Control category matched on {', '.join(c2_iocs[:3])} — treat the source host as compromised: network-isolate the asset, preserve volatile memory, and initiate incident response.")
+    if cryptomining_iocs:
+        recs.append(f"Cryptomining category matched on {', '.join(cryptomining_iocs[:3])} — enable the Cryptomining threat category in Secure Access/Umbrella, then audit CPU baselines on the host for unauthorized miner persistence.")
+    if spyware_iocs:
+        recs.append(f"Spyware/infostealer traits matched on {', '.join(spyware_iocs[:3])} — rotate any credentials, session tokens or browser cookies stored on the affected asset; assume they are exfiltrated until proven otherwise.")
+    if malware_cat_iocs and not mal_hashes:
+        recs.append(f"OSINT tagged {', '.join(malware_cat_iocs[:3])} in the malware/trojan/ransomware category — pivot on these destinations in your DNS/proxy history to identify every internal source that has contacted them.")
+
+    # ==========================================================
+    # RULE 7 — High-abuse IP score.
+    # ==========================================================
+    if high_ab_ips:
+        recs.append(f"AbuseIPDB reports ≥50% abuse confidence for {', '.join(high_ab_ips[:3])} — add these IPs to the firewall blocklist and correlate against inbound authentication attempts.")
+
+    # ==========================================================
+    # RULE 8 — Hosting geography risk.
+    # ==========================================================
+    risky = [c for c in hosting_countries if c in _HIGH_RISK_COUNTRIES]
+    if risky:
+        recs.append(f"Destination hosting resolved to {', '.join(risky[:3])} — where business justification is absent, add these ASNs/geographies to the enhanced-monitoring watchlist.")
+
+    # ==========================================================
+    # RULE 9 — Repeat volume.
+    # ==========================================================
+    if heavy_targets:
+        recs.append(f"High repeat volume observed against {', '.join(heavy_targets[:3])} (≥5 references in the corpus) — review DNS/proxy history 30 days back to establish first-contact and identify any period when the destinations were NOT blocked.")
+
+    # ==========================================================
+    # RULE 10 — Multi-identity / multi-device blast-radius.
+    # ==========================================================
+    if n_devices >= 2:
+        recs.append(f"Activity spans {n_devices} distinct endpoints — broadcast the IOC block-list network-wide (do not scope containment to the source host) and prioritise fleet-wide EDR sweep.")
+    if n_identities >= 2:
+        recs.append(f"Activity involves {n_identities} distinct identities — check for shared credentials or a common phishing vector, and initiate an org-wide password rotation for the affected group.")
+
+    # ==========================================================
+    # RULE 11 — Case-shape hygiene (only *if not already covered above*).
+    # ==========================================================
+    if case_type in ("malware", "mixed") and not mal_hashes and not quarantined:
+        recs.append("Run a full antivirus/EDR scan on the affected system and review Autoruns, Scheduled Tasks and WMI subscriptions for persistence artefacts.")
+    if case_type in ("dns_proxy", "mixed"):
+        if not phishing_iocs and not c2_iocs and not cryptomining_iocs:
+            recs.append("Confirm the Malware, Phishing, Command-and-Control and Cryptomining categories are all enforced in your Secure Access/Umbrella profile for this user group.")
+        if allowed > 0:
+            recs.append("Remove any unauthorized browser extensions/plugins on the source device and clear browser cache/cookies to eliminate hijack-carrier state.")
+
+    # ==========================================================
+    # RULE 12 — Nothing malicious found — down-tune the response.
+    # ==========================================================
+    if mal == 0 and susp == 0 and not phishing_iocs and not c2_iocs:
+        recs.append("No OSINT source flagged the extracted indicators as malicious — record the observation for the audit trail and continue baseline monitoring; no customer-side containment is required at this time.")
+
+    # ==========================================================
+    # RULE 13 — Universal hygiene closer (only added if there is anything
+    # actionable above beyond the authorization check).
+    # ==========================================================
+    if len(recs) > 1:
+        recs.append("Confirm endpoint protection signatures and operating-system patches are current on the affected asset, and validate offsite backups are recent and restorable.")
+
+    # De-duplicate while preserving order.
+    seen: set[str] = set()
+    unique: list[str] = []
+    for r in recs:
+        if r not in seen:
+            seen.add(r)
+            unique.append(r)
+    return unique
 
 
 # ---------------------------------------------------------------------------
@@ -4167,7 +4371,7 @@ async def forge_investigation_report(payload: ForgeReportInput):
     fmt = _parse_output_format(payload.instructions)
     bank = _forge_5w1h_sentences(raw, iocs, enriched, context, case_type)
     sentences = _flatten_5w1h(bank)
-    recommendations = _recommendations_for(case_type)
+    recommendations = _dynamic_recommendations(case_type, raw, iocs, enriched, context, stats)
     report = _compose_forge_report(fmt, sentences, recommendations)
 
     return {

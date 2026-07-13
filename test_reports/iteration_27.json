@@ -1,0 +1,34 @@
+{
+  "summary": "Validated the new finding-driven / evidence-grounded recommendation engine on POST /api/forge/investigation-report. 19/19 backend tests pass (5 rule-trigger detections A-E + 2 same-case-type-different-list contrast tests + 4 case_type regressions + 4 format-engine regressions + 4 sibling-endpoint regressions). Frontend /nivx-forge quick regression confirms the report still generates, the forge-report-case pill renders (DNS/PROXY) and Recommendations section is populated with the new dynamic, evidence-cited items.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_forge_dynamic_recs.py",
+    "/app/test_reports/pytest/forge_dynamic_recs.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py now 6142 lines — the forge_* helpers (_classify_forge_case, _summarize_categories, _dynamic_recommendations, _forge_5w1h_sentences, _compose_forge_report) ~600 LOC would move cleanly to /app/backend/modules/forge_report.py.",
+    "_dynamic_recommendations: RULE 2 elif branch (`blocked==0 and (denied+dropped)==0 and (mal_urls_domains or mal_ips)`) does not require any traffic actually being observed toward those IOCs — if OSINT enrichment flags an IOC but the log shows only 'quarantined' actions (blocked=0 but the sample was contained on-host), the elif can still fire a 'no perimeter enforcement' rec that reads slightly off. Consider gating on `(blocked+denied+dropped+quarantined)==0`.",
+    "RULE 13 hygiene closer counts recs by `len(recs) > 1` — RULE 1 is always present, so RULE 13 fires whenever ANY other rule fires. That is the intent, but a comment saying 'RULE 1 counts as the always-present baseline' would help future readers.",
+    "_summarize_categories does not defend against `vt.get('categories')` being a str/None (only dict/list). Not seen in real VT payloads but a `isinstance` guard would be safer."
+  ],
+  "updated_files": ["/app/backend/tests/test_forge_dynamic_recs.py"],
+  "success_rate": {"backend": "100% (19/19)", "frontend": "100% (1/1 smoke flow)"},
+  "seed_data_creation": "None. All inline payloads.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Recommendations engine is now finding-driven — do NOT assert on fixed strings that assume every malware case will contain the same closer. Use substring/keyword asserts scoped to the rule under test. Key rule triggers: allowed>0 + mal_url/ip → 'URGENT'; quarantined>0 + hashes → 'Confirm the quarantine ... sweep the wider fleet'; detected>0 & blocked==0 & denied==0 & quarantined==0 → 'no automated enforcement'; case in (malware,mixed) & no mal_hashes & no quarantine → 'Run a full antivirus/EDR scan ... Autoruns'; allowed>0 & case in (dns_proxy,mixed) → 'Remove any unauthorized browser extensions'; mal==0 & susp==0 & no phishing/c2 cats → 'No OSINT source flagged ...'. Sibling regression endpoints use `values:[...]` payload key, NOT `iocs`. /api/ioc-ai-summary uses `value:` singular.",
+  "verified_flows": [
+    "Detection A (Umbrella BLOCKED, enrich=false): NO 'URGENT'/'ALLOWED' rule; DOES contain 'No OSINT source flagged'",
+    "Detection B (Umbrella ALLOWED cryptomining, enrich=false): DOES contain 'Remove any unauthorized browser extensions'",
+    "Detection C (EDR quarantined hash, enrich=false): DOES contain 'Confirm the quarantine ... sweep the wider fleet'",
+    "Detection D (EDR DETECTED hash, no enforcement, enrich=false): DOES contain 'no automated enforcement' AND 'Run a full antivirus' AND 'Autoruns'",
+    "Detection E (real OSINT: 185.220.101.42 + hash + ALLOWED, enrich=true): at least one of URGENT-with-IP / Remove-malicious-hash / AbuseIPDB-≥50%-cite fires with the specific IOC value",
+    "Same case_type contrast: two dns_proxy detections produce different rec lists; two malware detections produce different rec lists",
+    "Case-type regression: malware / dns_proxy / mixed / generic all classify correctly",
+    "Format regression: lines / sentences / bullets / 1-para-verbose all shape output correctly",
+    "Sibling endpoints regression: /api/iocs/batch-summary, /api/ioc-lookup-batch, /api/cyberlab/enrich-iocs, /api/ioc-ai-summary all 200 (or 503 for AI when unconfigured)",
+    "Frontend /nivx-forge: report generates, forge-report-case pill = 'DNS / PROXY', Recommendations section renders below the body"
+  ]
+}
