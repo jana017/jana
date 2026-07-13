@@ -6,7 +6,6 @@ import {
   FileWarning, RefreshCw, Layers, Radar, Target, Cpu, Share2, Plus, Wrench,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
-import Contact from "@/components/Contact";
 import useSeo from "@/lib/useSeo";
 import { listPlugins, autoDecode, runRecipe, analyze, detectFormat, processTree, runAiAnalysis, enrichIocs, downloadReport } from "@/lib/cyberlabApi";
 import AttackChainViewer from "@/components/cyberlab/AttackChainViewer";
@@ -1192,10 +1191,6 @@ export default function CyberLab() {
           toast.info("Session rule active — re-run analysis to see it match.");
         }}
       />
-
-      <div className="bg-white text-slate-900">
-        <Contact />
-      </div>
     </div>
   );
 }
