@@ -1,6 +1,18 @@
 # NivX Machines — PRD
 
 
+## Implemented (2026-02-13 — NivX Cognis AI rebrand + NaN-key squash + Tesseract OCR)
+- **AI narrator rebrand → "NivX Cognis AI"** everywhere: system prompt, header badge, output pill (`COGNIS · 3 FLASH`), toggle label, toast text, admin Training Center wording, download metadata.
+- **React "same key NaN" warning eliminated**: 4 files had `key={a + b}` where `a` could be undefined (LiveThreatsPanel, LiveThreatLandscape, ThreatIntelligence, CommunityFeed). All switched to template literals with `??` fallbacks. Verified zero warnings across `/`, `/threat-intelligence`, `/community/hn`, `/learn`, `/admin`.
+- **Image OCR ingestion (Tesseract, offline)**:
+  - Installed system `tesseract-ocr` (`/usr/bin/tesseract`) + `pytesseract==0.3.13` (added to `requirements.txt`).
+  - New endpoint `POST /api/forge/ocr-image` (public, 10 MB cap, 415/413 error codes) → `{filename, mime, bytes, text, char_count, line_count}`.
+  - Investigation Report file upload now auto-detects images (png/jpg/webp/bmp/tiff/gif) and routes them through OCR; extracted text lands in the data textarea automatically.
+  - Analyst Training Center attachment upload stores `attachment.ocr_text` for images; the few-shot retrieval (`find_matching_forge_examples`) folds OCR text into the token bag for scoring.
+- **Testing**: `iteration_30.json` — 12/12 backend + 100% frontend E2E, no regressions.
+
+
+
 ## Implemented (2026-02-13 — AI-narrative Investigation Report + Analyst Training Center)
 - **AI-narrative mode** in `/api/forge/investigation-report` (opt-in via `ai_mode=true`) — powered by **Gemini 3 Flash** (`gemini-3-flash-preview`) or **Gemini 3.5 Flash** (`gemini-3.5-flash`) through Emergent LLM Key. Model chooser in the UI (`forge-report-ai-model`). Deterministic engine remains available (`ai_mode=false`).
 - **Strict evidence-only prompting** — LLM writes ONLY the narrative paragraphs; IOC extraction, OSINT enrichment, case classification and recommendations stay deterministic (auditable, no hallucination). Instructions ban fabricated IOCs, hostnames, families, dates and attribution.
