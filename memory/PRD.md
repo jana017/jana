@@ -1,6 +1,13 @@
 # NivX Machines — PRD
 
 
+## Implemented (2026-02-13 — Inline case-type retag on list items)
+- **New backend endpoint**: `PATCH /api/admin/forge/training/examples/{id}/case-type` — lightweight one-field update. Only touches `case_type` + `updated_at`; every other field on the doc is preserved.
+- **New UI control**: on every list item in `/admin` → *Forge Training*, a small dropdown (`forge-training-retag-<id>`) sits next to the case-type pill. Click and pick a new case type (e.g. flip auto-tagged `MALWARE` → `UNAUTHORIZED` in one click). Optimistic in-place update + coverage-dashboard auto-refresh.
+- **Verified**: retagged an example live → success toast, list pill updated, MALWARE tile went 3→2, UNAUTHORIZED tile appeared with 1 entry, gaps counter updated 8/9 → 9/11.
+
+
+
 ## Implemented (2026-02-13 — New case types + View/Edit toggle)
 - **Two new case types** added end-to-end:
   - `authorized_admin` — routine change-management activity (approver + task number + ITSM footprint, no threat signal).

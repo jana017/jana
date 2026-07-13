@@ -5075,6 +5075,34 @@ async def update_forge_training_example(
     return _forge_training_serialize(doc)
 
 
+class ForgeCaseTypePatch(BaseModel):
+    case_type: str
+
+
+@api_router.patch("/admin/forge/training/examples/{example_id}/case-type")
+async def patch_forge_training_case_type(
+    example_id: str,
+    payload: ForgeCaseTypePatch,
+    admin: dict = Depends(require_role("admin")),
+):
+    """Fast in-place re-classification (e.g. flip an auto-tagged `malware`
+    entry to `unauthorized` from the list view). Only touches `case_type`
+    and `updated_at`; everything else on the doc is preserved."""
+    ct = (payload.case_type or "").strip().lower()[:40]
+    if not ct:
+        raise HTTPException(status_code=400, detail="case_type is required")
+    res = await db.forge_training_examples.update_one(
+        {"_id": example_id},
+        {"$set": {"case_type": ct, "updated_at": now_iso()}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Example not found")
+    doc = await db.forge_training_examples.find_one({"_id": example_id})
+    return _forge_training_serialize(doc)
+
+
+
+
 @api_router.delete("/admin/forge/training/examples/{example_id}")
 async def delete_forge_training_example(
     example_id: str,

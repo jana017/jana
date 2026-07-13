@@ -205,6 +205,25 @@ export default function AdminForgeTraining() {
     } finally { setPersonaSaving(false); }
   };
 
+  // Fast inline re-classification from the list item (click the case-type
+  // pill and pick a new type — e.g. flip auto-tagged malware → unauthorized).
+  const quickRetag = async (exampleId, newCaseType, ev) => {
+    ev?.stopPropagation?.();
+    try {
+      const { data: saved } = await api.patch(
+        `/admin/forge/training/examples/${exampleId}/case-type`,
+        { case_type: newCaseType },
+      );
+      toast.success(`Retagged as ${newCaseType.replace(/_/g, " ")}`);
+      // Optimistic in-place update + refresh stats.
+      setExamples((prev) => prev.map((x) => (x.id === exampleId ? { ...x, case_type: saved.case_type } : x)));
+      if (selected === exampleId) setForm((f) => ({ ...f, case_type: saved.case_type }));
+      loadStats();
+    } catch (e) {
+      toast.error(`Retag failed: ${formatApiErrorDetail(e.response?.data?.detail) || e.message}`);
+    }
+  };
+
   return (
     <main className="mx-auto max-w-[1400px] px-6 py-8 space-y-6" data-testid="forge-training-page">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -378,6 +397,19 @@ export default function AdminForgeTraining() {
                         <FileText className="w-2.5 h-2.5" /> {ex.attachments.length}
                       </span>
                     )}
+                    {/* Quick re-tag dropdown — one-click flip to unauthorized / any case type */}
+                    <select
+                      value={ex.case_type}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => quickRetag(ex.id, e.target.value, e)}
+                      data-testid={`forge-training-retag-${ex.id}`}
+                      title="Re-tag case type"
+                      className="ml-auto text-[10px] uppercase tracking-wide px-1 py-0.5 rounded border border-slate-200 bg-white text-slate-500 hover:border-[#2E7DF5] hover:text-[#2E7DF5] cursor-pointer focus:outline-none focus:border-[#2E7DF5]"
+                    >
+                      {CASE_TYPES.map((c) => (
+                        <option key={c.key} value={c.key}>{c.key}</option>
+                      ))}
+                    </select>
                   </div>
                 </button>
               </li>
