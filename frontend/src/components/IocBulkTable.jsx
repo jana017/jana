@@ -111,10 +111,41 @@ export default function IocBulkTable({ initialText, autoRun, prefillKey }) {
 
   const stamp = () => new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 
-  // Upload a file of IOCs — supports .txt, .csv, .tsv, .json, .log and any
-  // text/* mime. Extracts IOC-shaped tokens by splitting on newlines / commas /
-  // semicolons / whitespace. If the file is JSON, best-effort walks the object
-  // tree and collects string values that look like IOCs.
+  // Extract ONLY IOC-shaped tokens (IP, URL, domain, MD5/SHA1/SHA256/SHA512)
+  // from any raw text — filters out log lines, timestamps, usernames, etc.
+  const IOC_PATTERNS = {
+    url:    /\bhttps?:\/\/[^\s"'<>]+/gi,
+    ip:     /\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\b/g,
+    hash:   /\b[a-f0-9]{32,128}\b/gi,               // MD5(32)/SHA1(40)/SHA256(64)/SHA512(128)
+    // domains: at least one dot, TLD 2-24 chars, allow defanged [.] and (.)
+    domain: /\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\[?\.\]?|\(\.\)))+[a-z]{2,24}\b/gi,
+  };
+  const extractIOCs = (raw) => {
+    const found = new Set();
+    // URLs first (they may contain dots + IPs) so the domain regex doesn't
+    // strip the path off.
+    for (const m of raw.matchAll(IOC_PATTERNS.url)) found.add(m[0].replace(/[.,;:)\]]+$/, ""));
+    for (const m of raw.matchAll(IOC_PATTERNS.hash)) {
+      const t = m[0].toLowerCase();
+      if ([32, 40, 64, 128].includes(t.length)) found.add(t);
+    }
+    for (const m of raw.matchAll(IOC_PATTERNS.ip)) found.add(m[0]);
+    for (const m of raw.matchAll(IOC_PATTERNS.domain)) {
+      // Refang common defanged notation before adding
+      const refanged = m[0].replace(/\[\.\]|\(\.\)/g, ".");
+      // Skip pure IPs already caught, and version-strings like "1.2.3"
+      if (/^\d+\.\d+\.\d+(\.\d+)?$/.test(refanged) && refanged.split(".").length !== 4) continue;
+      // Reject obvious junk (e.g. "e.g", "co.uk" alone) — require min 4 chars + TLD >=2
+      if (refanged.length < 4) continue;
+      found.add(refanged.toLowerCase());
+    }
+    return Array.from(found);
+  };
+
+  // Upload a file of IOCs — supports .txt, .csv, .tsv, .json, .log, .xml,
+  // .yaml, or any text format. Extracts only IOC-shaped tokens (URL, IP,
+  // domain, file hash) from the raw text; noise like timestamps, log levels
+  // and usernames is discarded automatically.
   const uploadFile = (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
@@ -122,38 +153,23 @@ export default function IocBulkTable({ initialText, autoRun, prefillKey }) {
     const reader = new FileReader();
     reader.onload = (ev) => {
       const raw = String(ev.target?.result || "");
-      let extracted = raw;
-      // JSON: try to walk the tree; fall back to raw text if it doesn't parse
-      if (f.name.toLowerCase().endsWith(".json") || f.name.toLowerCase().endsWith(".jsonl") || f.name.toLowerCase().endsWith(".ndjson")) {
-        try {
-          const tokens = new Set();
-          const walk = (v) => {
-            if (v == null) return;
-            if (typeof v === "string") { tokens.add(v.trim()); return; }
-            if (Array.isArray(v)) { v.forEach(walk); return; }
-            if (typeof v === "object") { Object.values(v).forEach(walk); return; }
-          };
-          // Handles both plain JSON and JSONL (one obj per line)
-          const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-          if (lines.length > 1) {
-            for (const line of lines) { try { walk(JSON.parse(line)); } catch { /* not JSONL — will fall through */ } }
-          }
-          if (tokens.size < 2) walk(JSON.parse(raw));
-          extracted = Array.from(tokens).join("\n");
-        } catch { /* fall through to raw text */ }
+      const iocs = extractIOCs(raw);
+      if (iocs.length === 0) {
+        setError(`No IOCs (IP / URL / domain / file-hash) detected in ${f.name}. Try another file.`);
+        e.target.value = "";
+        return;
       }
-      // CSV / TSV: strip common column headers + quote characters, keep values
-      if (/\.(csv|tsv)$/i.test(f.name)) {
-        extracted = raw
-          .split(/\r?\n/)
-          .map((line) => line.replace(/^["']|["']$/g, "").split(/[\t,]/).map((c) => c.trim().replace(/^["']|["']$/g, "")).join("\n"))
-          .join("\n");
-      }
-      // Merge with any existing textarea content (append; user may want to add multiple files)
-      setText((prev) => (prev ? `${prev.trim()}\n${extracted}` : extracted));
+      setError("");
+      setText((prev) => {
+        const existing = new Set((prev || "").split(/[\s,;]+/).map((t) => t.trim().toLowerCase()).filter(Boolean));
+        const merged = [...existing];
+        for (const i of iocs) {
+          if (!existing.has(i.toLowerCase())) { merged.push(i); existing.add(i.toLowerCase()); }
+        }
+        return merged.join("\n");
+      });
     };
     reader.readAsText(f);
-    // reset value so the same file can be picked again
     e.target.value = "";
   };
   const doExportCSV = () => {
