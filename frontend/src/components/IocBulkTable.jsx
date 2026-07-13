@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Loader2, Download, ListChecks, ShieldQuestion, ExternalLink, ShieldPlus, Check, ChevronDown, ChevronRight, FileText, FileJson, FileSpreadsheet } from "lucide-react";
+import { Loader2, Download, ListChecks, ShieldQuestion, ExternalLink, ShieldPlus, Check, ChevronDown, ChevronRight, FileText, FileJson, FileSpreadsheet, Upload } from "lucide-react";
 import { api, formatApiErrorDetail } from "@/lib/api";
 import {
   FAVICON, TYPE_LABEL, iocSummary, severityStyle,
@@ -110,6 +110,52 @@ export default function IocBulkTable({ initialText, autoRun, prefillKey }) {
   }, [prefillKey]);
 
   const stamp = () => new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+
+  // Upload a file of IOCs — supports .txt, .csv, .tsv, .json, .log and any
+  // text/* mime. Extracts IOC-shaped tokens by splitting on newlines / commas /
+  // semicolons / whitespace. If the file is JSON, best-effort walks the object
+  // tree and collects string values that look like IOCs.
+  const uploadFile = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > 5 * 1024 * 1024) { setError("File too large (max 5 MB)"); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const raw = String(ev.target?.result || "");
+      let extracted = raw;
+      // JSON: try to walk the tree; fall back to raw text if it doesn't parse
+      if (f.name.toLowerCase().endsWith(".json") || f.name.toLowerCase().endsWith(".jsonl") || f.name.toLowerCase().endsWith(".ndjson")) {
+        try {
+          const tokens = new Set();
+          const walk = (v) => {
+            if (v == null) return;
+            if (typeof v === "string") { tokens.add(v.trim()); return; }
+            if (Array.isArray(v)) { v.forEach(walk); return; }
+            if (typeof v === "object") { Object.values(v).forEach(walk); return; }
+          };
+          // Handles both plain JSON and JSONL (one obj per line)
+          const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+          if (lines.length > 1) {
+            for (const line of lines) { try { walk(JSON.parse(line)); } catch { /* not JSONL — will fall through */ } }
+          }
+          if (tokens.size < 2) walk(JSON.parse(raw));
+          extracted = Array.from(tokens).join("\n");
+        } catch { /* fall through to raw text */ }
+      }
+      // CSV / TSV: strip common column headers + quote characters, keep values
+      if (/\.(csv|tsv)$/i.test(f.name)) {
+        extracted = raw
+          .split(/\r?\n/)
+          .map((line) => line.replace(/^["']|["']$/g, "").split(/[\t,]/).map((c) => c.trim().replace(/^["']|["']$/g, "")).join("\n"))
+          .join("\n");
+      }
+      // Merge with any existing textarea content (append; user may want to add multiple files)
+      setText((prev) => (prev ? `${prev.trim()}\n${extracted}` : extracted));
+    };
+    reader.readAsText(f);
+    // reset value so the same file can be picked again
+    e.target.value = "";
+  };
   const doExportCSV = () => {
     if (!results?.length) return;
     downloadCSV(resultsToCSV(results), `nivx-ioc-analysis-${stamp()}.csv`);
@@ -168,7 +214,17 @@ export default function IocBulkTable({ initialText, autoRun, prefillKey }) {
         />
       </div>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-        <span className="text-xs text-slate-500 flex items-center gap-1.5"><ListChecks className="w-4 h-4 text-[#2E7DF5]" /> {parsedCount} unique IOC{parsedCount === 1 ? "" : "s"} detected {parsedCount > 50 && <span className="text-orange-600">(first 50 analyzed)</span>}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-slate-500 flex items-center gap-1.5"><ListChecks className="w-4 h-4 text-[#2E7DF5]" /> {parsedCount} unique IOC{parsedCount === 1 ? "" : "s"} detected {parsedCount > 50 && <span className="text-orange-600">(first 50 analyzed)</span>}</span>
+          <label
+            data-testid="ioc-bulk-upload"
+            title="Upload IOC list from .txt, .csv, .tsv, .json, .log or any text file (max 5 MB)"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-[#2E7DF5] border border-slate-200 hover:border-[#2E7DF5] rounded-md px-2.5 py-1.5 cursor-pointer transition-colors"
+          >
+            <Upload className="w-3.5 h-3.5" /> Upload file
+            <input type="file" accept=".txt,.log,.csv,.tsv,.json,.jsonl,.ndjson,.xml,.yaml,.yml,.md,text/*,application/json,application/octet-stream" className="hidden" onChange={uploadFile} />
+          </label>
+        </div>
         <div className="flex items-center gap-2">
           {results?.length > 0 && (
             <div className="relative" ref={exportRef}>

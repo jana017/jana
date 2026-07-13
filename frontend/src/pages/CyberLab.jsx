@@ -616,7 +616,7 @@ export default function CyberLab() {
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-300 hover:text-cyan-400 border border-slate-700 hover:border-cyan-500/50 rounded-md px-3 py-2 cursor-pointer transition-colors"
             >
               <Upload className="w-3.5 h-3.5" /> Upload
-              <input type="file" accept=".txt,.log,.b64,.hex,.json,.js,.ps1,.eml,.bin" className="hidden" onChange={uploadFile} />
+              <input type="file" accept=".txt,.log,.csv,.tsv,.json,.jsonl,.ndjson,.xml,.yaml,.yml,.b64,.hex,.js,.ps1,.py,.sh,.bat,.eml,.cef,.leef,.evtx,.pcap,.md,.bin,.dat,text/*,application/octet-stream" className="hidden" onChange={uploadFile} />
             </label>
           </div>
         </div>
