@@ -20,6 +20,7 @@ import EnrichedIocsPanel from "@/components/cyberlab/EnrichedIocsPanel";
 import PowerShellBadge from "@/components/cyberlab/PowerShellBadge";
 import TroubleshootButton from "@/components/cyberlab/TroubleshootButton";
 import GraphPopout, { GraphPopoutToggle } from "@/components/cyberlab/GraphPopout";
+import InvestigationReport from "@/components/cyberlab/InvestigationReport";
 
 const CATEGORY_STYLE = {
   Encoding:      { chip: "bg-blue-500/10 text-blue-300 border-blue-500/30",         dot: "bg-blue-400" },
@@ -1141,6 +1142,14 @@ export default function CyberLab() {
             />
           </div>
         )}
+
+        {/* Offline Investigation Report — deterministic, no AI. Sits at the
+            bottom so analysts can pipe the pipeline output straight into a
+            customer-ready MDR report. Also usable stand-alone (paste/upload). */}
+        <InvestigationReport
+          pipelineOutput={result?.output || ""}
+          extractedIocs={(result?.analysis?.iocs || []).map((i) => i.value).filter(Boolean)}
+        />
 
         {/* Custom rule + session rule management link */}
         <div className="mt-4 flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/40 px-4 py-3">

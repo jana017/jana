@@ -1,0 +1,31 @@
+{
+  "summary": "Validated both new features: (1) Bulk IOC Analyzer OSINT summary dialog auto-opens on Analyze click and on file upload; (2) NivX Forge Offline Investigation Report generates deterministic multi-para MDR reports honoring paragraph hints. Backend regression + new endpoint tests pass 8/8. Frontend E2E flows on /threat-intelligence and /nivx-forge validated.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_new_features.py",
+    "/app/test_reports/pytest/new_features.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py at 5685 lines is well past the 700-line split guideline; investigation-report + batch-summary helpers could live in a dedicated /app/backend/modules/forge_report.py for maintainability."
+  ],
+  "updated_files": ["/app/backend/tests/test_new_features.py"],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "100%"},
+  "seed_data_creation": "None. All test data ephemeral (values passed inline).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "New endpoints: POST /api/iocs/batch-summary (values or results payload) and POST /api/forge/investigation-report (with paragraph hint parsing). Frontend testids to reuse: ioc-mode-bulk, ioc-bulk-input/submit/upload, ioc-bulk-summary-dialog/-text/-close/-copy; forge-investigation-report, forge-report-instructions/data/upload/enrich-toggle/generate/output/copy/download. Enrich toggle is checked by default — un-tick it for fast tests. Paragraphs in the forge output are div blocks (not <p>); verify via visible layout or the success toast text.",
+  "verified_flows": [
+    "POST /api/iocs/batch-summary with values → 200 + summary paragraph + stats",
+    "POST /api/iocs/batch-summary with pre-computed results → 200",
+    "POST /api/forge/investigation-report enrich=false, 'in 2 paras' → paragraph_count=2",
+    "POST /api/forge/investigation-report 'three paragraphs' → paragraph_count=3",
+    "POST /api/forge/investigation-report '5 sentences' hint → 200 with report",
+    "Regression: /api/ioc-lookup-batch, /api/cyberlab/enrich-iocs, /api/ioc-ai-summary",
+    "UI: Bulk IOC paste → Analyze all → summary dialog auto-opens with paragraph, stat pills, Close+Copy",
+    "UI: Bulk IOC file upload → extracts IOCs, auto-runs analysis, auto-opens summary dialog",
+    "UI: NivX Forge Offline Investigation Report — all testids present, pre-filled instructions, uncheck enrich, Generate produces output panel with IOC pill (3 IOCS) + Copy/Download buttons",
+    "UI: paragraph hint 'in 2 paras' → 2 paragraphs rendered; 'three paragraphs' → 3 paragraphs + toast '3 IOCs · 3 paras'"
+  ]
+}

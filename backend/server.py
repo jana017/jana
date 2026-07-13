@@ -3597,6 +3597,342 @@ async def ioc_ai_summary(payload: AiSummaryInput):
     return {"summary": summary, "cached": False}
 
 
+# ============================================================================
+# Deterministic (offline, no LLM) OSINT summariser.
+# Consumes batch enrichment results (same shape as /ioc-lookup-batch) and
+# emits a factual, single-paragraph SOC-analyst-style summary. Also powers
+# the NivX Forge "Investigation Report" tool below.
+# ============================================================================
+
+def _deterministic_ioc_summary(results: list[dict]) -> dict:
+    """Produce a factual one-paragraph summary of a batch of IOC lookups.
+
+    Rules only — no LLM. Uses VT/AbuseIPDB/geo/urlscan data present in each
+    result. Returns {summary, stats}.
+    """
+    if not results:
+        return {"summary": "No indicators were extracted from the provided input.",
+                "stats": {"total": 0, "malicious": 0, "suspicious": 0, "clean": 0}}
+
+    total = len(results)
+    kinds: dict[str, int] = {}
+    mal_hits: list[str] = []
+    susp_hits: list[str] = []
+    clean_hits: list[str] = []
+    top_countries: dict[str, int] = {}
+    families: set[str] = set()
+    known_internal = 0
+
+    for r in results:
+        v = r.get("value") or ""
+        t = r.get("type") or "unknown"
+        kinds[t] = kinds.get(t, 0) + 1
+        rep = r.get("reputation") or {}
+        vt = rep.get("vt") or {}
+        ab = rep.get("abuseipdb") or {}
+        vt_mal = (vt.get("malicious") or 0) if not vt.get("error") and vt.get("found") is not False else 0
+        vt_susp = (vt.get("suspicious") or 0) if not vt.get("error") and vt.get("found") is not False else 0
+        ab_score = (ab.get("score") or 0) if not ab.get("error") else 0
+        if r.get("local_db"):
+            known_internal += 1
+        if vt_mal >= 1 or ab_score >= 50:
+            mal_hits.append(v)
+        elif vt_susp >= 1 or ab_score >= 20:
+            susp_hits.append(v)
+        else:
+            clean_hits.append(v)
+        en = r.get("enrichment") or {}
+        geo = en.get("geo") or {}
+        cc = geo.get("country") or geo.get("country_name")
+        if cc:
+            top_countries[cc] = top_countries.get(cc, 0) + 1
+        for tag in (en.get("tags") or [])[:3]:
+            families.add(str(tag))
+        if vt.get("popular_threat_names"):
+            for n in vt.get("popular_threat_names") or []:
+                families.add(str(n))
+
+    kind_bits = ", ".join(f"{c} {k}" for k, c in sorted(kinds.items(), key=lambda x: -x[1]) if k != "unknown")
+    country_bits = ", ".join(f"{c} ({n})" for c, n in sorted(top_countries.items(), key=lambda x: -x[1])[:3])
+    fam_bits = ", ".join(sorted(families)[:5])
+
+    parts: list[str] = []
+    parts.append(f"Analyzed {total} indicator{'s' if total != 1 else ''}" + (f" ({kind_bits})" if kind_bits else "") + ".")
+    if mal_hits:
+        head = ", ".join(mal_hits[:3])
+        more = f" and {len(mal_hits) - 3} more" if len(mal_hits) > 3 else ""
+        parts.append(f"{len(mal_hits)} indicator{'s' if len(mal_hits) != 1 else ''} scored MALICIOUS across the integrated OSINT feeds (VirusTotal / AbuseIPDB / MalwareBazaar / URLhaus / ThreatFox), notably {head}{more}.")
+    if susp_hits:
+        parts.append(f"{len(susp_hits)} additional indicator{'s' if len(susp_hits) != 1 else ''} returned suspicious signals but did not exceed the malicious threshold.")
+    if clean_hits and not mal_hits and not susp_hits:
+        parts.append("All indicators returned clean or unknown reputation on the enabled OSINT sources.")
+    elif clean_hits:
+        parts.append(f"The remaining {len(clean_hits)} indicator{'s' if len(clean_hits) != 1 else ''} returned clean or unknown reputation.")
+    if known_internal:
+        parts.append(f"{known_internal} indicator{'s' if known_internal != 1 else ''} already exist in the internal NivX IOC database.")
+    if country_bits:
+        parts.append(f"Observed hosting geography: {country_bits}.")
+    if fam_bits:
+        parts.append(f"Attributed threat context: {fam_bits}.")
+    # Recommended action
+    if mal_hits:
+        parts.append("Recommended action: block the malicious indicators at the perimeter, hunt across EDR/SIEM for prior contact, and open an incident ticket for containment.")
+    elif susp_hits:
+        parts.append("Recommended action: watch-list the suspicious indicators, correlate with recent authentication and DNS logs, and re-check reputation in 24 hours.")
+    else:
+        parts.append("Recommended action: no immediate action; log the observation and continue routine monitoring.")
+
+    return {
+        "summary": " ".join(parts),
+        "stats": {
+            "total": total,
+            "malicious": len(mal_hits),
+            "suspicious": len(susp_hits),
+            "clean": len(clean_hits),
+            "known_internal": known_internal,
+            "kinds": kinds,
+        },
+    }
+
+
+class BatchSummaryInput(BaseModel):
+    # Accept either the full results array (fast path) OR a list of raw
+    # values (we'll run /ioc-lookup-batch internally). Either works.
+    results: Optional[list[dict]] = None
+    values: Optional[list[str]] = None
+
+
+@api_router.post("/iocs/batch-summary")
+async def iocs_batch_summary(payload: BatchSummaryInput):
+    """Deterministic, offline OSINT summary paragraph for a batch of IOCs.
+
+    * If `results` is provided, summarise them directly.
+    * Otherwise resolve `values` via /ioc-lookup-batch first (capped at 50).
+    """
+    results = payload.results or []
+    if not results and payload.values:
+        # Reuse the batch lookup path.
+        tokens: list[str] = []
+        for entry in payload.values:
+            for tok in re.split(r"[\s,;]+", (entry or "").strip()):
+                tok = tok.strip()
+                if tok:
+                    tokens.append(tok)
+        seen: set[str] = set()
+        items: list[str] = []
+        for t in tokens:
+            k = t.lower()
+            if k not in seen:
+                seen.add(k)
+                items.append(t)
+        items = items[:50]
+        if not items:
+            raise HTTPException(status_code=400, detail="Provide IOCs to summarise")
+        sem = asyncio.Semaphore(8)
+        async with httpx.AsyncClient(timeout=12, follow_redirects=True) as hc:
+            async def one(v: str) -> dict:
+                async with sem:
+                    try:
+                        return await _do_lookup(hc, v)
+                    except Exception:
+                        return {"value": v, "type": "unknown", "links": {}, "enrichment": None, "reputation": None}
+            results = await asyncio.gather(*[one(v) for v in items])
+    if not results:
+        raise HTTPException(status_code=400, detail="No IOCs to summarise")
+    return _deterministic_ioc_summary(results)
+
+
+# ---------------------------------------------------------------------------
+# NivX Forge — Offline Investigation Report Generator (no LLM).
+# Analyst-style two-paragraph MDR report from raw text/logs. Extracts IOCs,
+# actors, timestamps, users/devices, actions; enriches IOCs via OSINT;
+# then writes a deterministic report honouring the user's free-form
+# instructions (paragraph count, tone hints).
+# ---------------------------------------------------------------------------
+
+_RE_IOC_URL     = re.compile(r"\bhttps?://[^\s\"'<>]+", re.I)
+_RE_IOC_IP      = re.compile(r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\b")
+_RE_IOC_HASH    = re.compile(r"\b[a-fA-F0-9]{32,128}\b")
+_RE_IOC_DOMAIN  = re.compile(r"\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\[?\.\]?|\(\.\)))+[a-z]{2,24}\b", re.I)
+_RE_TIMESTAMP   = re.compile(r"\b\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?\b")
+_RE_USER_HINT   = re.compile(r"\b(?:user(?:name)?|account|login)\s*[:=]\s*([A-Za-z0-9._@\\-]+)", re.I)
+_RE_EMAIL       = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+_RE_DEVICE_HINT = re.compile(r"\b(?:host(?:name)?|device|machine|workstation|computer)\s*[:=]\s*([A-Za-z0-9._-]+)", re.I)
+_RE_ACTION_HINT = re.compile(r"\b(blocked|allowed|denied|quarantined|isolated|dropped|detected|executed|launched|created|deleted|modified|logon|logoff|failed login)\b", re.I)
+
+
+def _extract_forge_iocs(raw: str) -> list[str]:
+    found: dict[str, None] = {}
+    for m in _RE_IOC_URL.finditer(raw):
+        found[m.group(0).rstrip(".,;:)]")] = None
+    for m in _RE_IOC_HASH.finditer(raw):
+        h = m.group(0).lower()
+        if len(h) in (32, 40, 64, 128):
+            found[h] = None
+    for m in _RE_IOC_IP.finditer(raw):
+        found[m.group(0)] = None
+    for m in _RE_IOC_DOMAIN.finditer(raw):
+        refanged = m.group(0).replace("[.]", ".").replace("(.)", ".").lower()
+        if refanged.count(".") == 3 and all(p.isdigit() for p in refanged.split(".")):
+            continue  # skip pure IPs
+        if len(refanged) < 4:
+            continue
+        found[refanged] = None
+    return list(found.keys())
+
+
+def _parse_forge_context(raw: str) -> dict:
+    """Extract structured metadata from a raw log/text blob."""
+    timestamps = _RE_TIMESTAMP.findall(raw)[:10]
+    users = list({m.group(1) for m in _RE_USER_HINT.finditer(raw)})[:10]
+    devices = list({m.group(1) for m in _RE_DEVICE_HINT.finditer(raw)})[:10]
+    emails = list(dict.fromkeys(m.group(0) for m in _RE_EMAIL.finditer(raw)))[:10]
+    actions_c: dict[str, int] = {}
+    for m in _RE_ACTION_HINT.finditer(raw):
+        w = m.group(1).lower()
+        actions_c[w] = actions_c.get(w, 0) + 1
+    top_actions = sorted(actions_c.items(), key=lambda x: -x[1])[:6]
+    return {
+        "timestamps": timestamps,
+        "users": users,
+        "devices": devices,
+        "emails": emails,
+        "actions": top_actions,
+        "line_count": raw.count("\n") + 1,
+        "char_count": len(raw),
+    }
+
+
+def _detect_paragraph_count(instructions: str, default: int = 2) -> int:
+    """Parse '2 paras', 'three paragraphs', 'in 5 sentences' from the free-form
+    instructions. Falls back to `default`."""
+    if not instructions:
+        return default
+    t = instructions.lower()
+    m = re.search(r"\b(\d+)\s*(?:para|paragraph)", t)
+    if m:
+        return max(1, min(int(m.group(1)), 6))
+    words = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6}
+    for w, n in words.items():
+        if re.search(rf"\b{w}\s*(?:para|paragraph)", t):
+            return n
+    return default
+
+
+class ForgeReportInput(BaseModel):
+    instructions: str = ""     # free-form analyst prompt (may be empty)
+    data: str                  # raw logs / text (uploaded file content OR pasted)
+    enrich: bool = True        # run OSINT against extracted IOCs
+    max_iocs: int = 15         # cap IOC enrichment
+
+
+@api_router.post("/forge/investigation-report")
+async def forge_investigation_report(payload: ForgeReportInput):
+    """Generate a deterministic MDR-style investigation report.
+
+    Rule-based only — no LLM. Extracts IOCs / users / devices / timestamps
+    from `data`, runs OSINT against IOCs (unless `enrich=false`), and emits a
+    factual multi-paragraph report honouring simple format hints in
+    `instructions` (e.g. "in 2 paras", "in three paragraphs").
+    """
+    raw = (payload.data or "").strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Provide log/data content to analyze")
+    if len(raw) > 500_000:
+        raw = raw[:500_000]  # 500 KB cap
+
+    context = _parse_forge_context(raw)
+    iocs = _extract_forge_iocs(raw)[: max(1, min(payload.max_iocs, 50))]
+
+    enriched: list[dict] = []
+    if payload.enrich and iocs:
+        sem = asyncio.Semaphore(8)
+        async with httpx.AsyncClient(timeout=12, follow_redirects=True) as hc:
+            async def one(v: str) -> dict:
+                async with sem:
+                    try:
+                        return await _do_lookup(hc, v)
+                    except Exception:
+                        return {"value": v, "type": _classify_ioc(v), "reputation": None,
+                                "enrichment": None, "local_db": None, "links": {}}
+            enriched = await asyncio.gather(*[one(v) for v in iocs])
+
+    summary_bundle = _deterministic_ioc_summary(enriched) if enriched else {"summary": "", "stats": {}}
+    ioc_summary = summary_bundle["summary"]
+    stats = summary_bundle["stats"] or {}
+    para_count = _detect_paragraph_count(payload.instructions, default=2)
+
+    # ---- Compose report paragraphs deterministically ----
+    ts = context["timestamps"]
+    ts_first, ts_last = (ts[0], ts[-1]) if ts else (None, None)
+    dev_bit = f" device{'s' if len(context['devices']) != 1 else ''} {', '.join(context['devices'][:3])}" if context["devices"] else ""
+    usr_bit = f" (user {', '.join(context['users'][:3])})" if context["users"] else (f" (email {', '.join(context['emails'][:2])})" if context["emails"] else "")
+    action_bit = ""
+    if context["actions"]:
+        action_bit = " Detected activity: " + ", ".join(f"{c}× {w}" for w, c in context["actions"]) + "."
+
+    p1_parts: list[str] = []
+    if ts_first:
+        window = ts_first if ts_first == ts_last or not ts_last else f"{ts_first} — {ts_last}"
+        p1_parts.append(f"Between {window} UTC, NivX Forge parsed {context['line_count']} line{'s' if context['line_count'] != 1 else ''} of the supplied log/data corpus{dev_bit}{usr_bit}.")
+    else:
+        p1_parts.append(f"NivX Forge parsed {context['line_count']} line{'s' if context['line_count'] != 1 else ''} of the supplied data{dev_bit}{usr_bit}.")
+    if iocs:
+        head = ", ".join(iocs[:4]) + (f" and {len(iocs) - 4} more" if len(iocs) > 4 else "")
+        p1_parts.append(f"{len(iocs)} indicator{'s' if len(iocs) != 1 else ''} of compromise were extracted from the corpus: {head}.")
+    else:
+        p1_parts.append("No indicators of compromise (IP, domain, URL or file hash) were recovered from the corpus.")
+    if action_bit:
+        p1_parts.append(action_bit.strip())
+
+    p2_parts: list[str] = []
+    if enriched:
+        p2_parts.append(ioc_summary)
+    else:
+        p2_parts.append("OSINT enrichment was skipped for this run; reputation was not queried against VirusTotal, AbuseIPDB, MalwareBazaar, URLhaus, ThreatFox or the internal NivX IOC database.")
+    # Escalation call-to-action
+    mal = int(stats.get("malicious") or 0)
+    if mal >= 1:
+        p2_parts.append("Escalate this incident to the customer immediately; contain the affected host, block the malicious indicators at the perimeter, and preserve volatile artefacts for forensic review.")
+    elif int(stats.get("suspicious") or 0) >= 1:
+        p2_parts.append("Recommend the customer keep the affected asset under enhanced monitoring for the next 24 hours and re-run reputation once fresher intelligence is available.")
+    else:
+        p2_parts.append("No customer-side action is required at this time; log the observation for the audit trail and continue baseline monitoring.")
+
+    paras = [" ".join(p1_parts), " ".join(p2_parts)]
+    # Adjust to requested paragraph count
+    if para_count == 1:
+        paras = [" ".join(paras)]
+    elif para_count > 2:
+        # Split IOC list into its own paragraph if we have extras to say.
+        if iocs and enriched and para_count >= 3:
+            ioc_lines = []
+            for r in enriched[:10]:
+                v = r.get("value")
+                rep = r.get("reputation") or {}
+                vt = rep.get("vt") or {}
+                ab = rep.get("abuseipdb") or {}
+                vt_bit = f"VT {vt.get('malicious') or 0}/{(vt.get('malicious') or 0) + (vt.get('harmless') or 0) + (vt.get('undetected') or 0) or '?'}" if not vt.get("error") else ""
+                ab_bit = f"AbuseIPDB {ab.get('score') or 0}%" if not ab.get("error") and ab.get("score") is not None else ""
+                bits = " · ".join([b for b in (vt_bit, ab_bit) if b])
+                ioc_lines.append(f"{v}{f' ({bits})' if bits else ''}")
+            paras.insert(1, "Per-indicator OSINT roll-up: " + "; ".join(ioc_lines) + ".")
+        while len(paras) < para_count:
+            paras.append("Report closure: this assessment reflects the OSINT signal available at query time; re-run the investigation as feeds refresh.")
+
+    report = "\n\n".join(paras)
+    return {
+        "report": report,
+        "instructions": payload.instructions or "",
+        "paragraph_count": len(paras),
+        "iocs_extracted": iocs,
+        "enriched": enriched,
+        "stats": stats,
+        "context": context,
+        "generated_at": now_iso(),
+    }
+
+
 @api_router.get("/live-feed")
 async def live_feed(limit: int = 50):
     """CISA KEV feed. Caps to 50 items by default (bounded via `?limit=`,

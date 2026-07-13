@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Loader2, Download, ListChecks, ShieldQuestion, ExternalLink, ShieldPlus, Check, ChevronDown, ChevronRight, FileText, FileJson, FileSpreadsheet, Upload } from "lucide-react";
+import { Loader2, Download, ListChecks, ShieldQuestion, ExternalLink, ShieldPlus, Check, ChevronDown, ChevronRight, FileText, FileJson, FileSpreadsheet, Upload, Sparkles, Copy } from "lucide-react";
 import { api, formatApiErrorDetail } from "@/lib/api";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   FAVICON, TYPE_LABEL, iocSummary, severityStyle,
   resultsToCSV, downloadCSV,
@@ -54,6 +55,13 @@ export default function IocBulkTable({ initialText, autoRun, prefillKey }) {
   const exportRef = useRef(null);
   // Which rows are expanded to show the full OSINT dossier.
   const [expanded, setExpanded] = useState(() => new Set());
+  // Deterministic OSINT summary dialog (no LLM) — auto-opens after every
+  // batch analysis (file upload OR manual paste + "Analyze all").
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryText, setSummaryText] = useState("");
+  const [summaryStats, setSummaryStats] = useState(null);
+  const [summarySource, setSummarySource] = useState("");  // "file" | "paste"
   const toggleRow = (idx) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -81,7 +89,7 @@ export default function IocBulkTable({ initialText, autoRun, prefillKey }) {
 
   const flaggedResults = useMemo(() => (results || []).filter(isFlagged), [results]);
 
-  const analyze = async (overrideText) => {
+  const analyze = async (overrideText, opts = {}) => {
     const payload = (overrideText ?? text).trim();
     if (!payload) return;
     setLoading(true);
@@ -90,7 +98,26 @@ export default function IocBulkTable({ initialText, autoRun, prefillKey }) {
     setSaveMsg(null);
     try {
       const { data } = await api.post("/ioc-lookup-batch", { values: [payload] });
-      setResults(data.results || []);
+      const rows = data.results || [];
+      setResults(rows);
+      // Auto-open deterministic OSINT summary dialog for the batch. Runs
+      // offline (no LLM). Fails soft — dialog just shows an error line.
+      if (rows.length > 0) {
+        setSummarySource(opts.source || "paste");
+        setSummaryOpen(true);
+        setSummaryLoading(true);
+        setSummaryText("");
+        setSummaryStats(null);
+        try {
+          const { data: sm } = await api.post("/iocs/batch-summary", { results: rows });
+          setSummaryText(sm.summary || "");
+          setSummaryStats(sm.stats || null);
+        } catch (e) {
+          setSummaryText(`Summary generation failed: ${formatApiErrorDetail(e.response?.data?.detail) || e.message}`);
+        } finally {
+          setSummaryLoading(false);
+        }
+      }
     } catch (err) {
       setError(formatApiErrorDetail(err.response?.data?.detail) || "Batch lookup failed");
     } finally {
@@ -160,14 +187,20 @@ export default function IocBulkTable({ initialText, autoRun, prefillKey }) {
         return;
       }
       setError("");
-      setText((prev) => {
-        const existing = new Set((prev || "").split(/[\s,;]+/).map((t) => t.trim().toLowerCase()).filter(Boolean));
-        const merged = [...existing];
+      // Replace-or-merge: we merge for the visible textarea (so the user can
+      // see everything that was picked), but analysis fires only on the
+      // just-uploaded IOC set — that's the user's expressed intent.
+      const merged = (() => {
+        const existing = new Set((text || "").split(/[\s,;]+/).map((t) => t.trim().toLowerCase()).filter(Boolean));
+        const out = [...existing];
         for (const i of iocs) {
-          if (!existing.has(i.toLowerCase())) { merged.push(i); existing.add(i.toLowerCase()); }
+          if (!existing.has(i.toLowerCase())) { out.push(i); existing.add(i.toLowerCase()); }
         }
-        return merged.join("\n");
-      });
+        return out.join("\n");
+      })();
+      setText(merged);
+      // Auto-run OSINT + open the summary dialog.
+      analyze(iocs.join("\n"), { source: "file" });
     };
     reader.readAsText(f);
     e.target.value = "";
@@ -377,6 +410,81 @@ export default function IocBulkTable({ initialText, autoRun, prefillKey }) {
           </div>
         </motion.div>
       )}
+
+      {/* Deterministic OSINT summary dialog — auto-opens after every batch
+          analysis (paste or file upload). Offline: no LLM used. */}
+      <Dialog open={summaryOpen} onOpenChange={setSummaryOpen}>
+        <DialogContent className="max-w-2xl" data-testid="ioc-bulk-summary-dialog">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-slate-900">
+              <Sparkles className="w-5 h-5 text-[#2E7DF5]" />
+              OSINT Investigation Summary
+            </DialogTitle>
+            <DialogDescription className="text-slate-500">
+              Deterministic, offline reputation summary of the {summarySource === "file" ? "uploaded file" : "analyzed batch"} — no AI used. Sourced from VirusTotal, AbuseIPDB, MalwareBazaar, URLhaus, ThreatFox and the internal NivX IOC database.
+            </DialogDescription>
+          </DialogHeader>
+
+          {summaryStats && (
+            <div className="flex flex-wrap gap-2 pt-1 pb-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide px-2 py-1 rounded border bg-slate-50 border-slate-200 text-slate-700">
+                {summaryStats.total} total
+              </span>
+              {summaryStats.malicious > 0 && (
+                <span className="text-[11px] font-semibold uppercase tracking-wide px-2 py-1 rounded border bg-red-50 border-red-200 text-red-700">
+                  {summaryStats.malicious} malicious
+                </span>
+              )}
+              {summaryStats.suspicious > 0 && (
+                <span className="text-[11px] font-semibold uppercase tracking-wide px-2 py-1 rounded border bg-amber-50 border-amber-200 text-amber-700">
+                  {summaryStats.suspicious} suspicious
+                </span>
+              )}
+              {summaryStats.clean > 0 && (
+                <span className="text-[11px] font-semibold uppercase tracking-wide px-2 py-1 rounded border bg-emerald-50 border-emerald-200 text-emerald-700">
+                  {summaryStats.clean} clean/unknown
+                </span>
+              )}
+              {summaryStats.known_internal > 0 && (
+                <span className="text-[11px] font-semibold uppercase tracking-wide px-2 py-1 rounded border bg-blue-50 border-blue-200 text-blue-700">
+                  {summaryStats.known_internal} in NivX DB
+                </span>
+              )}
+            </div>
+          )}
+
+          <div
+            data-testid="ioc-bulk-summary-text"
+            className="mt-1 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-relaxed text-slate-800 whitespace-pre-wrap min-h-[120px]"
+          >
+            {summaryLoading ? (
+              <span className="inline-flex items-center gap-2 text-slate-500">
+                <Loader2 className="w-4 h-4 animate-spin" /> Generating deterministic OSINT summary…
+              </span>
+            ) : (summaryText || "No summary available.")}
+          </div>
+
+          <DialogFooter className="mt-3">
+            <button
+              type="button"
+              disabled={!summaryText || summaryLoading}
+              onClick={() => { navigator.clipboard.writeText(summaryText); }}
+              data-testid="ioc-bulk-summary-copy"
+              className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-700 hover:text-[#2E7DF5] border border-slate-300 hover:border-[#2E7DF5] rounded-md px-3 py-2 transition-colors disabled:opacity-50"
+            >
+              <Copy className="w-4 h-4" /> Copy summary
+            </button>
+            <button
+              type="button"
+              onClick={() => setSummaryOpen(false)}
+              data-testid="ioc-bulk-summary-close"
+              className="inline-flex items-center gap-1.5 text-sm font-semibold text-white bg-[#2E7DF5] hover:bg-[#2563EB] rounded-md px-4 py-2 transition-colors"
+            >
+              Close
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
