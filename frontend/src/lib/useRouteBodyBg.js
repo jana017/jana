@@ -21,6 +21,11 @@ function bgForPath(pathname) {
   if (p.startsWith("/cyberlab") || p.startsWith("/nivx-forge") || p.startsWith("/detonate") || p.startsWith("/payload-lab") || p.startsWith("/console")) {
     return DARK;
   }
+  // On the dedicated console subdomain, "/" is the Console page — treat it dark too.
+  if (p === "/" && typeof window !== "undefined") {
+    const h = (window.location.hostname || "").toLowerCase();
+    if (h === "console.nivxmachines.com" || h.startsWith("console.")) return DARK;
+  }
   return LIGHT;
 }
 

@@ -1,6 +1,18 @@
 # NivX Machines — PRD
 
 
+## Implemented (2026-02-13 — Hostname-aware root: `console.nivxmachines.com/` → Console page)
+- **`App.js`** now computes `IS_CONSOLE_HOST` once at module load (`window.location.hostname === "console.nivxmachines.com"` OR any `console.*` variant for preview/staging).
+- The `/` Route conditionally renders `<Console />` when on the console subdomain and `<Landing />` otherwise. Zero impact on any other route — `/admin`, `/employee`, `/nivx-forge`, marketing pages, etc. all resolve identically on both hosts.
+- **`useRouteBodyBg.js`** extended so `/` on the console subdomain uses the dark slate-950 body background (prevents the white flash before Console mounts).
+- **Regression verified**: `/` on the main preview domain still renders the marketing Landing hero ("Engineering digital immunity for the modern enterprise"). No changes to the marketing site experience.
+- **Prod behavior once deployed**:
+  - `https://nivxmachines.com/` → Landing (unchanged).
+  - `https://console.nivxmachines.com/` → Console page (2-tab tools workspace, admin/employee gate applies, redirects to `/login` for unauth).
+  - `https://console.nivxmachines.com/nivx-forge`, `.../threatbox` etc. all still resolve as usual (subdomain change is scoped to the root `/` only, so bookmarks and internal links keep working).
+
+
+
 ## Implemented (2026-02-13 — Admin-only Investigation Report in NivX Forge)
 - **CyberLab.jsx** now fetches `/auth/me` on mount and derives an `isAdmin` flag (role === `admin`). The **Investigation Report** panel (the "NIVX COGNIS AI · GEMINI 3 FLASH" section with analyst-instructions, log paste, OCR upload and Generate report button) is wrapped in `{isAdmin && …}` — so it is completely absent from the DOM for public visitors, normal `user` accounts, and even `employee` accounts.
 - Rest of NivX Forge (decoders, MITRE tabs, session rules, share/report download, etc.) is unchanged and still available to all analyst tiers.

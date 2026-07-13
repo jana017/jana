@@ -29,6 +29,18 @@ const UserAuth = lazy(() => import("@/pages/UserAuth"));
 const UserDashboard = lazy(() => import("@/pages/UserDashboard"));
 const Console = lazy(() => import("@/pages/Console"));
 
+/** True when the app is being served from the dedicated console subdomain.
+ * On that host we treat "/" as the Console page so users landing on
+ * https://console.nivxmachines.com/ see the tools workspace immediately —
+ * no marketing page and no manual "/console" typing required.
+ * Preview / staging variants (e.g. "console.nivxmachines.dev",
+ * "console.preview.emergentagent.com") also match via the prefix check. */
+const IS_CONSOLE_HOST = (() => {
+  if (typeof window === "undefined") return false;
+  const h = (window.location.hostname || "").toLowerCase();
+  return h === "console.nivxmachines.com" || h.startsWith("console.");
+})();
+
 function RouteFallback() {
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-white">
@@ -59,7 +71,7 @@ function App() {
             <RouteEffects />
             <Suspense fallback={<RouteFallback />}>
               <Routes>
-                <Route path="/" element={<Landing />} />
+                <Route path="/" element={IS_CONSOLE_HOST ? <Console /> : <Landing />} />
                 <Route path="/threat-intelligence" element={<ThreatIntelligence />} />
                 <Route path="/learn" element={<Learn />} />
                 <Route path="/cybersecurity-101" element={<Navigate to="/learn?tab=cyber101" replace />} />
