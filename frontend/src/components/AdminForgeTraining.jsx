@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2, Upload, Save, X, Search, FileText, Image as ImageIcon, Loader2, RefreshCw, BookOpenText, Sparkles, GitCompare, GraduationCap } from "lucide-react";
+import { Plus, Trash2, Upload, Save, X, Search, FileText, Image as ImageIcon, Loader2, RefreshCw, BookOpenText, Sparkles, GitCompare, GraduationCap, LayoutGrid } from "lucide-react";
 import { api, formatApiErrorDetail } from "@/lib/api";
 
 /**
@@ -56,6 +56,7 @@ export default function AdminForgeTraining() {
   const [showDiff, setShowDiff] = useState(false);
   const [persona, setPersona] = useState("");
   const [personaSaving, setPersonaSaving] = useState(false);
+  const [stats, setStats] = useState(null);   // {breakdown, totals}
   const fileRef = useRef(null);
 
   const loadAll = useCallback(async () => {
@@ -76,8 +77,18 @@ export default function AdminForgeTraining() {
     }
   }, []);
 
+  const loadStats = useCallback(async () => {
+    try {
+      const { data } = await api.get("/admin/forge/training/stats");
+      setStats(data);
+    } catch (e) {
+      // silent — dashboard is optional
+    }
+  }, []);
+
   useEffect(() => { loadAll(); }, [loadAll]);
   useEffect(() => { loadPersona(); }, [loadPersona]);
+  useEffect(() => { loadStats(); }, [loadStats]);
 
   const startNew = () => { setSelected(null); setForm(EMPTY_EXAMPLE); };
 
@@ -118,6 +129,7 @@ export default function AdminForgeTraining() {
         toast.success("Example added — NivX Cognis AI will use this on future reports");
       }
       await loadAll();
+      await loadStats();
       editExisting(saved);
     } catch (e) {
       toast.error(`Save failed: ${formatApiErrorDetail(e.response?.data?.detail) || e.message}`);
@@ -133,6 +145,7 @@ export default function AdminForgeTraining() {
       toast.success("Example deleted");
       startNew();
       await loadAll();
+      await loadStats();
     } catch (e) {
       toast.error(`Delete failed: ${formatApiErrorDetail(e.response?.data?.detail) || e.message}`);
     } finally { setBusy(false); }
@@ -214,7 +227,82 @@ export default function AdminForgeTraining() {
         />
       </section>
 
-      {/* Two-column: examples list left, editor right */}
+      {/* Training coverage dashboard — heat-map + tallies */}
+      {stats && (
+        <section data-testid="forge-training-stats" className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+              <LayoutGrid className="w-4 h-4 text-[#2E7DF5]" /> Training coverage
+            </h2>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500">
+              <span className="inline-flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-slate-300" /> Missing
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-amber-400" /> Light (1–2)
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" /> Covered (3+)
+              </span>
+              <button onClick={loadStats} className={`${btnCls} border-slate-200 text-slate-600 hover:border-slate-400`} data-testid="forge-training-stats-refresh">
+                <RefreshCw className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-slate-500">Grand total</div>
+              <div className="text-lg font-semibold text-slate-900" data-testid="stat-grand-total">{stats.totals?.grand_total ?? 0}</div>
+            </div>
+            <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-blue-700">Authored (admin)</div>
+              <div className="text-lg font-semibold text-blue-900" data-testid="stat-authored">{stats.totals?.authored_total ?? 0}</div>
+            </div>
+            <div className="rounded-md border border-violet-200 bg-violet-50 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-violet-700">Refinements (analyst)</div>
+              <div className="text-lg font-semibold text-violet-900" data-testid="stat-refinements">{stats.totals?.refinement_total ?? 0}</div>
+            </div>
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-wide text-amber-700">Case gaps</div>
+              <div className="text-lg font-semibold text-amber-900" data-testid="stat-gaps">
+                {stats.totals?.case_types_missing ?? 0}
+                <span className="text-[11px] font-normal text-amber-700 ml-1">/ {stats.totals?.case_types_defined ?? 0}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2" data-testid="forge-training-heatmap">
+            {(stats.breakdown || []).map((row) => {
+              const tone = row.tier === "covered"
+                ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+                : row.tier === "light"
+                  ? "border-amber-300 bg-amber-50 text-amber-900"
+                  : "border-slate-200 bg-slate-50 text-slate-500";
+              const dot = row.tier === "covered" ? "bg-emerald-500" : row.tier === "light" ? "bg-amber-400" : "bg-slate-300";
+              return (
+                <button
+                  key={row.case_type}
+                  type="button"
+                  onClick={() => { setCaseFilter(row.case_type); setSourceFilter(""); }}
+                  data-testid={`heatmap-${row.case_type}`}
+                  title={`${row.total} example${row.total !== 1 ? "s" : ""} · ${row.authored} authored · ${row.refinement} refinements — click to filter`}
+                  className={`text-left rounded-md border ${tone} px-3 py-2 hover:brightness-95 transition-all`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide truncate">{row.case_type}</span>
+                    <span className={`w-2 h-2 rounded-full ${dot}`} />
+                  </div>
+                  <div className="text-base font-semibold mt-0.5">{row.total}</div>
+                  <div className="text-[10px] opacity-80 mt-0.5">
+                    {row.authored} authored · {row.refinement} refined
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
       <section className="grid lg:grid-cols-[380px_1fr] gap-6">
         <aside className="bg-white rounded-xl border border-slate-200 shadow-sm">
           <div className="p-3 border-b border-slate-100 space-y-2">

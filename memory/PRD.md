@@ -1,6 +1,16 @@
 # NivX Machines — PRD
 
 
+## Implemented (2026-02-13 — Training coverage dashboard)
+- **New endpoint**: `GET /api/admin/forge/training/stats` — Mongo aggregation returns per-case-type counts split by source (authored vs refinement), `last_at`, tier (`missing` / `light` / `covered`) and totals.
+- **New UI section** in `/admin` → *Forge Training*: **Training coverage** card with:
+  - Four headline tiles: Grand total, Authored (admin), Refinements (analyst), Case gaps (X / Y).
+  - Heat-map grid — one tile per case type, colour-coded by tier (grey / amber / emerald). Sorted with missing first so gaps jump out. Clicking a tile filters the list below to that case type.
+  - Refresh button; stats auto-refresh after every save/delete.
+- Confirmed live: 3 examples across 9 case types → 8 gaps flagged in amber; only `MALWARE` shown as covered (green).
+
+
+
 ## Implemented (2026-02-13 — Refinements filter + diff viewer in Training Center)
 - `/admin` → *Forge Training* now has a **Source** filter dropdown (`forge-training-source-filter`) with `All`, `Authored (admin)`, `Refinements (analyst)`. Backend `GET /api/admin/forge/training/examples?source=` supports the filter (legacy rows without a `source` field are treated as `authored`).
 - Each list item shows a **REFINEMENT** or **AUTHORED** badge next to the case-type pill.

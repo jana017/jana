@@ -4904,6 +4904,76 @@ async def get_forge_training_config(admin: dict = Depends(require_role("admin"))
     }
 
 
+@api_router.get("/admin/forge/training/stats")
+async def get_forge_training_stats(admin: dict = Depends(require_role("admin"))):
+    """Aggregate coverage stats for the Training Center dashboard.
+
+    Returns per-case-type counts split by source (authored vs refinement),
+    plus totals and a simple coverage tier (missing/light/covered) so the
+    admin can spot gaps at a glance.
+    """
+    default_cases = ["malware", "dns_proxy", "mixed", "phishing", "insider",
+                      "data_exfil", "cloud_iam", "ransomware", "generic"]
+    # Collate via Mongo aggregation.
+    pipeline = [
+        {"$match": {"active": True}},
+        {"$group": {
+            "_id": {
+                "case_type": {"$ifNull": ["$case_type", "generic"]},
+                "source": {"$ifNull": ["$source", "authored"]},
+            },
+            "count": {"$sum": 1},
+            "last_at": {"$max": "$updated_at"},
+        }},
+    ]
+    per_case: dict[str, dict] = {}
+    async for row in db.forge_training_examples.aggregate(pipeline):
+        key = row["_id"]["case_type"]
+        src = row["_id"]["source"] if row["_id"]["source"] in ("authored", "refinement") else "authored"
+        bucket = per_case.setdefault(key, {"authored": 0, "refinement": 0, "total": 0, "last_at": ""})
+        bucket[src] = bucket.get(src, 0) + row["count"]
+        bucket["total"] += row["count"]
+        if (row.get("last_at") or "") > (bucket.get("last_at") or ""):
+            bucket["last_at"] = row.get("last_at") or ""
+
+    # Ensure every default case type appears (even with zero rows).
+    for c in default_cases:
+        per_case.setdefault(c, {"authored": 0, "refinement": 0, "total": 0, "last_at": ""})
+
+    def tier(total: int) -> str:
+        if total == 0:
+            return "missing"
+        if total < 3:
+            return "light"
+        return "covered"
+
+    breakdown = []
+    for k, v in per_case.items():
+        breakdown.append({
+            "case_type": k,
+            "authored": v.get("authored", 0),
+            "refinement": v.get("refinement", 0),
+            "total": v.get("total", 0),
+            "tier": tier(v.get("total", 0)),
+            "last_at": v.get("last_at") or "",
+        })
+    # Sort: missing first (so gaps jump out), then light, then covered — each
+    # tier sub-sorted by total desc so heavy cases lead within their tier.
+    tier_order = {"missing": 0, "light": 1, "covered": 2}
+    breakdown.sort(key=lambda b: (tier_order[b["tier"]], -b["total"]))
+
+    totals = {
+        "case_types_defined": len(breakdown),
+        "case_types_missing": sum(1 for b in breakdown if b["tier"] == "missing"),
+        "case_types_light":   sum(1 for b in breakdown if b["tier"] == "light"),
+        "case_types_covered": sum(1 for b in breakdown if b["tier"] == "covered"),
+        "authored_total":     sum(b["authored"] for b in breakdown),
+        "refinement_total":   sum(b["refinement"] for b in breakdown),
+        "grand_total":        sum(b["total"] for b in breakdown),
+    }
+    return {"breakdown": breakdown, "totals": totals}
+
+
 @api_router.put("/admin/forge/training/config")
 async def put_forge_training_config(
     payload: ForgeTrainingConfig,
