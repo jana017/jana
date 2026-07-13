@@ -48,6 +48,18 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="NivX Machines API")
 api_router = APIRouter(prefix="/api")
 
+
+# ---------------------------------------------------------------------------
+# Kubernetes liveness / readiness probe — MUST be at root ("/health"), not
+# under /api, because the ingress/probe hits the pod directly on port 8001
+# without the /api prefix. Returning 404 to enough probes will cause K8s to
+# kill the pod and the deployment build to fail.
+# ---------------------------------------------------------------------------
+@app.get("/health")
+@app.head("/health")
+async def _health():
+    return {"status": "ok"}
+
 # ---------------------------------------------------------------------------
 # Model helpers
 # ---------------------------------------------------------------------------
