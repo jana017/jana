@@ -379,6 +379,60 @@ register(Plugin(
 ))
 
 
+def _xor_bruteforce(data: bytes, params: Dict[str, Any]) -> bytes:
+    """Try every single-byte XOR key and return the decode that yields the
+    highest ratio of printable ASCII. Common MDR reverse-engineering shortcut.
+    """
+    if len(data) < 4:
+        return data
+    best_key = 0
+    best_score = -1.0
+    best_bytes = data
+    for k in range(256):
+        cand = bytes(b ^ k for b in data)
+        printable = sum(1 for c in cand if 32 <= c < 127 or c in (9, 10, 13))
+        # Prefer higher printable ratio; slightly penalise empty-XOR (key=0).
+        score = printable / len(cand) - (0.02 if k == 0 else 0.0)
+        # Bonus if IOC-shaped tokens appear.
+        low = cand.decode("utf-8", errors="ignore").lower()
+        if any(tok in low for tok in ("http", "cmd", "powershell", "curl", "wget", ".exe", ".dll", ".ps1", "iex")):
+            score += 0.15
+        if score > best_score:
+            best_score = score
+            best_key = k
+            best_bytes = cand
+    # Only surface if we found something meaningfully printable.
+    if best_score < 0.60:
+        return data  # give up — nothing looks like text
+    header = f"[xor-bruteforce key=0x{best_key:02x} printable_ratio={best_score:.2f}]\n".encode()
+    return header + best_bytes
+
+
+def _xor_bf_detect(data: bytes) -> float:
+    """Auto-select the XOR bruteforce when the input looks like non-printable
+    bytes that a single XOR could rescue. Refuses obviously-plain text."""
+    if len(data) < 8:
+        return 0.0
+    sample = data[:512]
+    printable = sum(1 for c in sample if 32 <= c < 127 or c in (9, 10, 13))
+    ratio = printable / len(sample)
+    # Only fires when 40-95% printable → looks encoded, not already plain text.
+    if 0.40 <= ratio <= 0.95:
+        return 0.35
+    return 0.0
+
+
+register(Plugin(
+    id="xor-bruteforce",
+    name="XOR Bruteforce (single-byte key)",
+    category="Cryptography",
+    description="Try all 256 single-byte XOR keys, pick the decode with the highest printable ASCII ratio.",
+    run=_xor_bruteforce,
+    detect=_xor_bf_detect,
+    auto=True,
+))
+
+
 def _rot13(data: bytes, params: Dict[str, Any]) -> bytes:
     text = data.decode("utf-8", errors="replace")
     return codecs.encode(text, "rot_13").encode("utf-8")

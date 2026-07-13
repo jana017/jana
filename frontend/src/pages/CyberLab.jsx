@@ -74,7 +74,7 @@ const RISK_TEXT = (score) => {
   return "text-emerald-400";
 };
 
-export default function CyberLab() {
+export default function CyberLab({ hideChrome = false } = {}) {
   useSeo({
     title: "NivX Forge — Decoder & Threat Analysis Platform · NivX Machines",
     description: "Enterprise-grade payload decoder for DFIR analysts. Auto-decode PowerShell, MITRE ATT&CK mapping, YARA-lite rules, IOC extraction, and risk scoring.",
@@ -489,7 +489,7 @@ export default function CyberLab() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100" data-testid="cyberlab-root">
-      <Navbar />
+      {!hideChrome && <Navbar />}
 
       {/* Grid backdrop */}
       <div className="pointer-events-none absolute inset-0 -z-0 opacity-[0.03]"

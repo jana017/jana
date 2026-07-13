@@ -51,7 +51,7 @@ function sinceDate(days) {
 
 const PAGE_SIZE = 9;
 
-export default function ThreatIntelligence() {
+export default function ThreatIntelligence({ hideChrome = false } = {}) {
   useSeo({
     title: "Threat Intelligence · Live IOC Analyzer & OSINT | NivX Machines",
     description: "Search hundreds of curated threat reports, run bulk IOC analysis across leading OSINT sources, and browse the NivX-curated IOC database.",
@@ -114,7 +114,7 @@ export default function ThreatIntelligence() {
 
   return (
     <div data-testid="threat-intelligence-page" className="bg-white">
-      <Navbar />
+      {!hideChrome && <Navbar />}
 
       <section className="pt-28 pb-14 lg:pt-32 bg-[#0A1220] relative overflow-hidden">
         <div className="absolute inset-0 dot-grid opacity-40" aria-hidden="true" />

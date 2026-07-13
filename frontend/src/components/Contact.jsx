@@ -48,12 +48,12 @@ export default function Contact() {
             </p>
 
             <div className="mt-8 grid sm:grid-cols-2 gap-4">
-              <a href="tel:9059565125" data-testid="support-phone" className="group rounded-xl border border-slate-700 bg-slate-800/40 hover:border-[#F5821F]/50 p-5 transition-colors">
+              <a href="tel:9986063777" data-testid="support-phone" className="group rounded-xl border border-slate-700 bg-slate-800/40 hover:border-[#F5821F]/50 p-5 transition-colors">
                 <span className="w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center mb-3">
                   <Phone className="w-5 h-5 text-[#F5821F]" strokeWidth={1.8} />
                 </span>
                 <div className="text-xs text-slate-400">Mobile</div>
-                <div className="text-base font-semibold text-white group-hover:text-[#F5821F] transition-colors">+91 90595 65125</div>
+                <div className="text-base font-semibold text-white group-hover:text-[#F5821F] transition-colors">+91 99860 63777</div>
               </a>
               <a href="mailto:info@nivxmachines.com" data-testid="support-email" className="group rounded-xl border border-slate-700 bg-slate-800/40 hover:border-[#2E7DF5]/50 p-5 transition-colors">
                 <span className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center mb-3">
