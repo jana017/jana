@@ -1,6 +1,15 @@
 # NivX Machines — PRD
 
 
+## Implemented (2026-02-13 — Analyst refinement / RLHF loop)
+- New "Refine & teach NivX Cognis AI" flow in the Investigation Report output panel — after any AI-generated report, an analyst can open a Dialog, edit the narrative + recommendations, add tags/notes, and save. The refined version is stored in the `forge_training_examples` collection with `source="refinement"` (distinct from admin-authored `authored`), `ai_original` (the raw AI output kept for audit / diff) and `ai_model` (which model produced it).
+- On the next similar case, `find_matching_forge_examples` retrieves this refinement as a few-shot exemplar → Cognis AI mirrors the analyst's tone/structure/phrasing while keeping factual fidelity (no IOC/host/date leakage).
+- New endpoint: `POST /api/forge/training/refinements` — requires admin OR employee role. Auto-suggests a title if empty. Validates that `raw_data` + `narrative` are non-empty.
+- Frontend: refine dialog auto-fills from the AI output (title from first log line, case type from detection, tags from top-5 extracted IOCs, narrative from AI narrative, recommendations from deterministic recs). Reference box shows the original AI text (audit trail). Logged-out click → login-required toast.
+- **Testing**: `iteration_31.json` — 9/9 backend + 100% frontend E2E, no regressions.
+
+
+
 ## Implemented (2026-02-13 — NivX Cognis AI rebrand + NaN-key squash + Tesseract OCR)
 - **AI narrator rebrand → "NivX Cognis AI"** everywhere: system prompt, header badge, output pill (`COGNIS · 3 FLASH`), toggle label, toast text, admin Training Center wording, download metadata.
 - **React "same key NaN" warning eliminated**: 4 files had `key={a + b}` where `a` could be undefined (LiveThreatsPanel, LiveThreatLandscape, ThreatIntelligence, CommunityFeed). All switched to template literals with `??` fallbacks. Verified zero warnings across `/`, `/threat-intelligence`, `/community/hn`, `/learn`, `/admin`.
