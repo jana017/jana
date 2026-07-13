@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2, Upload, Save, X, Search, FileText, Image as ImageIcon, Loader2, RefreshCw, BookOpenText, Sparkles, GitCompare, GraduationCap, LayoutGrid } from "lucide-react";
+import { Plus, Trash2, Upload, Save, X, Search, FileText, Image as ImageIcon, Loader2, RefreshCw, BookOpenText, Sparkles, GitCompare, GraduationCap, LayoutGrid, Pencil } from "lucide-react";
 import { api, formatApiErrorDetail } from "@/lib/api";
 
 /**
@@ -31,15 +31,17 @@ const EMPTY_EXAMPLE = {
 };
 
 const CASE_TYPES = [
-  { key: "malware",     label: "Malware / Endpoint" },
-  { key: "dns_proxy",   label: "DNS / Proxy" },
-  { key: "mixed",       label: "Mixed (malware + DNS)" },
-  { key: "phishing",    label: "Phishing / BEC" },
-  { key: "insider",     label: "Insider Threat" },
-  { key: "data_exfil",  label: "Data Exfiltration" },
-  { key: "cloud_iam",   label: "Cloud / IAM" },
-  { key: "ransomware",  label: "Ransomware" },
-  { key: "generic",     label: "Generic" },
+  { key: "malware",           label: "Malware / Endpoint" },
+  { key: "dns_proxy",         label: "DNS / Proxy" },
+  { key: "mixed",             label: "Mixed (malware + DNS)" },
+  { key: "authorized_admin",  label: "Authorized admin (change control)" },
+  { key: "unauthorized",      label: "Unauthorized activity" },
+  { key: "phishing",          label: "Phishing / BEC" },
+  { key: "insider",           label: "Insider Threat" },
+  { key: "data_exfil",        label: "Data Exfiltration" },
+  { key: "cloud_iam",         label: "Cloud / IAM" },
+  { key: "ransomware",        label: "Ransomware" },
+  { key: "generic",           label: "Generic" },
 ];
 
 const btnCls = "inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-md border transition-colors";
@@ -54,6 +56,7 @@ export default function AdminForgeTraining() {
   const [caseFilter, setCaseFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
   const [showDiff, setShowDiff] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);   // false = read-only view; true = editable
   const [persona, setPersona] = useState("");
   const [personaSaving, setPersonaSaving] = useState(false);
   const [stats, setStats] = useState(null);   // {breakdown, totals}
@@ -90,10 +93,11 @@ export default function AdminForgeTraining() {
   useEffect(() => { loadPersona(); }, [loadPersona]);
   useEffect(() => { loadStats(); }, [loadStats]);
 
-  const startNew = () => { setSelected(null); setForm(EMPTY_EXAMPLE); };
+  const startNew = () => { setSelected(null); setForm(EMPTY_EXAMPLE); setIsEditing(true); };
 
   const editExisting = (ex) => {
     setSelected(ex.id);
+    setIsEditing(false);   // open in read-only view; user clicks Edit to modify
     setForm({
       ...EMPTY_EXAMPLE,
       ...ex,
@@ -101,6 +105,19 @@ export default function AdminForgeTraining() {
       recommendations: Array.isArray(ex.recommendations) ? ex.recommendations : [],
       attachments: Array.isArray(ex.attachments) ? ex.attachments : [],
     });
+  };
+
+  const cancelEdit = () => {
+    // Revert unsaved edits by re-fetching the original example.
+    if (!selected) { startNew(); return; }
+    (async () => {
+      try {
+        const { data } = await api.get(`/admin/forge/training/examples/${selected}`);
+        editExisting(data);
+      } catch (e) {
+        setIsEditing(false);
+      }
+    })();
   };
 
   const submit = async (e) => {
@@ -130,7 +147,7 @@ export default function AdminForgeTraining() {
       }
       await loadAll();
       await loadStats();
-      editExisting(saved);
+      editExisting(saved);   // returns to read-only view after save
     } catch (e) {
       toast.error(`Save failed: ${formatApiErrorDetail(e.response?.data?.detail) || e.message}`);
     } finally { setBusy(false); }
@@ -389,7 +406,17 @@ export default function AdminForgeTraining() {
                   <Trash2 className="w-3.5 h-3.5" /> Delete
                 </button>
               )}
-              <button type="submit" disabled={busy} className={`${btnCls} bg-[#2E7DF5] text-white border-[#2E7DF5] hover:bg-[#2563EB]`} data-testid="forge-training-save">
+              {selected && !isEditing && (
+                <button type="button" onClick={() => setIsEditing(true)} data-testid="forge-training-edit" className={`${btnCls} border-slate-300 text-slate-700 hover:border-[#2E7DF5] hover:text-[#2E7DF5]`}>
+                  <Pencil className="w-3.5 h-3.5" /> Edit
+                </button>
+              )}
+              {selected && isEditing && (
+                <button type="button" onClick={cancelEdit} data-testid="forge-training-cancel-edit" className={`${btnCls} border-slate-300 text-slate-700 hover:border-slate-500`}>
+                  <X className="w-3.5 h-3.5" /> Cancel
+                </button>
+              )}
+              <button type="submit" disabled={busy || (selected && !isEditing)} className={`${btnCls} bg-[#2E7DF5] text-white border-[#2E7DF5] hover:bg-[#2563EB] disabled:opacity-40 disabled:cursor-not-allowed`} data-testid="forge-training-save">
                 {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} {selected ? "Update" : "Save"}
               </button>
             </div>
@@ -412,6 +439,15 @@ export default function AdminForgeTraining() {
               </div>
             </div>
           )}
+
+          {selected && !isEditing && (
+            <div className="rounded-md border border-slate-200 bg-slate-50/70 px-3 py-2 text-[11px] text-slate-500 flex items-center gap-2" data-testid="forge-training-viewmode-hint">
+              <FileText className="w-3.5 h-3.5" />
+              Viewing example — click <span className="font-semibold text-slate-700">Edit</span> above to modify fields.
+            </div>
+          )}
+
+          <fieldset disabled={selected && !isEditing} className="contents">
 
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-2">
@@ -481,6 +517,7 @@ export default function AdminForgeTraining() {
             <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} className="w-3.5 h-3.5 accent-[#2E7DF5]" data-testid="forge-training-active" />
             Active — retrieved as few-shot on new AI reports
           </label>
+          </fieldset>
         </form>
       </section>
     </main>

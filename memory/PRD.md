@@ -1,6 +1,18 @@
 # NivX Machines — PRD
 
 
+## Implemented (2026-02-13 — New case types + View/Edit toggle)
+- **Two new case types** added end-to-end:
+  - `authorized_admin` — routine change-management activity (approver + task number + ITSM footprint, no threat signal).
+  - `unauthorized` — activity explicitly flagged as not-approved / policy violation / no ticket / self-approved. Always wins over other classifications (dispositive).
+- **Classifier fix** — "endpoint" / "edr" were formerly hard-coded malware keywords, incorrectly tagging every `Microsoft Defender for Endpoint` change-management log as malware. Now only *strong* malware keywords (trojan/ransomware/backdoor/spyware/…) trigger the malware class; "endpoint"/"edr" alone no longer do. Verified with 4 curated inputs.
+- **Coverage dashboard** now covers 11 case types (added the two new ones) with the same missing/light/covered tiers.
+- **Frontend** — Admin Training Center case-type dropdowns (filter + edit form) include both new options with human-readable labels.
+- **New Edit / View toggle** on the Training Center form — clicking an example opens it read-only (`forge-training-viewmode-hint` banner + all inputs disabled via a `<fieldset disabled>`), with an **Edit** button (`forge-training-edit`) to unlock and a **Cancel** button (`forge-training-cancel-edit`) that reverts unsaved edits.
+- **Testing**: 79/79 core forge pytest tests still pass; classifier fully verified for authorized_admin / unauthorized / malware / unauthorized-wins-over-malware.
+
+
+
 ## Implemented (2026-02-13 — NivX Cognis AI security hardening blueprint)
 - **Purely additive refactor** — the shipped, working pipeline is unchanged for benign input; only new wrappers were introduced.
 - **`parse_ui_constraints(instructions) -> dict`** — public alias for the format-hint parser (mode / count / verbose). Backwards-compatible.

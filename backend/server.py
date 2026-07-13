@@ -3987,19 +3987,62 @@ _DNSPROXY_KEYWORDS = ("umbrella", "secure access", "cisco umbrella", "zscaler",
                       "bluecoat", "netskope", "proxy", "dns", "web filter",
                       "url filter", "dns query", "dns request", "cname")
 
+# Authorized-admin markers: presence of a formal change-management footprint.
+# Any change performed WITH an approver + ticket/task number is a strong
+# signal for an authorized admin action (still needs human review, but the
+# default classification leans authorized).
+_AUTHORIZED_ADMIN_MARKERS = (
+    "approver:", "authorized by", "approved by", "approval id",
+    "change control", "change request", "cr number", "crq",
+    "task number", "task00", "incident number", "inc00",
+    "servicenow", "itsm", "jira ticket",
+    "mdr_integration events",
+)
+
+# Unauthorized markers: explicit signals that the activity was NOT approved.
+# These override the authorized-admin classifier because a "no approver" or
+# "policy violation" line is dispositive.
+_UNAUTHORIZED_MARKERS = (
+    "unauthorized", "not authorized", "not approved", "unapproved",
+    "no approver", "no approval", "missing approver", "missing approval",
+    "off-hours change", "off hours change", "after-hours change",
+    "policy violation", "acceptable use policy",
+    "no ticket", "no task", "no change record",
+    "unknown approver", "self-approved", "self approved",
+    "bypass approval", "emergency override without",
+)
+
 
 def _classify_forge_case(raw: str, iocs: list[str], enriched: list[dict]) -> str:
     t = raw.lower()
     has_hash = any(_classify_ioc(v) in ("md5", "sha1", "sha256") for v in iocs)
     has_url_dom = any(_classify_ioc(v) in ("url", "domain") for v in iocs)
-    kw_mal = any(k in t for k in _MALWARE_KEYWORDS)
+    # Strong malware signal excludes ambiguous words ("endpoint", "edr") that
+    # legitimately appear in change-management logs (e.g. "Microsoft Defender
+    # for Endpoint" during an authorised isolation).
+    _MALWARE_STRONG = tuple(k for k in _MALWARE_KEYWORDS if k not in ("endpoint", "edr"))
+    kw_mal_strong = any(k in t for k in _MALWARE_STRONG)
     kw_dp = any(k in t for k in _DNSPROXY_KEYWORDS)
+    kw_auth = any(k in t for k in _AUTHORIZED_ADMIN_MARKERS)
+    kw_unauth = any(k in t for k in _UNAUTHORIZED_MARKERS)
+
+    # Priority 1 — explicit unauthorized signal always wins.
+    if kw_unauth:
+        return "unauthorized"
+    # Priority 2 — authorized change-management footprint (approver + ticket)
+    # with NO strong malware/threat signal is a routine admin action.
+    if kw_auth and not kw_mal_strong and not has_hash and not has_url_dom:
+        return "authorized_admin"
+    # Priority 3 — malware / DNS / mixed classifications (the shipped taxonomy).
     if has_hash and (has_url_dom or kw_dp):
         return "mixed"
-    if has_hash or kw_mal:
+    if has_hash or kw_mal_strong:
         return "malware"
     if has_url_dom or kw_dp:
         return "dns_proxy"
+    # Priority 4 — weaker change-management fallback (no threat signal at all).
+    if kw_auth:
+        return "authorized_admin"
     return "generic"
 
 
@@ -5164,8 +5207,9 @@ async def get_forge_training_stats(admin: dict = Depends(require_role("admin")))
     plus totals and a simple coverage tier (missing/light/covered) so the
     admin can spot gaps at a glance.
     """
-    default_cases = ["malware", "dns_proxy", "mixed", "phishing", "insider",
-                      "data_exfil", "cloud_iam", "ransomware", "generic"]
+    default_cases = ["malware", "dns_proxy", "mixed", "authorized_admin",
+                      "unauthorized", "phishing", "insider", "data_exfil",
+                      "cloud_iam", "ransomware", "generic"]
     # Collate via Mongo aggregation.
     pipeline = [
         {"$match": {"active": True}},
