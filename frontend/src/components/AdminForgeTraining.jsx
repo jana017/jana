@@ -108,7 +108,7 @@ export default function AdminForgeTraining() {
       } else {
         const { data } = await api.post("/admin/forge/training/examples", payload);
         saved = data;
-        toast.success("Example added — AI narrator will use this on future reports");
+        toast.success("Example added — NivX Cognis AI will use this on future reports");
       }
       await loadAll();
       editExisting(saved);
@@ -162,7 +162,7 @@ export default function AdminForgeTraining() {
     setPersonaSaving(true);
     try {
       await api.put("/admin/forge/training/config", { persona });
-      toast.success("Analyst persona saved — AI narrator will use it on next report");
+      toast.success("Analyst persona saved — NivX Cognis AI will use it on next report");
     } catch (e) {
       toast.error(`Save persona failed: ${formatApiErrorDetail(e.response?.data?.detail) || e.message}`);
     } finally { setPersonaSaving(false); }
@@ -176,7 +176,7 @@ export default function AdminForgeTraining() {
             <BookOpenText className="w-6 h-6 text-[#2E7DF5]" /> NivX Forge — Analyst Training Center
           </h1>
           <p className="text-sm text-slate-500 mt-1 max-w-3xl">
-            Add past incidents/alerts with your analyst-written summary and recommendations. Attach source files or screenshots. The Investigation Report AI narrator retrieves the top matching examples on every generation and mirrors your team&apos;s tone, structure and phrasing.
+            Add past incidents/alerts with your analyst-written summary and recommendations. Attach source files or screenshots. The Investigation Report NivX Cognis AI retrieves the top matching examples on every generation and mirrors your team&apos;s tone, structure and phrasing.
           </p>
         </div>
         <button data-testid="forge-training-new" onClick={startNew} className={`${btnCls} bg-[#2E7DF5] text-white border-[#2E7DF5] hover:bg-[#2563EB]`}>
@@ -195,7 +195,7 @@ export default function AdminForgeTraining() {
           </button>
         </div>
         <p className="text-xs text-slate-500 mb-2">
-          House-style rules the AI narrator obeys on every report. E.g. &quot;Always open with &apos;NivX CSOC observed…&apos;&quot;, tone preferences, sentence ordering, standard closers. Never overrides the &quot;no fabrication&quot; guarantees.
+          House-style rules the NivX Cognis AI obeys on every report. E.g. &quot;Always open with &apos;NivX CSOC observed…&apos;&quot;, tone preferences, sentence ordering, standard closers. Never overrides the &quot;no fabrication&quot; guarantees.
         </p>
         <textarea
           value={persona}
@@ -299,7 +299,7 @@ export default function AdminForgeTraining() {
 
           <div>
             <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Analyst investigation summary / narrative</label>
-            <textarea value={form.narrative} onChange={(e) => setForm({ ...form, narrative: e.target.value })} rows={8} placeholder="Write the ideal investigation report the way your SOC would deliver it to the customer. The AI narrator will match this tone and structure on future reports." className="w-full text-sm px-3 py-2 border border-slate-200 rounded-md focus:border-[#2E7DF5] outline-none text-slate-800" data-testid="forge-training-narrative" />
+            <textarea value={form.narrative} onChange={(e) => setForm({ ...form, narrative: e.target.value })} rows={8} placeholder="Write the ideal investigation report the way your SOC would deliver it to the customer. The NivX Cognis AI will match this tone and structure on future reports." className="w-full text-sm px-3 py-2 border border-slate-200 rounded-md focus:border-[#2E7DF5] outline-none text-slate-800" data-testid="forge-training-narrative" />
           </div>
 
           <div>

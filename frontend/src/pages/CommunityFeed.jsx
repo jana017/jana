@@ -95,7 +95,7 @@ export default function CommunityFeed() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" data-testid="feed-grid">
               {(feed.articles || []).map((a, i) => (
                 <motion.a
-                  key={a.slug + i}
+                  key={`${a.slug ?? "article"}-${i}`}
                   href={a.url}
                   target="_blank"
                   rel="noopener noreferrer"

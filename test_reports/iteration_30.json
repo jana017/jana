@@ -1,0 +1,27 @@
+{
+  "summary": "Iteration 30 — Verified NivX Cognis AI rebrand + React NaN-key regression fix + Tesseract OCR ingestion (backend endpoint + attachment ocr_text + frontend Investigation Report auto-OCR). 12/12 backend pytest cases pass. Frontend E2E confirms all badges/pills/toast labels updated, OCR upload flow populates data textarea, and AI report generation still works end-to-end. Zero 'NaN'/'two children with same key' console warnings across /, /threat-intelligence, /community/hn, /learn, /admin.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter30_ocr_and_ai.py",
+    "/app/test_reports/pytest/iter30.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "OCR endpoint /api/forge/ocr-image is public (no auth) and 10MB-capped — appropriate for the UX but consider a light per-IP rate limit if abuse risk emerges.",
+    "server.py > 6700 lines — continue splitting NivX Forge into its own module (carried over from iter 29)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter30_ocr_and_ai.py"],
+  "success_rate": {"backend": "100% (12/12)", "frontend": "100% — rebrand, OCR flow, and AI generation verified live"},
+  "test_credentials": "admin@nivxmachines.com / NivX@Admin2025",
+  "seed_data_creation": "Test-created forge training example (TEST_iter30_ocr) is deleted in test teardown.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "OCR endpoint payload keys: {filename, mime, bytes, text, char_count, line_count}. Attachment upload returns kind='image' with populated ocr_text (empty string for non-images). Investigation report AI mode returns engine='ai' and ai_model=<gemini-...>. IOC batch endpoints expect key 'values' (not 'iocs'). Login response uses 'access_token'. React NaN-key warnings are fully cleared as of this iteration.",
+  "verified_ui_data_testids": [
+    "forge-report-mode-badge (NivX Cognis AI · Gemini 3 Flash)",
+    "forge-report-engine (Cognis · 3 Flash)",
+    "forge-report-upload (Upload file / screenshot)",
+    "forge-report-data (data textarea auto-populated with OCR text)"
+  ]
+}

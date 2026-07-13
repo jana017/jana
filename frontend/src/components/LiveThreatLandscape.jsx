@@ -238,7 +238,7 @@ export default function LiveThreatLandscape() {
                 const isFresh = freshCves.has(it.cve);
                 return (
                   <motion.a
-                    key={it.cve + i}
+                    key={`${it.cve ?? "item"}-${i}`}
                     initial={isFresh ? { backgroundColor: "#FEF3C7" } : false}
                     animate={{ backgroundColor: isFresh ? "#FEF9E7" : "rgba(255,255,255,0)" }}
                     transition={{ duration: 3.5 }}

@@ -39,10 +39,35 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
     toast.info("Loaded current NivX Forge output into the report generator.");
   };
 
-  const uploadFile = (e) => {
+  const uploadFile = async (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    if (f.size > 5 * 1024 * 1024) { toast.error("Max file size 5 MB"); return; }
+    if (f.size > 10 * 1024 * 1024) { toast.error("Max file size 10 MB"); return; }
+    // If the file is an image, route through /api/forge/ocr-image so the
+    // Tesseract-extracted text lands in the data box automatically.
+    const isImage = (f.type || "").startsWith("image/") || /\.(png|jpe?g|webp|bmp|tiff?|gif)$/i.test(f.name);
+    if (isImage) {
+      const fd = new FormData();
+      fd.append("file", f);
+      try {
+        toast.info(`Running OCR on ${f.name}…`);
+        const { data: r } = await api.post("/forge/ocr-image", fd, { headers: { "Content-Type": "multipart/form-data" } });
+        if (!r.text || !r.text.trim()) {
+          toast.error(`OCR found no text in ${f.name}. Try a higher-resolution image.`);
+          e.target.value = "";
+          return;
+        }
+        setData(r.text);
+        setFileName(`${f.name} (OCR · ${r.char_count} chars)`);
+        toast.success(`Extracted ${r.char_count} chars from ${f.name}`);
+      } catch (err) {
+        toast.error(`OCR failed: ${formatApiErrorDetail(err.response?.data?.detail) || err.message}`);
+      } finally {
+        e.target.value = "";
+      }
+      return;
+    }
+    // Text-readable file — read as text.
     const reader = new FileReader();
     reader.onload = (ev) => {
       setData(String(ev.target?.result || ""));
@@ -68,7 +93,7 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
       setReport(res);
       const fmt = res.format || {};
       const fmtLabel = fmt.mode === "bullets" ? "bullets" : `${fmt.count || 0} ${fmt.mode || "paras"}`;
-      const engineLabel = res.engine === "ai" ? `AI (${res.ai_model || aiModel})` : "offline";
+      const engineLabel = res.engine === "ai" ? `NivX Cognis AI (${res.ai_model || aiModel})` : "offline";
       toast.success(`Report generated · ${engineLabel} · ${res.case_type || "generic"} case · ${res.iocs_extracted?.length || 0} IOC${res.iocs_extracted?.length === 1 ? "" : "s"} · ${fmtLabel}`);
     } catch (e) {
       toast.error(`Report generation failed: ${formatApiErrorDetail(e.response?.data?.detail) || e.message}`);
@@ -85,7 +110,7 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
     if (!report?.report) return;
     const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     const fmt = report.format || {};
-    const engineLine = report.engine === "ai" ? `Engine: AI (${report.ai_model || "gemini"})` : "Engine: Offline deterministic";
+    const engineLine = report.engine === "ai" ? `Engine: NivX Cognis AI (${report.ai_model || "gemini"})` : "Engine: Offline deterministic";
     const header = `# NivX Forge — Investigation Report\nGenerated: ${report.generated_at || new Date().toISOString()}\n${engineLine}\nCase type: ${report.case_type || "generic"}\nFormat: ${fmt.mode || "paragraphs"}${fmt.count ? ` × ${fmt.count}` : ""}${fmt.verbose ? " (verbose)" : ""}\n\n## Analyst instructions\n${report.instructions || "—"}\n\n## Extracted IOCs\n${(report.iocs_extracted || []).map((v) => `- ${v}`).join("\n") || "—"}\n\n## Report\n\n`;
     const blob = new Blob([header + report.report + "\n"], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
@@ -114,7 +139,7 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
           <h3 className="text-sm font-semibold text-slate-100">Investigation Report</h3>
           {aiMode ? (
             <span data-testid="forge-report-mode-badge" className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border border-violet-500/40 bg-violet-500/10 text-violet-300 inline-flex items-center gap-1">
-              <Sparkles className="w-2.5 h-2.5" /> AI · {aiModel === "gemini-3.5-flash" ? "Gemini 3.5 Flash" : "Gemini 3 Flash"}
+              <Sparkles className="w-2.5 h-2.5" /> NivX Cognis AI · {aiModel === "gemini-3.5-flash" ? "Gemini 3.5 Flash" : "Gemini 3 Flash"}
             </span>
           ) : (
             <span data-testid="forge-report-mode-badge" className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-300">
@@ -163,14 +188,14 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
               ) : null}
               <label
                 data-testid="forge-report-upload"
-                title="Upload any text-readable file (txt, log, csv, json, xml, yaml, eml, md — max 5 MB)"
+                title="Upload any text-readable file (txt, log, csv, json, xml, yaml, eml, md) or an image screenshot (png/jpg/webp — auto-OCR) — max 10 MB"
                 className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-300 hover:text-cyan-300 border border-slate-700 hover:border-cyan-500/60 rounded px-2 py-1 cursor-pointer transition-colors"
               >
-                <Upload className="w-3 h-3" /> Upload file
+                <Upload className="w-3 h-3" /> Upload file / screenshot
                 <input
                   ref={fileRef}
                   type="file"
-                  accept=".txt,.log,.csv,.tsv,.json,.jsonl,.ndjson,.xml,.yaml,.yml,.md,.eml,.evtx,text/*,application/json,application/octet-stream"
+                  accept=".txt,.log,.csv,.tsv,.json,.jsonl,.ndjson,.xml,.yaml,.yml,.md,.eml,.evtx,.png,.jpg,.jpeg,.webp,.bmp,.tiff,.tif,.gif,text/*,image/*,application/json,application/octet-stream"
                   className="hidden"
                   onChange={uploadFile}
                 />
@@ -182,7 +207,7 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
             value={data}
             onChange={(e) => { setData(e.target.value); if (fileName) setFileName(""); }}
             rows={8}
-            placeholder={"Paste raw logs, alerts, or any incident data here — or upload a file.\n\nAny format (txt / log / csv / json / xml / yaml / eml / md / evtx-text ...) is accepted."}
+            placeholder={"Paste raw logs, alerts, or any incident data here — or upload a file / screenshot.\n\nText formats (txt / log / csv / json / xml / yaml / eml / md ...) are read directly. Image screenshots (png / jpg / webp) are auto-OCR'd via Tesseract into text."}
             className="w-full bg-slate-950/60 border border-slate-800 focus:border-cyan-400 outline-none rounded-md px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 font-mono-data resize-y"
           />
         </div>
@@ -209,7 +234,7 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
               />
               <span className="inline-flex items-center gap-1">
                 <Sparkles className="w-3 h-3 text-violet-400" />
-                AI narrative (Gemini)
+                NivX Cognis AI (Gemini)
               </span>
             </label>
             {aiMode && (
@@ -242,7 +267,7 @@ export default function InvestigationReport({ pipelineOutput, extractedIocs = []
               <div className="flex flex-wrap items-center gap-2">
                 {report.engine === "ai" ? (
                   <span data-testid="forge-report-engine" className="text-[11px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded border border-violet-500/40 bg-violet-500/10 text-violet-300 inline-flex items-center gap-1">
-                    <Sparkles className="w-3 h-3" /> AI · {report.ai_model === "gemini-3.5-flash" ? "3.5 Flash" : "3 Flash"}
+                    <Sparkles className="w-3 h-3" /> Cognis · {report.ai_model === "gemini-3.5-flash" ? "3.5 Flash" : "3 Flash"}
                   </span>
                 ) : (
                   <span data-testid="forge-report-engine" className="text-[11px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-300">

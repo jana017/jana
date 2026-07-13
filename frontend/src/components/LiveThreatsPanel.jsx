@@ -308,7 +308,7 @@ export default function LiveThreatsPanel() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {cves.slice(0, 60).map((c, i) => (
-                  <tr key={c.cveID + i} data-testid={`cve-row-${i}`} className="hover:bg-slate-50">
+                  <tr key={`${c.cveID ?? "cve"}-${i}`} data-testid={`cve-row-${i}`} className="hover:bg-slate-50">
                     <td className="px-4 py-2.5 font-mono text-xs font-bold text-slate-800 whitespace-nowrap">{c.cveID}</td>
                     <td className="px-4 py-2.5">
                       <div className="text-sm font-semibold text-slate-800 truncate max-w-[220px]" title={`${c.vendorProject || ""} · ${c.product || ""}`}>{c.vendorProject || "—"}</div>

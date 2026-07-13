@@ -4335,16 +4335,43 @@ class ForgeReportInput(BaseModel):
     ai_model: str = "gemini-3-flash-preview"  # gemini-3-flash-preview | gemini-3.5-flash
 
 
+@api_router.post("/forge/ocr-image")
+async def forge_ocr_image(file: UploadFile = File(...)):
+    """OCR an uploaded image (screenshot of alert/log/dashboard) → plain text.
+
+    Public endpoint — the Investigation Report UI calls this before sending
+    the extracted text to /forge/investigation-report. Runs fully offline
+    via local Tesseract; no LLM used.
+    """
+    body = await file.read()
+    if not body:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(body) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Image exceeds 10 MB")
+    mime = (file.content_type or "").lower()
+    if not (mime.startswith("image/") or (file.filename or "").lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".gif"))):
+        raise HTTPException(status_code=415, detail="Upload an image (png / jpg / webp / bmp / tiff)")
+    text = _ocr_image_bytes(body)
+    return {
+        "filename": file.filename or "image",
+        "mime": mime,
+        "bytes": len(body),
+        "text": text,
+        "char_count": len(text),
+        "line_count": text.count("\n") + 1 if text else 0,
+    }
+
+
 # System prompt for the AI-narrative mode. Locks the model to strict
 # evidence-only prose — no hallucinated indicators, actor names, dates,
 # families or delivery vectors beyond what the deterministic engine
 # supplied in the evidence bundle.
 _FORGE_AI_SYSTEM = (
-    "You are a senior MDR / SOC analyst at NivX Machines writing customer-facing "
-    "investigation reports. You will receive (a) a raw log excerpt, (b) an EVIDENCE "
-    "JSON containing deterministically extracted facts (IOCs, timestamps, users, "
-    "devices, actions and OSINT verdicts), and (c) the user's free-form format "
-    "instruction.\n\n"
+    "You are NivX Cognis AI, the in-house SOC/MDR analyst at NivX Machines. You "
+    "write customer-facing investigation reports. You will receive (a) a raw log "
+    "excerpt, (b) an EVIDENCE JSON containing deterministically extracted facts "
+    "(IOCs, timestamps, users, devices, actions and OSINT verdicts), and (c) the "
+    "user's free-form format instruction.\n\n"
     "STRICT RULES — obey without exception:\n"
     " 1. Use ONLY the facts present in the raw log or the EVIDENCE JSON. Never "
     "    fabricate IOCs, hostnames, usernames, hashes, dates, malware family names, "
@@ -4358,7 +4385,9 @@ _FORGE_AI_SYSTEM = (
     " 4. Do NOT include any Recommendations / Remediation section — those are "
     "    appended separately by the deterministic engine after your narrative.\n"
     " 5. Do NOT use markdown headings. Plain prose (or plain bullet dashes) only.\n"
-    " 6. Tone: factual, analyst-grade, third-person. No hype, no filler."
+    " 6. Do NOT introduce yourself or mention 'NivX Cognis AI' in the output — the "
+    "    reader already knows.\n"
+    " 7. Tone: factual, analyst-grade, third-person. No hype, no filler."
 )
 
 
@@ -4585,6 +4614,30 @@ _FORGE_MAX_ATT_BYTES = 10 * 1024 * 1024   # 10 MB per attachment
 _FORGE_MAX_TEXT = 200_000                  # 200 KB caps on text fields
 
 
+def _ocr_image_bytes(body: bytes) -> str:
+    """Extract text from a raw image byte-string using Tesseract (offline).
+
+    Returns "" on failure — OCR is best-effort. Never raises to the caller.
+    """
+    try:
+        import pytesseract  # noqa: WPS433 — optional dep, imported lazily
+        from PIL import Image
+        img = Image.open(io.BytesIO(body))
+        # Convert palette / RGBA to RGB for consistent OCR.
+        if img.mode not in ("L", "RGB"):
+            img = img.convert("RGB")
+        # Cap enormous screenshots to keep OCR fast.
+        max_side = 4000
+        if max(img.size) > max_side:
+            ratio = max_side / max(img.size)
+            img = img.resize((int(img.size[0] * ratio), int(img.size[1] * ratio)))
+        text = pytesseract.image_to_string(img, lang="eng", timeout=30)
+        return (text or "").strip()
+    except Exception as e:
+        logger.warning(f"OCR failed: {e}")
+        return ""
+
+
 class ForgeTrainingExample(BaseModel):
     """A past-investigation exemplar used as few-shot for the AI narrative."""
     title: str
@@ -4754,6 +4807,9 @@ async def upload_forge_training_attachment(
     path.write_bytes(body)
     mime = file.content_type or "application/octet-stream"
     kind = "image" if mime.startswith("image/") else "file"
+    ocr_text = ""
+    if kind == "image":
+        ocr_text = _ocr_image_bytes(body)
     entry = {
         "id": att_id,
         "filename": safe_name,
@@ -4761,6 +4817,7 @@ async def upload_forge_training_attachment(
         "kind": kind,
         "size": len(body),
         "storage": str(path),
+        "ocr_text": ocr_text,
         "uploaded_at": now_iso(),
     }
     await db.forge_training_examples.update_one(
@@ -4889,10 +4946,11 @@ async def find_matching_forge_examples(case_type: str, raw: str,
             return []
         seed_tokens = _tokenize_for_match(raw + " " + " ".join(iocs))
         def score(ex: dict) -> float:
+            att_ocr = " ".join((a.get("ocr_text") or "") for a in (ex.get("attachments") or []))
             ex_tokens = _tokenize_for_match(
                 (ex.get("raw_data") or "") + " " +
                 " ".join(ex.get("tags") or []) + " " +
-                (ex.get("title") or "")
+                (ex.get("title") or "") + " " + att_ocr
             )
             if not seed_tokens or not ex_tokens:
                 return 0.0
