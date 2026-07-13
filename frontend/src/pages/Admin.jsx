@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import { LogOut, Plus, Pencil, Trash2, ArrowLeft, ShieldCheck, Download, LayoutDashboard, Activity, Code2, Users, Ticket, KeyRound } from "lucide-react";
+import { LogOut, Plus, Pencil, Trash2, ArrowLeft, ShieldCheck, Download, LayoutDashboard, Activity, Code2, Users, Ticket, KeyRound, BookOpenText } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import useSeo from "@/lib/useSeo";
@@ -12,6 +12,7 @@ import AdminMaster from "@/components/AdminMaster";
 import AdminSecurityAccess from "@/components/AdminSecurityAccess";
 import AdminEmployees from "@/components/AdminEmployees";
 import AdminTickets from "@/components/AdminTickets";
+import AdminForgeTraining from "@/components/AdminForgeTraining";
 import PreflightBanner from "@/components/PreflightBanner";
 import {
   AlertDialog,
@@ -280,6 +281,13 @@ function Dashboard() {
             <KeyRound className="w-4 h-4" /> Security
           </button>
           <button
+            data-testid="tab-forge-training"
+            onClick={() => setView("forge-training")}
+            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${view === "forge-training" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+          >
+            <BookOpenText className="w-4 h-4" /> Forge Training
+          </button>
+          <button
             data-testid="tab-developer"
             onClick={() => setView("developer")}
             className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${view === "developer" ? "border-[#2E7DF5] text-[#2E7DF5]" : "border-transparent text-slate-500 hover:text-slate-800"}`}
@@ -307,6 +315,8 @@ function Dashboard() {
         <div className="mx-auto max-w-7xl px-6 py-10">
           <AdminSecurityAccess currentAdminId={user?.id} />
         </div>
+      ) : view === "forge-training" ? (
+        <AdminForgeTraining />
       ) : view === "developer" ? (
         <AdminSiteCMS />
       ) : view === "reports" ? (

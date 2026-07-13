@@ -1,0 +1,31 @@
+{
+  "summary": "Analyst Training Center (Forge Training) — full backend + frontend + AI-integration verification. 17/17 backend pytest cases pass (auth, CRUD, list search/filter, attachment upload/download/delete, 10MB cap 413, config persona persistence + 10k cap, regression). UI flow verified end-to-end (persona save, create/list/select/update/delete example, upload attachment via file input). AI integration confirmed: persona wording ('CUSTOMER', 'NivX CSOC recommends the following remediation steps') applied to newly-generated report without leaking specific IOCs/hostnames from the seeded training example while accurately reflecting the new alert (host HOST-QA-77, payload.exe, 5.6.7.8).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Global (visible on /login and /admin pages)", "issues": ["Repeated React console warning: 'Encountered two children with the same key, NaN'. Not blocking Forge Training but should be traced (likely another component rendering a list with NaN key). Pre-existing across pages."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_forge_training.py",
+    "/app/test_reports/pytest/forge_training.xml"
+  ],
+  "action_items": [
+    "Investigate the pre-existing React warning 'two children with same key NaN' — appears on many admin/public pages, unrelated to Forge Training but polluting console.",
+    "Consider surfacing 413 upload-cap error as a user-visible toast in the attachment UI (not verified — was not part of the flow tested)."
+  ],
+  "critical_code_review_comments": [
+    "server.py L4783-4788: `delete_forge_training_attachment` has a dead / no-op tuple expression `(drop, keep) if a.get('id')==att_id else (keep, drop)` — harmless but confusing. Recommend deleting that line; the following if/else already handles the logic.",
+    "Persona is silently truncated to 10 000 chars server-side (no 400). Acceptable but the spec-defined 'max 10k' is enforced by truncation, not rejection — worth clarifying to caller (frontend has no visible counter/warning).",
+    "server.py is now 6600+ lines. Continue splitting NivX Forge subsystem into a dedicated module for maintainability."
+  ],
+  "updated_files": ["/app/backend/tests/test_forge_training.py"],
+  "success_rate": {"backend": "100% (17/17)", "frontend": "100% (all named test-ids present, full CRUD + attachment + persona flow verified)"},
+  "test_credentials": "admin@nivxmachines.com / NivX@Admin2025 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Test-created data prefixed with TEST_ and cleaned up in tests. AI integration script seeds + deletes example inline.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Analyst Training Center is fully functional and integrated with the Forge AI narrator. Backend endpoints under /api/admin/forge/training/* (examples CRUD, attachments, config). Login returns {access_token, user}. /api/forge/investigation-report uses field name 'data' (not raw_data) with ai_mode boolean. Test file: /app/backend/tests/test_forge_training.py. Pre-existing React NaN key warning persists across pages — orthogonal to this feature."
+}

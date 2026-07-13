@@ -4375,6 +4375,10 @@ async def _forge_ai_narrative(raw: str,
 
     Returns the narrative body only — the caller appends the deterministic
     Recommendations block afterwards.
+
+    Retrieves training-center examples matching this case and adds them as
+    few-shot demonstrations. Uses the admin-configured custom persona when
+    present, otherwise falls back to the default system prompt.
     """
     if not EMERGENT_LLM_KEY:
         raise HTTPException(status_code=503, detail="AI mode requires EMERGENT_LLM_KEY to be configured")
@@ -4420,12 +4424,49 @@ async def _forge_ai_narrative(raw: str,
     }
 
     fmt_hint = instructions.strip() or "Write in 2 paragraphs."
+
+    # ---- Analyst training center: custom persona + few-shot examples ----
+    persona = _FORGE_AI_SYSTEM
+    try:
+        cfg = await db.forge_training_config.find_one({"_id": "singleton"})
+        if cfg and (cfg.get("persona") or "").strip():
+            # Append the custom persona to the strict rules — never replace
+            # the "no hallucination" clauses. This keeps guarantees intact.
+            persona = _FORGE_AI_SYSTEM + "\n\nHOUSE STYLE (from analyst training center):\n" + cfg["persona"].strip()
+    except Exception:
+        pass
+
+    # Retrieve top 2 exemplars for few-shot.
+    fewshot_block = ""
+    try:
+        exemplars = await find_matching_forge_examples(case_type, raw, iocs, limit=2)
+        if exemplars:
+            blocks = []
+            for i, ex in enumerate(exemplars, 1):
+                if not (ex.get("narrative") or "").strip():
+                    continue
+                blocks.append(
+                    f"--- Example {i} ({ex.get('case_type')}, from analyst training center) ---\n"
+                    f"Alert / log excerpt:\n{(ex.get('raw_data') or '')[:1500]}\n\n"
+                    f"Analyst report (STYLE reference only — never copy specific facts):\n{(ex.get('narrative') or '')[:2500]}\n"
+                )
+            if blocks:
+                fewshot_block = (
+                    "\n\nSTYLE REFERENCES — the following are past investigations written by this SOC. "
+                    "Match their tone, structure, sentence rhythm and closing phrasing. Do NOT copy specific "
+                    "IOCs, hostnames, users, dates or attribution from these examples — they are for STYLE ONLY.\n\n"
+                    + "\n".join(blocks)
+                )
+    except Exception as e:
+        logger.warning(f"few-shot retrieval failed: {e}")
+
     prompt = (
         f"USER FORMAT INSTRUCTION: {fmt_hint}\n\n"
         f"RAW LOG EXCERPT (verbatim, do not quote back — reference only):\n"
         f"```\n{raw[:4000]}\n```\n\n"
         f"EVIDENCE JSON (authoritative — use these facts, no others):\n"
-        f"```json\n{json.dumps(evidence, default=str)[:6000]}\n```\n\n"
+        f"```json\n{json.dumps(evidence, default=str)[:6000]}\n```"
+        f"{fewshot_block}\n\n"
         f"Compose the investigation narrative now. Remember: no fabrication, no "
         f"markdown headings, no recommendations section."
     )
@@ -4436,7 +4477,7 @@ async def _forge_ai_narrative(raw: str,
         chat = LlmChat(
             api_key=EMERGENT_LLM_KEY,
             session_id=sid,
-            system_message=_FORGE_AI_SYSTEM,
+            system_message=persona,
         ).with_model("gemini", model_id)
         resp = await chat.send_message(UserMessage(text=prompt))
         text = resp if isinstance(resp, str) else str(resp)
@@ -4521,6 +4562,352 @@ async def forge_investigation_report(payload: ForgeReportInput):
         "recommendations": recommendations,
         "generated_at": now_iso(),
     }
+
+
+# ============================================================================
+# NivX Forge — Analyst Training Center
+# ---------------------------------------------------------------------------
+# Admin-editable library of past investigations, custom persona and case
+# taxonomy. Every AI-mode report generation retrieves the top matching
+# examples and adds them as few-shot exemplars to Gemini so the output
+# mirrors this SOC's tone, structure and closer phrasing.
+#
+# Storage
+#   forge_training_examples  – Mongo collection (metadata + narrative)
+#   forge_training_config    – Mongo collection (persona + custom case types)
+#   /app/backend/uploads/forge-training/{id}/{filename}
+#     – on-disk store for attachments (any format up to 10 MB each)
+# ============================================================================
+
+FORGE_UPLOAD_ROOT = Path("/app/backend/uploads/forge-training")
+FORGE_UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+_FORGE_MAX_ATT_BYTES = 10 * 1024 * 1024   # 10 MB per attachment
+_FORGE_MAX_TEXT = 200_000                  # 200 KB caps on text fields
+
+
+class ForgeTrainingExample(BaseModel):
+    """A past-investigation exemplar used as few-shot for the AI narrative."""
+    title: str
+    case_type: str = "generic"     # matches the classifier taxonomy
+    tags: list[str] = Field(default_factory=list)
+    raw_data: str = ""              # the original alert/log/IOC bundle
+    narrative: str = ""             # the ideal analyst-written investigation report
+    recommendations: list[str] = Field(default_factory=list)
+    analyst_notes: str = ""         # "when to use this style"
+    active: bool = True
+
+
+class ForgeTrainingConfig(BaseModel):
+    persona: str = ""               # overrides _FORGE_AI_SYSTEM when set
+    custom_case_types: list[dict] = Field(default_factory=list)  # [{key, label, keywords}]
+
+
+def _forge_training_serialize(doc: dict) -> dict:
+    """Normalise a Mongo doc for JSON return."""
+    if not doc:
+        return {}
+    return {
+        "id": str(doc.get("_id") or doc.get("id") or ""),
+        "title": doc.get("title") or "",
+        "case_type": doc.get("case_type") or "generic",
+        "tags": doc.get("tags") or [],
+        "raw_data": doc.get("raw_data") or "",
+        "narrative": doc.get("narrative") or "",
+        "recommendations": doc.get("recommendations") or [],
+        "analyst_notes": doc.get("analyst_notes") or "",
+        "active": bool(doc.get("active", True)),
+        "attachments": doc.get("attachments") or [],
+        "created_by": doc.get("created_by") or "",
+        "created_at": doc.get("created_at") or "",
+        "updated_at": doc.get("updated_at") or "",
+    }
+
+
+@api_router.post("/admin/forge/training/examples")
+async def create_forge_training_example(
+    payload: ForgeTrainingExample,
+    admin: dict = Depends(require_role("admin")),
+):
+    now = now_iso()
+    doc = {
+        "_id": str(uuid.uuid4()),
+        "title": (payload.title or "").strip()[:200],
+        "case_type": (payload.case_type or "generic").strip().lower()[:40],
+        "tags": [str(t)[:40] for t in (payload.tags or [])][:20],
+        "raw_data": (payload.raw_data or "")[:_FORGE_MAX_TEXT],
+        "narrative": (payload.narrative or "")[:_FORGE_MAX_TEXT],
+        "recommendations": [str(r)[:500] for r in (payload.recommendations or [])][:30],
+        "analyst_notes": (payload.analyst_notes or "")[:5000],
+        "active": bool(payload.active),
+        "attachments": [],
+        "created_by": admin.get("email") or admin.get("id") or "admin",
+        "created_at": now,
+        "updated_at": now,
+    }
+    if not doc["title"]:
+        raise HTTPException(status_code=400, detail="Title is required")
+    await db.forge_training_examples.insert_one(doc)
+    return _forge_training_serialize(doc)
+
+
+@api_router.get("/admin/forge/training/examples")
+async def list_forge_training_examples(
+    case_type: Optional[str] = None,
+    q: Optional[str] = None,
+    active: Optional[bool] = None,
+    admin: dict = Depends(require_role("admin")),
+):
+    query: dict = {}
+    if case_type:
+        query["case_type"] = case_type.strip().lower()
+    if active is not None:
+        query["active"] = bool(active)
+    if q:
+        needle = re.escape(q.strip())
+        query["$or"] = [
+            {"title":     {"$regex": needle, "$options": "i"}},
+            {"tags":      {"$regex": needle, "$options": "i"}},
+            {"narrative": {"$regex": needle, "$options": "i"}},
+            {"raw_data":  {"$regex": needle, "$options": "i"}},
+        ]
+    cur = db.forge_training_examples.find(query).sort("updated_at", -1).limit(300)
+    return {"examples": [_forge_training_serialize(d) async for d in cur]}
+
+
+@api_router.get("/admin/forge/training/examples/{example_id}")
+async def get_forge_training_example(
+    example_id: str,
+    admin: dict = Depends(require_role("admin")),
+):
+    doc = await db.forge_training_examples.find_one({"_id": example_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Example not found")
+    return _forge_training_serialize(doc)
+
+
+@api_router.put("/admin/forge/training/examples/{example_id}")
+async def update_forge_training_example(
+    example_id: str,
+    payload: ForgeTrainingExample,
+    admin: dict = Depends(require_role("admin")),
+):
+    now = now_iso()
+    update = {
+        "title": (payload.title or "").strip()[:200],
+        "case_type": (payload.case_type or "generic").strip().lower()[:40],
+        "tags": [str(t)[:40] for t in (payload.tags or [])][:20],
+        "raw_data": (payload.raw_data or "")[:_FORGE_MAX_TEXT],
+        "narrative": (payload.narrative or "")[:_FORGE_MAX_TEXT],
+        "recommendations": [str(r)[:500] for r in (payload.recommendations or [])][:30],
+        "analyst_notes": (payload.analyst_notes or "")[:5000],
+        "active": bool(payload.active),
+        "updated_at": now,
+    }
+    res = await db.forge_training_examples.update_one({"_id": example_id}, {"$set": update})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Example not found")
+    doc = await db.forge_training_examples.find_one({"_id": example_id})
+    return _forge_training_serialize(doc)
+
+
+@api_router.delete("/admin/forge/training/examples/{example_id}")
+async def delete_forge_training_example(
+    example_id: str,
+    admin: dict = Depends(require_role("admin")),
+):
+    doc = await db.forge_training_examples.find_one({"_id": example_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Example not found")
+    # Delete attachments on disk too
+    ex_dir = FORGE_UPLOAD_ROOT / example_id
+    if ex_dir.exists():
+        for f in ex_dir.iterdir():
+            try:
+                f.unlink()
+            except Exception:
+                pass
+        try:
+            ex_dir.rmdir()
+        except Exception:
+            pass
+    await db.forge_training_examples.delete_one({"_id": example_id})
+    return {"ok": True}
+
+
+@api_router.post("/admin/forge/training/examples/{example_id}/attachments")
+async def upload_forge_training_attachment(
+    example_id: str,
+    file: UploadFile = File(...),
+    admin: dict = Depends(require_role("admin")),
+):
+    doc = await db.forge_training_examples.find_one({"_id": example_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Example not found")
+    body = await file.read()
+    if len(body) > _FORGE_MAX_ATT_BYTES:
+        raise HTTPException(status_code=413, detail="Attachment exceeds 10 MB")
+    ex_dir = FORGE_UPLOAD_ROOT / example_id
+    ex_dir.mkdir(parents=True, exist_ok=True)
+    att_id = str(uuid.uuid4())
+    safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", (file.filename or "attachment"))[:120]
+    path = ex_dir / f"{att_id}__{safe_name}"
+    path.write_bytes(body)
+    mime = file.content_type or "application/octet-stream"
+    kind = "image" if mime.startswith("image/") else "file"
+    entry = {
+        "id": att_id,
+        "filename": safe_name,
+        "mime": mime,
+        "kind": kind,
+        "size": len(body),
+        "storage": str(path),
+        "uploaded_at": now_iso(),
+    }
+    await db.forge_training_examples.update_one(
+        {"_id": example_id},
+        {"$push": {"attachments": entry}, "$set": {"updated_at": now_iso()}},
+    )
+    return entry
+
+
+@api_router.delete("/admin/forge/training/examples/{example_id}/attachments/{att_id}")
+async def delete_forge_training_attachment(
+    example_id: str,
+    att_id: str,
+    admin: dict = Depends(require_role("admin")),
+):
+    doc = await db.forge_training_examples.find_one({"_id": example_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Example not found")
+    keep, drop = [], None
+    for a in (doc.get("attachments") or []):
+        (drop, keep) if a.get("id") == att_id else (keep, drop)
+        if a.get("id") == att_id:
+            drop = a
+        else:
+            keep.append(a)
+    if not drop:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    try:
+        Path(drop.get("storage") or "").unlink(missing_ok=True)
+    except Exception:
+        pass
+    await db.forge_training_examples.update_one(
+        {"_id": example_id},
+        {"$set": {"attachments": keep, "updated_at": now_iso()}},
+    )
+    return {"ok": True}
+
+
+@api_router.get("/admin/forge/training/examples/{example_id}/attachments/{att_id}")
+async def download_forge_training_attachment(
+    example_id: str,
+    att_id: str,
+    admin: dict = Depends(require_role("admin")),
+):
+    from fastapi.responses import FileResponse
+    doc = await db.forge_training_examples.find_one({"_id": example_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Example not found")
+    for a in (doc.get("attachments") or []):
+        if a.get("id") == att_id:
+            path = a.get("storage") or ""
+            if not path or not Path(path).exists():
+                raise HTTPException(status_code=404, detail="Attachment file missing on disk")
+            return FileResponse(path, media_type=a.get("mime") or "application/octet-stream",
+                                filename=a.get("filename") or "attachment")
+    raise HTTPException(status_code=404, detail="Attachment not found")
+
+
+# ---- Persona / custom case types ------------------------------------------
+
+@api_router.get("/admin/forge/training/config")
+async def get_forge_training_config(admin: dict = Depends(require_role("admin"))):
+    doc = await db.forge_training_config.find_one({"_id": "singleton"})
+    return {
+        "persona": (doc or {}).get("persona", ""),
+        "custom_case_types": (doc or {}).get("custom_case_types", []),
+    }
+
+
+@api_router.put("/admin/forge/training/config")
+async def put_forge_training_config(
+    payload: ForgeTrainingConfig,
+    admin: dict = Depends(require_role("admin")),
+):
+    doc = {
+        "persona": (payload.persona or "")[:10_000],
+        "custom_case_types": [
+            {
+                "key": re.sub(r"[^a-z0-9_]", "_", str(c.get("key") or "").lower())[:40],
+                "label": str(c.get("label") or "")[:80],
+                "keywords": [str(k).lower()[:40] for k in (c.get("keywords") or [])][:40],
+            }
+            for c in (payload.custom_case_types or [])
+        ][:20],
+        "updated_at": now_iso(),
+        "updated_by": admin.get("email") or "admin",
+    }
+    await db.forge_training_config.update_one({"_id": "singleton"}, {"$set": doc}, upsert=True)
+    return {"ok": True, **doc}
+
+
+# ---- Retrieval helper — used by _forge_ai_narrative ------------------------
+
+_TOKEN_RE = re.compile(r"[a-zA-Z0-9]{3,}")
+
+
+def _tokenize_for_match(text: str) -> set[str]:
+    return set(t.lower() for t in _TOKEN_RE.findall(text or ""))
+
+
+async def find_matching_forge_examples(case_type: str, raw: str,
+                                        iocs: list[str], limit: int = 2) -> list[dict]:
+    """Return up to `limit` best-matching training examples for a new report.
+
+    Retrieval strategy (deterministic, no embeddings):
+      1. Filter to `active=true` + same `case_type` (falls back to any case type
+         if we don't have enough matches).
+      2. Rank by Jaccard token overlap between (raw+iocs) and (example.raw_data
+         + example.tags + example.title).
+    """
+    if limit <= 0:
+        return []
+    try:
+        query = {"active": True}
+        docs: list[dict] = []
+        cur = db.forge_training_examples.find({**query, "case_type": case_type}).limit(100)
+        async for d in cur:
+            docs.append(d)
+        if len(docs) < limit:
+            # Fall back to any case type — still useful as style reference.
+            cur = db.forge_training_examples.find(query).limit(200)
+            async for d in cur:
+                if d.get("_id") not in {x.get("_id") for x in docs}:
+                    docs.append(d)
+        if not docs:
+            return []
+        seed_tokens = _tokenize_for_match(raw + " " + " ".join(iocs))
+        def score(ex: dict) -> float:
+            ex_tokens = _tokenize_for_match(
+                (ex.get("raw_data") or "") + " " +
+                " ".join(ex.get("tags") or []) + " " +
+                (ex.get("title") or "")
+            )
+            if not seed_tokens or not ex_tokens:
+                return 0.0
+            inter = len(seed_tokens & ex_tokens)
+            union = len(seed_tokens | ex_tokens)
+            base = inter / union if union else 0.0
+            # Small bonus for exact case_type match.
+            if ex.get("case_type") == case_type:
+                base += 0.05
+            return base
+        ranked = sorted(docs, key=score, reverse=True)
+        return [_forge_training_serialize(d) for d in ranked[:limit]]
+    except Exception as e:
+        logger.warning(f"find_matching_forge_examples failed: {e}")
+        return []
 
 
 @api_router.get("/live-feed")
